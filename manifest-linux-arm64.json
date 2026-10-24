@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.3/DeletionQueue-0.1.3.0-linux-arm64.zip",
+        "checksum": "77b4c9029dc8d8e0368f5565080c3434",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0",
+        "timestamp": "2026-10-24T21:02:30.1578861Z",
+        "version": "0.1.3.0"
+      },
+      {
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "checksum": "5b313f44790f0622b1558f7622c2a477",
         "targetAbi": "12.3.0.0",
