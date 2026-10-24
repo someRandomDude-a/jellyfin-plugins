@@ -1,31 +1,5 @@
 [
   {
-    "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
-    "name": "Account Hub",
-    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "targetAbi": "12.3.0.0",
-        "checksum": "3662951e5eed8aa1795c955ff300cb12",
-        "version": "0.1.2.0",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T20:51:20.5815893Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-linux-arm64.zip"
-      },
-      {
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T17:52:20.5473065Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/AccountHub-0.1.0.0-linux-arm64.zip",
-        "targetAbi": "12.2.0.0",
-        "version": "0.1.0.0",
-        "checksum": "3d0885402c2f54ef69aed9eeaade04a3"
-      }
-    ]
-  },
-  {
     "guid": "09514a9e-f7a0-4c5a-91bc-3a46338298ca",
     "name": "Private SyncPlay",
     "description": "Private watch parties and isolated guest playback.",
@@ -108,6 +82,40 @@
         "targetAbi": "12.2.0.0",
         "version": "0.1.0.0",
         "checksum": "738be3ee4cdf1183d1d503053f5e7644"
+      }
+    ]
+  },
+  {
+    "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
+    "name": "Account Hub",
+    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "checksum": "4a472b130389265ac26990986b6fca5c",
+        "version": "0.1.3.0",
+        "timestamp": "2026-10-24T21:00:50.5671154Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.3/AccountHub-0.1.3.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0"
+      },
+      {
+        "targetAbi": "12.3.0.0",
+        "checksum": "3662951e5eed8aa1795c955ff300cb12",
+        "version": "0.1.2.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T20:51:20.5815893Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-linux-arm64.zip"
+      },
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:20.5473065Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/AccountHub-0.1.0.0-linux-arm64.zip",
+        "targetAbi": "12.2.0.0",
+        "version": "0.1.0.0",
+        "checksum": "3d0885402c2f54ef69aed9eeaade04a3"
       }
     ]
   }

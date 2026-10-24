@@ -1,31 +1,5 @@
 [
   {
-    "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
-    "name": "Account Hub",
-    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "timestamp": "2026-10-24T20:51:25.4237118Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-linux-x64.zip",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "targetAbi": "12.3.0.0",
-        "version": "0.1.2.0",
-        "checksum": "928bb1e3bddaf6ab73a7fd19b8d0e6f1"
-      },
-      {
-        "version": "0.1.0.0",
-        "targetAbi": "12.2.0.0",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T17:52:05.2454893Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/AccountHub-0.1.0.0-linux-x64.zip",
-        "checksum": "6d3d64dde70bbf898aff5efbe6427b30"
-      }
-    ]
-  },
-  {
     "guid": "09514a9e-f7a0-4c5a-91bc-3a46338298ca",
     "name": "Private SyncPlay",
     "description": "Private watch parties and isolated guest playback.",
@@ -108,6 +82,40 @@
         "timestamp": "2026-10-24T17:52:10.9849713Z",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DiscordBridge-0.1.0.0-linux-x64.zip",
         "checksum": "40440d83976535ab30515dd7a972e886"
+      }
+    ]
+  },
+  {
+    "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
+    "name": "Account Hub",
+    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "checksum": "87d68784c710aeb5e1beffd2a1af4468",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T21:00:59.0949163Z",
+        "version": "0.1.3.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.3/AccountHub-0.1.3.0-linux-x64.zip"
+      },
+      {
+        "timestamp": "2026-10-24T20:51:25.4237118Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0",
+        "version": "0.1.2.0",
+        "checksum": "928bb1e3bddaf6ab73a7fd19b8d0e6f1"
+      },
+      {
+        "version": "0.1.0.0",
+        "targetAbi": "12.2.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:05.2454893Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/AccountHub-0.1.0.0-linux-x64.zip",
+        "checksum": "6d3d64dde70bbf898aff5efbe6427b30"
       }
     ]
   }
