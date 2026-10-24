@@ -1,0 +1,28 @@
+[
+  {
+    "guid": "4b047046-a550-4415-b204-4206f1f18201",
+    "name": "Discord Bridge",
+    "description": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
+    "overview": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "checksum": "8c89ede9d0f50a27020e75c272d13cff",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.2/DiscordBridge-0.1.2.0-win-x64.zip",
+        "version": "0.1.2.0",
+        "timestamp": "2026-10-24T20:51:04.4982220Z"
+      },
+      {
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DiscordBridge-0.1.0.0-win-x64.zip",
+        "checksum": "f703cc18a3cb0bdbe067bd149602788d",
+        "version": "0.1.0.0",
+        "timestamp": "2026-10-24T17:52:02.8044973Z",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.2.0.0"
+      }
+    ]
+  }
+]
