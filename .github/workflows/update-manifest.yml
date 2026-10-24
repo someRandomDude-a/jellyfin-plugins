@@ -14,7 +14,7 @@ on:
         description: 'Published plugin to merge into catalogs'
         required: true
         type: choice
-        options: [private-syncplay, account-hub, discord-bridge, deletion-queue, notifications]
+        options: [private-syncplay, account-hub, discord-bridge, deletion-queue, notifications, all]
       release_tag:
         description: 'Published version (v0.2.0) or full plugin/v0.2.0 tag'
         required: true
@@ -41,10 +41,15 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if ($env:PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')) { throw 'Unknown plugin' }
-          if ($env:RELEASE_TAG -match '^v\d+\.\d+\.\d+$') { $env:RELEASE_TAG = "$env:PLUGIN/$env:RELEASE_TAG" }
-          if ($env:RELEASE_TAG -notmatch "^$([regex]::Escape($env:PLUGIN))/(v\d+\.\d+\.\d+)$") { throw 'Release tag must belong to selected plugin' }
-          $versionTag = $Matches[1]
+          if ($env:PLUGIN -notin @('all','account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')) { throw 'Unknown plugin' }
+          if ($env:PLUGIN -eq 'all') {
+            if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Suite releases require vX.Y.Z' }
+            $versionTag = $env:RELEASE_TAG
+          } else {
+            if ($env:RELEASE_TAG -match '^v\d+\.\d+\.\d+$') { $env:RELEASE_TAG = "$env:PLUGIN/$env:RELEASE_TAG" }
+            if ($env:RELEASE_TAG -notmatch "^$([regex]::Escape($env:PLUGIN))/(v\d+\.\d+\.\d+)$") { throw 'Release tag must belong to selected plugin' }
+            $versionTag = $Matches[1]
+          }
           $release = gh release view $env:RELEASE_TAG --json isDraft,tagName | ConvertFrom-Json
           if ($LASTEXITCODE -or $release.isDraft -or $release.tagName -cne $env:RELEASE_TAG) { throw 'An existing published release is required' }
           gh release download $env:RELEASE_TAG --dir release

@@ -1,0 +1,143 @@
+name: Release all plugins
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Immutable suite version (for example v0.3.0)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: suite-release-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  verify-ref:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.ref.outputs.tag }}
+      published: ${{ steps.ref.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - id: ref
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Enter a version such as v0.3.0' }
+          git fetch --tags
+          if ($LASTEXITCODE) { throw 'Cannot read immutable tags' }
+          git show-ref --verify --quiet "refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -eq 0) {
+            $commit = git rev-parse "$($env:RELEASE_TAG)^{commit}"
+            if ($LASTEXITCODE) { throw 'Cannot resolve existing tag' }
+            git merge-base --is-ancestor $commit HEAD
+            if ($LASTEXITCODE) { throw 'Existing tag is not on the selected branch history' }
+          } else {
+            git tag $env:RELEASE_TAG HEAD
+            if ($LASTEXITCODE) { throw 'Tag creation failed' }
+            git push origin "refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE) { throw 'Tag push failed; no tag will be overwritten' }
+          }
+          $tags = @(gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq '.[] | select(.draft == false) | .tag_name')
+          if ($LASTEXITCODE) { throw 'Cannot inspect published releases' }
+          "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+          "published=$(([bool]($tags -ccontains $env:RELEASE_TAG)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+  checks:
+    needs: verify-ref
+    if: needs.verify-ref.outputs.published != 'true'
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ needs.verify-ref.outputs.tag }}
+  package:
+    needs: [verify-ref, checks]
+    if: needs.verify-ref.outputs.published != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [linux-x64, linux-arm64, win-x64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-ref.outputs.tag }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/discord-bridge/activity
+      - name: Package all five plugins
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          ./scripts/package.ps1 -Tag $env:RELEASE_TAG -Plugin all -Repository $env:RELEASE_REPOSITORY -Runtime $env:RUNTIME -OutputDirectory artifacts/suite-packages
+          Copy-Item artifacts/suite-packages/manifest.json "artifacts/suite-packages/manifest-$env:RUNTIME.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suite-packages-${{ matrix.runtime }}
+          path: |
+            artifacts/suite-packages/*.zip
+            artifacts/suite-packages/*.sha256
+            artifacts/suite-packages/*.cdx.json
+            artifacts/suite-packages/*.licenses.json
+            artifacts/suite-packages/manifest-${{ matrix.runtime }}.json
+  publish:
+    needs: [verify-ref, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: plugin-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-ref.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: suite-packages-*
+          path: release
+          merge-multiple: true
+      - name: Validate all 15 packages and three manifests
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/validate-release-set.ps1 -Directory release -Tag $env:RELEASE_TAG -Plugin all -Repository $env:RELEASE_REPOSITORY
+      - name: Publish immutable suite release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+        run: |
+          gh release create $env:RELEASE_TAG --verify-tag --draft --title "All plugins $env:RELEASE_TAG" --notes 'All five plugins for Linux x64, Linux ARM64 and Windows x64. Integration preview; see documented acceptance limits.'
+          if ($LASTEXITCODE) { throw 'Release exists or creation failed; assets will not be overwritten' }
+          gh release upload $env:RELEASE_TAG (Get-ChildItem release -File | ForEach-Object FullName)
+          if ($LASTEXITCODE) { throw 'Upload failed; release remains draft' }
+          gh release edit $env:RELEASE_TAG --draft=false --latest=false
+          if ($LASTEXITCODE) { throw 'Could not publish uploaded release' }
+  update-manifest:
+    needs: [verify-ref, publish]
+    if: ${{ !cancelled() && needs.verify-ref.result == 'success' && (needs.verify-ref.outputs.published == 'true' || needs.publish.result == 'success') }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-manifest.yml
+    with:
+      plugin: all
+      release_tag: ${{ needs.verify-ref.outputs.tag }}

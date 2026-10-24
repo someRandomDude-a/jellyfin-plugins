@@ -2,6 +2,14 @@
 
 ## Current operator flow (supersedes older publication details below)
 
+### Release everything together
+
+Run **Actions → Release all plugins → Run workflow**, select the branch and enter a new `vX.Y.Z`. This creates an immutable suite tag at the selected branch's dispatch commit, runs the complete reusable checks (including installed-browser checks), builds all five plugins for Linux x64, Linux ARM64 and Windows x64, validates the 15 ZIPs and three manifests, and publishes one GitHub release. Publication uses the existing `plugin-release` environment and its configured approval rules.
+
+One final **Update plugin manifests** job merges the release into the three existing combined architecture catalogs. Existing catalog history and independent releases are preserved; no new installation URL is needed. Individual plugin release actions still work as before. A previously published suite version skips checks/build/publication and only repairs manifests; immutable tags/assets are never overwritten. Partial draft uploads fail closed and require operator review rather than automatic replacement. Older four-plugin suite releases cannot pass the current five-plugin validator.
+
+### Release a single plugin
+
 - Run the dedicated **Release <plugin>** action on the desired branch and enter `vX.Y.Z`.
 - A new version resolves the latest relevant commit, creates its immutable tag, runs selected/common checks, builds three packages and publishes after approval.
 - An existing tag is reused only when its commit belongs to that branch's history; it is never moved. If the release is already published, checks/build/publication are skipped and only manifest repair runs.
