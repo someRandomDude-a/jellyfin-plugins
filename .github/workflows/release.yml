@@ -1,21 +1,30 @@
-name: Publish one independent plugin
+name: Independent plugin release engine
 on:
   push:
     tags: ['account-hub/v*', 'discord-bridge/v*', 'private-syncplay/v*', 'deletion-queue/v*']
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      plugin:
+        required: true
+        type: string
       tag:
-        description: 'Existing immutable plugin/vX.Y.Z tag (for example private-syncplay/v0.2.0)'
+        description: 'Version tag to create (for example v0.2.0)'
+        required: true
+        type: string
+      branch:
+        description: 'Selected workflow branch/ref'
         required: true
         type: string
 permissions:
   contents: read
 concurrency:
-  group: plugin-release-${{ inputs.tag || github.ref_name }}
+  group: plugin-release-${{ inputs.plugin }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
   verify-ref:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.ref.outputs.tag }}
       version_tag: ${{ steps.ref.outputs.version_tag }}
@@ -23,16 +32,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 0
       - id: ref
         shell: pwsh
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          SELECTED_PLUGIN: ${{ inputs.plugin }}
+          DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
+          if ($env:DISPATCH -eq 'true') {
+            if ($env:SELECTED_PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue')) { throw 'Unknown plugin' }
+            if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Enter a version such as v0.2.0' }
+            $env:RELEASE_TAG = "$env:SELECTED_PLUGIN/$env:RELEASE_TAG"
+          }
           if ($env:RELEASE_TAG -notmatch '^(account-hub|discord-bridge|private-syncplay|deletion-queue)/(v\d+\.\d+\.\d+)$') { throw 'Expected plugin/vX.Y.Z tag' }
           $plugin = $Matches[1]; $versionTag = $Matches[2]
           git fetch --tags --force
           if ($LASTEXITCODE) { throw 'Tag fetch failed' }
+          if ($env:DISPATCH -eq 'true') {
+            $dependencies = @{
+              'private-syncplay' = @('shared/AccountHub.Api')
+              'account-hub' = @('shared', 'modules')
+              'discord-bridge' = @('shared', 'modules/security', 'modules/notifications', 'plugins/private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay.Api')
+              'deletion-queue' = @('shared/AccountHub.Api')
+            }
+            $paths = @("plugins/$plugin", 'scripts', '.github/workflows', 'Jellyfin.Target.props', 'Directory.Build.props', 'Directory.Build.targets', 'global.json', 'LICENSE') + $dependencies[$plugin]
+            $commit = git log -1 --format=%H HEAD -- @paths
+            if ($LASTEXITCODE -or !$commit) { throw 'No relevant commit found on the selected branch' }
+            git cat-file -e "${commit}:scripts/test-plugin.ps1"
+            if ($LASTEXITCODE) { throw 'Selected commit predates independent release tooling; update the branch before dispatching' }
+            git show-ref --verify --quiet "refs/tags/$env:RELEASE_TAG"
+            if ($LASTEXITCODE -eq 0) {
+              $existing = git rev-parse "$($env:RELEASE_TAG)^{commit}"
+              if ($LASTEXITCODE -or $existing -ne $commit) { throw 'Existing tag points elsewhere; tags are immutable' }
+            } else {
+              git tag $env:RELEASE_TAG $commit
+              if ($LASTEXITCODE) { throw 'Tag creation failed' }
+              git push origin "refs/tags/$env:RELEASE_TAG"
+              if ($LASTEXITCODE) { throw 'Tag push failed; no tag will be overwritten' }
+            }
+            git checkout --detach $commit
+            if ($LASTEXITCODE) { throw 'Cannot check out selected release commit' }
+          }
           $tagCommit = git rev-parse "$($env:RELEASE_TAG)^{commit}"
           if ($LASTEXITCODE -or $tagCommit -ne (git rev-parse HEAD)) { throw 'Checkout must match existing tag' }
           "tag=$($env:RELEASE_TAG)" >> $env:GITHUB_OUTPUT

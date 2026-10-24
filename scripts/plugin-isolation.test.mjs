@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const read=path=>readFile(new URL('../'+path,import.meta.url),'utf8');
+test('each plugin has its own branch-selectable release dispatch',async()=>{
+    for(const plugin of ['account-hub','discord-bridge','private-syncplay','deletion-queue']) {
+        const workflow=await read(`.github/workflows/release-${plugin}.yml`);
+        assert(workflow.includes('workflow_dispatch:'));
+        assert(workflow.includes(`plugin: ${plugin}`));
+        assert(workflow.includes('branch: ${{ github.ref }}'));
+        assert(workflow.includes('uses: ./.github/workflows/release.yml'));
+    }
+});
 test('releases depend on selected reusable checks, never the full suite/matrix',async()=>{
     const release=await read('.github/workflows/release.yml');
     assert(release.includes('uses: ./.github/workflows/plugin-checks.yml'));
