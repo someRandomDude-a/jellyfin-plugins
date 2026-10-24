@@ -6,15 +6,14 @@
 
 **Current build/test target: Jellyfin 12.3 (SDK 12.3.0).** Upstream stable-release discovery must agree with `Jellyfin.Target.props`; a newer stable version blocks CI until the SDK/server compatibility is updated. Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
 
-1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add one repository per plugin you want.
-2. Use the independent feed below for **Linux x64**. For Linux ARM64 replace `manifest-linux-x64.json` with `manifest-linux-arm64.json`; for Windows x64 use `manifest-win-x64.json`:
+1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add one repository named **Jellyfin plugins**.
+2. Choose the combined catalog for your server architecture. Each lists all plugins published for that platform:
 
-   | Plugin | Repository URL |
+   | Server platform | Repository URL |
    |---|---|
-   | Private SyncPlay | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-private-syncplay/manifest-linux-x64.json` |
-   | Account Hub | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-account-hub/manifest-linux-x64.json` |
-   | Discord Bridge | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-discord-bridge/manifest-linux-x64.json` |
-   | Deletion Queue | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-deletion-queue/manifest-linux-x64.json` |
+   | Linux x64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-linux-x64.json> |
+   | Linux ARM64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-linux-arm64.json> |
+   | Windows x64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-win-x64.json> |
 
 3. Open the plugin **Catalog**, select the plugins you want, and install them.
 4. **Restart Jellyfin**, then open each installed plugin's settings in the Dashboard.

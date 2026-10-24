@@ -14,6 +14,7 @@ Run '.' node @('plugins/private-syncplay/scripts/jellyfin-versions.mjs')
 Run '.' node @('--test','plugins/private-syncplay/tests/jellyfin-versions.test.mjs','scripts/plugin-isolation.test.mjs')
 Run '.' pwsh @('-NoProfile','-File','scripts/inventory-distribution.test.ps1')
 Run '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
+Run '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
 Run 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-publish.test.ps1','-ProtocolOnly')
 switch ($Plugin) {
     'private-syncplay' {

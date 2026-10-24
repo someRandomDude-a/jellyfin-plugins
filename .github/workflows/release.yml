@@ -196,3 +196,4 @@ jobs:
             $parent = if ($refs.Count) { $refs[0].object.sha } else { '' }
             ./plugins/private-syncplay/scripts/publish-catalog.ps1 -Repository $env:GH_REPO -Manifest "release/manifest-$runtime.json" -ParentCommit $parent -CatalogBranch $branch -CatalogPath "manifest-$runtime.json"
           }
+          ./scripts/publish-combined-catalog.ps1 -Repository $env:GH_REPO -Directory release

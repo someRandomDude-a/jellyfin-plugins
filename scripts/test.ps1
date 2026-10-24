@@ -31,6 +31,7 @@ Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/invi
 Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/invite-public.js')
 Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/inventory-distribution.test.ps1')
 Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
+Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
 Invoke-Checked 'modules/notifications' node @('--test','tests/web/bell.test.cjs')
 Invoke-Checked 'modules/user-management' node @('--test','tests/web/common.test.cjs')
 Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/package.ps1')
