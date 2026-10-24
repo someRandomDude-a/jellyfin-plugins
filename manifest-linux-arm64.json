@@ -150,5 +150,23 @@
         "checksum": "738be3ee4cdf1183d1d503053f5e7644"
       }
     ]
+  },
+  {
+    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
+    "name": "Notifications",
+    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T23:36:29.5391663Z",
+        "targetAbi": "12.3.0.0",
+        "version": "0.1.5.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-linux-arm64.zip",
+        "checksum": "6e1c6e199f6d8265892ff69c1588b205"
+      }
+    ]
   }
 ]
