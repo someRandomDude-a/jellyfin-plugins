@@ -1,5 +1,13 @@
 # Independent plugin gates
 
+## Current operator flow (supersedes older publication details below)
+
+- Run the dedicated **Release <plugin>** action on the desired branch and enter `vX.Y.Z`.
+- A new version resolves the latest relevant commit, creates its immutable tag, runs selected/common checks, builds three packages and publishes after approval.
+- An existing tag is reused only when its commit belongs to that branch's history; it is never moved. If the release is already published, checks/build/publication are skipped and only manifest repair runs.
+- **Update plugin manifests** is the same final reusable job and can also be run manually with either `vX.Y.Z` or `<plugin>/vX.Y.Z`. It requires an actual published release and validates downloaded assets before updating the three combined architecture feeds atomically.
+- Only the combined `catalog/manifest-<runtime>.json` feeds are now written. Old per-plugin branches are preserved for bootstrap/history, but no longer updated; migrate Jellyfin repositories to the combined links in README. No duplicate compatibility-feed publication or second release path is required.
+
 The current four installable plugins have independent release gates. The planned standalone Invitations/Notifications extraction remains unfinished; embedded modules are tested with their actual consumers, not advertised as independently releasable plugins.
 
 ## Gate ownership

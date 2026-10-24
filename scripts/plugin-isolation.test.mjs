@@ -23,6 +23,9 @@ test('releases depend on selected reusable checks, never the full suite/matrix',
     const manifest=await read('.github/workflows/update-manifest.yml');
     assert(manifest.includes('publish-combined-catalog.ps1'));
     assert(manifest.includes('validate-release-set.ps1'));
+    assert(release.includes("needs.verify-ref.outputs.published == 'true'"));
+    assert(release.includes('git merge-base --is-ancestor $existing HEAD'));
+    assert(!manifest.includes('CatalogBranch $branch'));
     assert(!release.includes('continue-on-error'));
 });
 test('plugin test dispatch never runs the all-project solution or aggregate runner',async()=>{
