@@ -1,5 +1,7 @@
 # v1 release completion gates
 
+> **Architecture migration gate:** implement and validate the new [five-plugin requirements](product-requirements.md), including standalone Notifications, shared connection configuration, explicit dependencies and native login/Security handoff. Historical four-plugin passes below do not close this gate. Rebuild the target plugin/platform/dependency matrix and test the [owner plugin profile](../test-profiles/owner-server.json) after exact external packages are verified.
+
 Status: **NOT RELEASE READY**. This is the full planned suite, not a reduced-scope rename of the integration preview. Existing architecture decisions in `docs/dependencies.md` supersede older single-bot-in-Hub plans.
 
 Current database/failure/theme audit: [release-safety-review.md](release-safety-review.md). Native creation allocation and full-policy concurrent-update risks remain open; do not equate happy-path installed tests or SQLite integrity checks with a guarantee against all races.
@@ -23,8 +25,8 @@ Current database/failure/theme audit: [release-safety-review.md](release-safety-
 
 ## Installed acceptance
 
-- [x] Full root tests on current r10 Activity companion source: 778 .NET / 142 JavaScript, syntax/inventory/offline distribution and upgrade fixtures (`artifacts/activity-r10-final-tests.log`). Reopen on source changes; live Activity, installed matrix and platform gates remain separate.
-- [x] Current r10 Linux x64 standard installed independent/plugin-combination matrix, including native Security: 32/32 (`artifacts/runtime-review/r10-combinations/results.json`). Reopen on packaged source changes; broader feature/fault/platform gates remain separate.
+- [ ] Full root tests on final source. r10 passed 778 .NET / 142 JavaScript; reopened for connectivity-test implementation and subsequent UI regression changes.
+- [ ] Final-source installed plugin matrix. Earlier r10 Linux x64 passed 32/32 (`artifacts/runtime-review/r10-combinations/results.json`); reopened for connectivity endpoint/UI changes. Broader feature/fault/platform gates remain separate.
 - [ ] Clean install and upgrade with backup/key recovery and schema forward-compatibility failure behavior.
 - [ ] Real installed Linux x64, Linux ARM64 and Windows x64 loading. Cross-publishing is not execution evidence; unavailable runners remain blockers.
 - [ ] Reverse proxy, trusted TLS, BaseUrl, mobile, native Modern/Legacy and custom-theme coverage, including keyboard/focus behavior and secret erasure on navigation.

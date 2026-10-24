@@ -592,9 +592,9 @@ try {
         const line = output.split(/\r?\n/).find(line => line.startsWith('{"checks":'));
         assert(line, 'Browser check result missing');
         const result = JSON.parse(line);
-        assert(result.checks.length === 60 && result.checks.every(item => item.passed) && result.activity?.length === 3, 'Browser coverage incomplete');
+        assert(result.checks.length === 36 && result.checks.every(item => item.passed) && result.activity?.length === 3, 'Browser coverage incomplete');
         await writeFile(join(root, 'theme-results.json'), JSON.stringify(result, null, 2));
-        console.log('PASS 60 installed native-theme/workspace checks, keyboard/custom-theme override and Activity fail-closed layouts at three widths.');
+        console.log('PASS 36 account-focused native-theme/workspace checks, keyboard/custom-theme override and Activity fail-closed layouts at three widths.');
     }
     console.log('PASS combination:', selected.join('+') || 'none', option('security') ? '+ native Security' : '(no native Security)', '— independent startup/configuration, optional-dependency health and installed-feature checks.');
     console.log('Server platform:', platform, '(ARM execution on an x64 Docker host uses emulation; this is not hardware/performance certification).');

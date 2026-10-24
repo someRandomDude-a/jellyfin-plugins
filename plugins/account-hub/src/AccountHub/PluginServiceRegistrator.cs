@@ -88,7 +88,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
                 try
                 {
                     if (operation != "discord.settings") throw new SecurityFailure("invalid_request", 400);
-                    await sp.GetRequiredService<HubHost>().AuthorizeAsync(context, CommandRisk.Destructive, ct);
+                    await sp.GetRequiredService<HubHost>().AuthorizeAsync(context, CommandRisk.Operational, ct);
                     return System.Text.Json.JsonSerializer.Serialize(new { ok = true });
                 }
                 catch (SecurityFailure ex) { return System.Text.Json.JsonSerializer.Serialize(new { ok = false, code = ex.Code, status = ex.Status }); }

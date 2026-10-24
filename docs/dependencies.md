@@ -1,5 +1,7 @@
 # Independent plugins and optional features
 
+> **Superseded target:** the owner selected a five-plugin architecture on 2026-10-25. [Product requirements](product-requirements.md) now govern the migration, standalone Notifications, shared settings and invitation-to-Discord dependency. The tables below describe the earlier implementation only, not the new target or proof of automatic dependency installation.
+
 Only **Account Hub**, **Discord Bridge**, **Deletion Queue**, and **Private SyncPlay** are installable suite plugins. Security/Notifications/Lifecycle remain embedded Hub modules under the previously selected architecture. Jellyfin Security and Seerr are independent external integrations, not required suite plugins.
 
 The table below is the required behavior, not blanket certification of the current candidate. The [release safety review](release-safety-review.md) found outstanding dependency-greyscale gaps in the new Seerr lifecycle panel and Discord invite delivery inputs. Existing dependency tests do not cover every new control.

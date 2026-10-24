@@ -7,7 +7,7 @@ public sealed class CommandAuthorization(SecurityClient client, ISecurityCompati
     public static bool RequiresProof(StepUpLevel level, CommandRisk risk)
     {
         if (!Enum.IsDefined(level) || !Enum.IsDefined(risk)) throw new SecurityFailure("invalid_request", 400);
-        return (int)level >= (int)risk;
+        return risk is not (CommandRisk.Operational or CommandRisk.Audit) && (int)level >= (int)risk;
     }
 
     // Called inside the host's command/revision lease, after idempotency/target checks.
@@ -19,6 +19,9 @@ public sealed class CommandAuthorization(SecurityClient client, ISecurityCompati
         try
         {
             oldSettings.Validate();
+            if (securityAction && risk is CommandRisk.Operational or CommandRisk.Audit) throw new SecurityFailure("invalid_request", 400);
+            if (!securityAction && risk is CommandRisk.Operational or CommandRisk.Audit)
+                return new("administrator", "non_security_operation", null);
             var health = compatibility.Check();
             if (securityAction && !health.IsOk) throw new SecurityFailure("security_incompatible", 409);
             if (risk == CommandRisk.Destructive || securityAction)

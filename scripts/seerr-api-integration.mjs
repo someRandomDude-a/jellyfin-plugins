@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { target } from '../plugins/private-syncplay/scripts/jellyfin-target.mjs';
 const suffix = randomUUID().slice(0, 8);
 // Keep Node alive while undici waits on its unreferenced connection/timeout handles.
 const keepAlive = setInterval(() => {}, 1000);
@@ -54,7 +55,7 @@ try {
   docker('network', 'create', network);
   // Jellyfin owns mutable plugin metadata beside the installed assemblies. Use a
   // disposable writable config directory, not a read-only nested mount under tmpfs.
-  docker('run', '-d', '--name', jf, '--network', network, '-p', '127.0.0.1::8096', ...(pluginDirectory ? ['--mount', `type=bind,source=${join(pluginDirectory, 'config')},target=/config`] : ['--tmpfs', '/config']), '--tmpfs', '/cache', 'jellyfin/jellyfin:12.2');
+  docker('run', '-d', '--name', jf, '--network', network, '-p', '127.0.0.1::8096', ...(pluginDirectory ? ['--mount', `type=bind,source=${join(pluginDirectory, 'config')},target=/config`] : ['--tmpfs', '/config']), '--tmpfs', '/cache', target.image);
   docker('run', '-d', '--name', seerr, '--network', network, '-p', '127.0.0.1::5055', '--tmpfs', '/app/config:uid=1000,gid=1000', 'seerr/seerr:v3.5.1');
   const port = name => docker('port', name, name === jf ? '8096/tcp' : '5055/tcp').split(':').at(-1);
   const j = `http://127.0.0.1:${port(jf)}`, s = `http://127.0.0.1:${port(seerr)}/api/v1`;

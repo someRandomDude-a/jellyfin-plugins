@@ -34,6 +34,7 @@ Invoke-Checked 'modules/notifications' node @('--test','tests/web/bell.test.cjs'
 Invoke-Checked 'modules/user-management' node @('--test','tests/web/common.test.cjs')
 Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/package.ps1')
 Invoke-Checked 'plugins/private-syncplay' node @('scripts/validate-package.mjs')
+Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/test-sdk.ps1')
 Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-history.test.ps1')
 Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-publish.test.ps1')
 Invoke-Checked 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release-metadata.ps1')

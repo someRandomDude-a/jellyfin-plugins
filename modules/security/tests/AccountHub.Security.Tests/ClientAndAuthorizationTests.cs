@@ -178,7 +178,8 @@ public sealed class ClientAndAuthorizationTests
     [InlineData(StepUpLevel.Destructive, CommandRisk.Configuration, false)]
     [InlineData(StepUpLevel.AllConfigChanges, CommandRisk.Configuration, true)]
     [InlineData(StepUpLevel.AllConfigChanges, CommandRisk.Audit, false)]
-    [InlineData(StepUpLevel.Everything, CommandRisk.Audit, true)]
+    [InlineData(StepUpLevel.Everything, CommandRisk.Audit, false)]
+    [InlineData(StepUpLevel.Everything, CommandRisk.Operational, false)]
     public void CumulativeMirror(StepUpLevel level, CommandRisk risk, bool expected) =>
         Assert.Equal(expected, CommandAuthorization.RequiresProof(level, risk));
 

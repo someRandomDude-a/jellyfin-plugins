@@ -24,7 +24,7 @@ public sealed class AdminController(HubStore store, IAuthorizationContext author
     public Task<IActionResult> Status() => ForAdministratorAsync(() => Task.FromResult<IActionResult>(Envelope(ApiResponse.Success(new
     {
         hostVersion = ProducerDispatcher.HostVersion,
-        targetAbi = "12.2.0.0",
+        targetAbi = typeof(MediaBrowser.Controller.Library.IUserManager).Assembly.GetName().Version?.ToString(),
         stage = "integration-preview",
         backgroundWorkReady = workers.Healthy, workers = workers.Snapshot(),
         features = new { audit = store.Ready, managementWrites = store.Ready, notifications = store.Ready && workers.IsRunning("notifications"), bell = true,

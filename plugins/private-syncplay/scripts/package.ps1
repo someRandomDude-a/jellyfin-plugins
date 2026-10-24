@@ -11,8 +11,10 @@ if (-not $Version) {
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must have the form X.Y.Z' }
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Repository must have the form owner/name' }
-$target = [xml](Get-Content (Join-Path $root 'Directory.Build.props') -Raw)
+$targetPath = Join-Path $root '../../Jellyfin.Target.props'
+$target = [xml](Get-Content $targetPath -Raw)
 $targetAbi = [string]$target.Project.PropertyGroup.JellyfinVersion + '.0'
+if ($targetAbi -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw 'Missing or invalid centralized Jellyfin target' }
 $manifest = @(Get-Content (Join-Path $PSScriptRoot 'plugin-metadata.json') -Raw | ConvertFrom-Json | ForEach-Object { $_ })
 if ($manifest.Count -ne 1 -or $manifest[0].guid -ne '09514a9e-f7a0-4c5a-91bc-3a46338298ca') { throw 'Invalid repository metadata' }
 $history = @()
@@ -70,12 +72,14 @@ Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay.Api/bin/Release/
 Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay.Api/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.Api.xml') $sdk
 Copy-Item (Join-Path $root 'docs/plugin-api.md') $sdk
 Copy-Item (Join-Path $root 'LICENSE') $sdk
-Copy-Item (Join-Path $root 'Directory.Build.props') $sdk
+$sdkProps = (Get-Content (Join-Path $root 'Directory.Build.props') -Raw).Replace('../../Jellyfin.Target.props', 'Jellyfin.Target.props')
+[IO.File]::WriteAllText((Join-Path $sdk 'Directory.Build.props'), $sdkProps, [Text.UTF8Encoding]::new($false))
+Copy-Item $targetPath (Join-Path $sdk 'Jellyfin.Target.props')
 $exampleFiles = @('WatchPartyConsumer.csproj', 'ConsumerPlugin.cs', 'InviteController.cs', 'PartyAutomation.cs', 'README.md')
 $examplePath = 'examples/WatchPartyConsumer'
 New-Item -ItemType Directory -Force (Join-Path $sdk $examplePath) | Out-Null
 foreach ($example in $exampleFiles) { Copy-Item (Join-Path $root "$examplePath/$example") (Join-Path $sdk "$examplePath/$example") }
-$sdkFiles = @('Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.xml', 'plugin-api.md', 'LICENSE', 'Directory.Build.props') + @($exampleFiles | ForEach-Object { "$examplePath/$_" })
+$sdkFiles = @('Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.xml', 'plugin-api.md', 'LICENSE', 'Directory.Build.props', 'Jellyfin.Target.props') + @($exampleFiles | ForEach-Object { "$examplePath/$_" })
 $sdkZip = Join-Path $output "$sdkName.zip"
 if (Test-Path -LiteralPath $sdkZip) { Remove-Item -LiteralPath $sdkZip }
 $sdkArchive = [IO.Compression.ZipFile]::Open($sdkZip, [IO.Compression.ZipArchiveMode]::Create)

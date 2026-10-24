@@ -75,7 +75,7 @@ try {
     if (!catalogInstall) {
         await copyFile('src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.dll', join(root, 'config', 'plugins', 'PrivateSyncPlay', 'Jellyfin.Plugin.PrivateSyncPlay.dll'));
         await copyFile('src/Jellyfin.Plugin.PrivateSyncPlay.Api/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.Api.dll', join(root, 'config', 'plugins', 'PrivateSyncPlay', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll'));
-        for(const dll of ['AccountHub.Api','PrivateSyncPlay.IntegrationStore'])await copyFile(`src/${dll}/bin/Release/net10.0/${dll}.dll`,join(root,'config','plugins','PrivateSyncPlay',`${dll}.dll`));
+        for(const dll of ['AccountHub.Api','PrivateSyncPlay.IntegrationStore'])await copyFile(`src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/${dll}.dll`,join(root,'config','plugins','PrivateSyncPlay',`${dll}.dll`));
     } else {
         const catalog=JSON.parse(await readFile(join(packagesDirectory,'manifest.json'),'utf8'));
         if(testUpgrade) assert.equal(catalog[0].versions.length,2,'Upgrade fixtures must contain two real package versions');

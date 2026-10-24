@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)../../../Jellyfin.Target.props" />
   <!-- Fixed release identity and untagged-build defaults. Tagged builds supply PluginVersion. -->
   <PropertyGroup>
     <PluginVersion Condition="'$(PluginVersion)' == ''">0.1.0.0</PluginVersion>
@@ -9,8 +10,8 @@
     <PluginOverview>Consent-protected Seerr deletion proposals for Jellyfin.</PluginOverview>
     <PluginDescription>Integrated Jellyfin media/request removal proposals, private notifications and consent-protected Seerr-managed deletion. Seerr controls Arr targeting/files; authenticated local storage has no independent rollback witness.</PluginDescription>
     <PluginReleaseChannel>stable</PluginReleaseChannel>
-    <PluginTargetAbi>12.2.0.0</PluginTargetAbi>
-    <PluginSdkVersion>12.2.0</PluginSdkVersion>
+    <PluginTargetAbi>$(JellyfinTargetAbi)</PluginTargetAbi>
+    <PluginSdkVersion>$(JellyfinVersion)</PluginSdkVersion>
     <Version>$(PluginVersion)</Version>
     <AssemblyVersion>$(PluginVersion)</AssemblyVersion>
     <FileVersion>$(PluginVersion)</FileVersion>

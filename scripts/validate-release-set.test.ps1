@@ -3,6 +3,7 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('opencode/release-set-' + [Guid]::
 $release = Join-Path $root 'release'
 $stage = Join-Path $root 'stage'
 $validator = Join-Path $PSScriptRoot 'validate-release-set.ps1'
+$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 $plugins = @{
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'; DiscordBridge = '4b047046-a550-4415-b204-4206f1f18201'
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'; DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'
@@ -20,7 +21,7 @@ try {
         foreach ($asset in $plugins.Keys) {
             $item = Join-Path $stage "$asset-$runtime"
             New-Item -ItemType Directory -Path $item | Out-Null
-            @{ guid=$plugins[$asset]; version='1.2.3.0'; targetAbi='12.2.0.0' } | ConvertTo-Json | Set-Content (Join-Path $item 'meta.json')
+            @{ guid=$plugins[$asset]; version='1.2.3.0'; targetAbi=$targetAbi } | ConvertTo-Json | Set-Content (Join-Path $item 'meta.json')
             'synthetic fixture, not a real assembly' | Set-Content (Join-Path $item "Jellyfin.Plugin.$asset.dll")
             'MIT fixture' | Set-Content (Join-Path $item 'LICENSE')
             if ($asset -eq 'DiscordBridge') {
@@ -33,7 +34,7 @@ try {
             "$((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())  $name" | Set-Content "$zip.sha256"
             '{"bomFormat":"CycloneDX"}' | Set-Content "$zip.cdx.json"
             '[]' | Set-Content "$zip.licenses.json"
-            $catalog += @{ guid=$plugins[$asset]; versions=@(@{ version='1.2.3.0'; targetAbi='12.2.0.0'; checksum=(Get-FileHash $zip -Algorithm MD5).Hash.ToLowerInvariant(); sourceUrl="https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v1.2.3/$name" }) }
+            $catalog += @{ guid=$plugins[$asset]; versions=@(@{ version='1.2.3.0'; targetAbi=$targetAbi; checksum=(Get-FileHash $zip -Algorithm MD5).Hash.ToLowerInvariant(); sourceUrl="https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v1.2.3/$name" }) }
         }
         ConvertTo-Json -InputObject @($catalog) -Depth 8 | Set-Content (Join-Path $release "manifest-$runtime.json")
     }
@@ -43,7 +44,7 @@ try {
     $catalog = Join-Path $release 'manifest-win-x64.json'
     Move-Item $catalog "$catalog.missing"; Reject { Validate }; Move-Item "$catalog.missing" $catalog
     $original = Get-Content $catalog -Raw
-    $original.Replace('12.2.0.0','0.0.0.0') | Set-Content $catalog; Reject { Validate }; $original | Set-Content $catalog
+    $original.Replace($targetAbi,'0.0.0.0') | Set-Content $catalog; Reject { Validate }; $original | Set-Content $catalog
     $original.Replace('github.com/', 'example.invalid/') | Set-Content $catalog; Reject { Validate }; $original | Set-Content $catalog
     'must never upload' | Set-Content (Join-Path $release 'unexpected.txt'); Reject { Validate }; Remove-Item (Join-Path $release 'unexpected.txt')
     Validate

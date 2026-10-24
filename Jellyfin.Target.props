@@ -1,0 +1,8 @@
+<Project>
+  <!-- Reviewed upstream stable release. CI checks for newer stable versions. -->
+  <PropertyGroup>
+    <JellyfinVersion>12.3.0</JellyfinVersion>
+    <JellyfinServerTag>12.3</JellyfinServerTag>
+    <JellyfinTargetAbi>$(JellyfinVersion).0</JellyfinTargetAbi>
+  </PropertyGroup>
+</Project>

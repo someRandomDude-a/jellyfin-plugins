@@ -58,7 +58,7 @@ public sealed class SeerrController(HubHost host, PluginSettingsService settings
         if (operation is not ("link" or "unlink" or "provision" or "desired" or "retry" or "cancel")) throw new HubException("invalid_request", "Unknown Seerr command");
         var payload = body.GetProperty("payload"); var commandId = body.GetProperty("commandId").GetGuid();
         return await commands.ExecuteAsync(caller.UserId, "seerr." + operation, commandId, body.GetProperty("revision").GetInt64(), payload,
-            async (_, token) => await host.AuthorizeAsync(HttpContext, operation is "unlink" or "cancel" ? CommandRisk.Destructive : CommandRisk.Configuration, token),
+            async (_, token) => await host.AuthorizeAsync(HttpContext, CommandRisk.Operational, token),
             async token =>
             {
                 object result;

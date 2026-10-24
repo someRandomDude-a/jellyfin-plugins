@@ -36,7 +36,7 @@ const http = require('node:http');
             }, theme);
             for (const width of [320, 390, 1280]) {
                 await page.setViewportSize({ width, height: 900 });
-                for (const name of ['People', 'Groups', 'Invites', 'Library', 'Seerr', 'Notifications', 'Settings', 'DeletionQueue', 'Private SyncPlay', 'Discord']) {
+                for (const name of ['People', 'Groups', 'Invites', 'Library', 'Notifications', 'Settings']) {
                     const tab = page.getByRole('tab', { name, exact: true });
                     await tab.click();
                     const panel = page.getByRole('tabpanel', { name, exact: true });

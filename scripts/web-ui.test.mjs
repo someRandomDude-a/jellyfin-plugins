@@ -54,7 +54,9 @@ test('Missing optional Hub integrations are greyed out with remediation, not hid
     window.fetch = async (url, options) => { calls.push(url); return response(url.endsWith('/dependencies') ? { items: dependencies } : url.includes('/users?') ? { items: [], total: 0 } : { revision: 0 }); };
     let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = workspaceScript(code); window.eval(code);
     const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
-    for (const name of ['Security', 'Discord', 'DeletionQueue', 'Private SyncPlay']) { const tab = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === name); assert(tab.disabled); assert(!tab.hidden); assert.match(tab.title, /restart Jellyfin/); }
+    const security = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Security'); assert(security.disabled); assert(!security.hidden); assert.match(security.title, /restart Jellyfin/);
+    for (const name of ['Discord', 'DeletionQueue', 'Private SyncPlay', 'Seerr']) assert(![...root.querySelectorAll('[role=tab]')].some(n => n.textContent === name));
+    assert(!root.querySelector('#hub-dependency-deletion-queue')); assert(!root.querySelector('#hub-dependency-private-syncplay'));
     assert.equal([...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'People').disabled, false);
     assert.match(root.querySelector('.hubDependencyHealth').textContent, /Install and enable/); assert(!calls.some(path => path.includes('/domains/'))); dom.window.close();
 });

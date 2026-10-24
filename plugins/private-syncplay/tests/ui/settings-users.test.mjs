@@ -24,7 +24,7 @@ async function settings({users,config}={}) {
     w.ApiClient={getUrl:path=>'https://server.example/jellyfin/'+path,
         getPluginConfiguration:async()=>{fixture.reads++;return clone(fixture.server);},
         getUsers:async()=>users||[{Id:ids.carol,Name:'Carol'},{Id:ids.bob,Name:'Bob <img src=x onerror=alert(1)>',Policy:{IsDisabled:true}},{Id:ids.alice,Name:'Alice'}],
-        ajax:async()=>({PluginVersion:'0.1.3.0',ServerVersion:'12.2'}),
+        ajax:async()=>({PluginVersion:'0.1.3.0',ServerVersion:'12.3'}),
         updatePluginConfiguration:async(_,next)=>{fixture.writes.push(clone(next));if(fixture.fail)throw new Error('Server rejected settings');
             if(fixture.hold)await new Promise(resolve=>fixture.resolve=resolve);fixture.server=clone(next);}};
     Object.defineProperty(d,'currentScript',{value:{src:'https://server.example/jellyfin/PrivateSyncPlay/assets/ui.js'}});

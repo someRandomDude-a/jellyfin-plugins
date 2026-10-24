@@ -13,6 +13,17 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
 {
     private DiscordSocketClient? client;
     public string? ApplicationId => client?.CurrentUser?.Id.ToString();
+    public async Task TestConnectionAsync(CancellationToken ct)
+    {
+        var socket = client;
+        if (!Store.Read().Settings.Enabled || socket?.ConnectionState != ConnectionState.Connected)
+            throw new InvalidOperationException("Discord unavailable");
+        // Authenticated read only: never create DMs, send messages or register commands.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        await socket.GetApplicationInfoAsync(new RequestOptions { CancelToken = deadline.Token })
+            .WaitAsync(TimeSpan.FromSeconds(15), ct);
+    }
     public InteractionHealth Interactions { get; } = new();
     public bool Connected => client?.ConnectionState == ConnectionState.Connected;
     public string State { get; private set; } = "starting";

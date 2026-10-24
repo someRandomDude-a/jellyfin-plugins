@@ -62,7 +62,7 @@ public sealed class DomainsController(HubHost host, ExternalCommandGate commands
                 var preview = await Send(ct); return new ContentResult { StatusCode = preview.Status, ContentType = "application/json", Content = preview.Body };
             }
             var result = await commands.ExecuteAsync(caller.UserId, "domain.command", commandId, body.GetProperty("hubRevision").GetInt64(), new { key, route, method, payload },
-                (_, token) => host.AuthorizeAsync(HttpContext, CommandRisk.Destructive, token), async token =>
+                (_, token) => host.AuthorizeAsync(HttpContext, CommandRisk.Operational, token), async token =>
                 {
                     var reply = await Send(token);
                     using var document = JsonDocument.Parse(reply.Body);

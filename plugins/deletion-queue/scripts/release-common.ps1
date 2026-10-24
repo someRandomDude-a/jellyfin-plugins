@@ -68,6 +68,12 @@ function Get-PluginReleaseMetadata {
         description = [string]$p.PluginDescription; channel = [string]$p.PluginReleaseChannel
         targetAbi = [string]$p.PluginTargetAbi; sdkVersion = [string]$p.PluginSdkVersion
     }
+    if ($metadata.targetAbi -eq '$(JellyfinTargetAbi)' -or $metadata.sdkVersion -eq '$(JellyfinVersion)') {
+        [xml]$target = Get-Content -LiteralPath (Join-Path $Root '../../Jellyfin.Target.props') -Raw -Encoding UTF8
+        $sdk = [string]$target.Project.PropertyGroup.JellyfinVersion
+        if ($metadata.targetAbi -eq '$(JellyfinTargetAbi)') { $metadata.targetAbi = $sdk + '.0' }
+        if ($metadata.sdkVersion -eq '$(JellyfinVersion)') { $metadata.sdkVersion = $sdk }
+    }
     if ($Tag) { $metadata.version = ConvertFrom-ReleaseTag $Tag }
     foreach ($field in $metadata.Keys) {
         if ([string]::IsNullOrWhiteSpace($metadata[$field])) { throw "Missing release metadata: $field" }

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "source": "Owner-reported installed plugin inventory, 2026-10-25",
+  "jellyfinVersion": "12.3",
+  "serverPlatform": "linux/amd64",
+  "credentialsOrProductionDataAllowed": false,
+  "externalPackageSourcesVerified": false,
+  "plugins": [
+    { "name": "Account Hub", "version": "0.1.0.0", "enabled": true, "suiteCandidateReplacesInstalledVersion": true },
+    { "name": "Ani-Sync", "version": "4.4.0.0", "enabled": false },
+    { "name": "AnimeMultiSource", "version": "1.0.6.14", "enabled": false },
+    { "name": "AudioDB", "version": "12.2.0.0", "enabled": true },
+    { "name": "Chapter Creator", "version": "0.6.4.0", "enabled": true },
+    { "name": "Custom Tabs", "version": "0.3.2.0", "enabled": true },
+    { "name": "Deletion queue", "version": "0.1.0.0", "enabled": true, "suiteCandidateReplacesInstalledVersion": true },
+    { "name": "Discord Bridge", "version": "0.1.0.0", "enabled": true, "suiteCandidateReplacesInstalledVersion": true },
+    { "name": "File Transformation", "version": "3.0.2.0", "enabled": true },
+    { "name": "Home Screen Sections", "version": "3.0.3.0", "enabled": true },
+    { "name": "InPlayerEpisodePreview", "version": "2.5.0.3", "enabled": true },
+    { "name": "Intro Skipper", "version": "12.0.6.0", "enabled": true },
+    { "name": "JavaScript Injector", "version": "4.1.0.0", "enabled": true },
+    { "name": "Jellyfin Enhanced", "version": "12.13.0.0", "enabled": true },
+    { "name": "Jellyfin Security", "version": "2.6.4.1", "enabled": true },
+    { "name": "Jellyfin Tweaks", "version": "5.1.0.0", "enabled": true },
+    { "name": "ListenBrainz Similarity Provider", "version": "12.2.0.0", "enabled": true },
+    { "name": "Media Bar", "version": "3.0.1.0", "enabled": true },
+    { "name": "Merge Versions", "version": "12.0.1.0", "enabled": true },
+    { "name": "MusicBrainz", "version": "12.2.0.0", "enabled": true },
+    { "name": "OMDb", "version": "12.2.0.0", "enabled": true },
+    { "name": "Plugin Pages", "version": "3.0.2.0", "enabled": true },
+    { "name": "Private SyncPlay", "version": "0.1.7.0", "enabled": true, "suiteCandidateReplacesInstalledVersion": true },
+    { "name": "Studio Images", "version": "12.2.0.0", "enabled": true },
+    { "name": "Subtitle Extract", "version": "7.0.0.0", "enabled": true },
+    { "name": "TMDb", "version": "12.2.0.0", "enabled": true },
+    { "name": "Transcode Guard", "version": "1.0.1.54", "enabled": true }
+  ],
+  "frontendPlugins": [
+    { "name": "KefinTweaks", "version": "0.5.3", "enabled": true }
+  ],
+  "notes": [
+    "Owner confirmed Jellyfin 12.3 on Linux x86_64/amd64. External repository URLs remain unresolved.",
+    "Reported versions are compatibility targets, not verified download locations or package identities.",
+    "Current local fixtures have not yet been populated with this full external plugin set.",
+    "Keep disabled plugins disabled; never copy production configurations, credentials, media or factor records."
+  ]
+}

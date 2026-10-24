@@ -9,8 +9,8 @@
     <ProjectReference Include="../../../../shared/Jellyfin.Security.Api/Jellyfin.Security.Api.csproj" />
     <ProjectReference Include="../../../../shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Jellyfin.Controller" Version="12.2.0" ExcludeAssets="runtime" />
-    <PackageReference Include="Jellyfin.Model" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="Discord.Net" Version="3.20.2" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.11" ExcludeAssets="runtime" />
     <ProjectReference Include="../../../../shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />

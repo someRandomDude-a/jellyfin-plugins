@@ -30,7 +30,7 @@ function table(columns, rows) {
     for (const label of columns) { const cell = make('th', label); cell.scope = 'col'; head.append(cell); } const thead = make('thead'); thead.append(head); node.append(thead);
     const body = make('tbody'); for (const row of rows) { const tr = make('tr'); for (const value of row) { const td = make('td'); td.append(value instanceof Node ? value : document.createTextNode(pretty(value))); tr.append(td); } body.append(tr); } node.append(body); wrapper.append(node); return wrapper;
 }
-function confirmation(description, signal) {
+function confirmation(description, signal, securitySensitive = true) {
     return new Promise(resolve => {
         if (signal?.aborted) { resolve(null); return; }
         const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; const form = make('form'), typed = field('Type CONFIRM ACCOUNT HUB CHANGE', ''), proof = field('Fresh authenticator or recovery code (when required)', '', { secret: true });
@@ -42,19 +42,20 @@ function confirmation(description, signal) {
         signal?.addEventListener('abort', abort, { once: true });
         cancel.onclick = () => close(null); dialog.addEventListener('cancel', event => { event.preventDefault(); close(null); });
         form.onsubmit = event => { event.preventDefault(); if (typed.value() !== 'CONFIRM ACCOUNT HUB CHANGE') { typed.input.focus(); return; } close({ confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: proof.value() } }); };
-        form.append(make('h2', description), make('p', 'Fresh proof is never saved. A failed or unavailable verifier is not downgraded. Known absent/incompatible Security or verified no-factor fallback is explicit and audited.'), typed.root, proof.root, submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
+        form.append(make('h2', description), make('p', securitySensitive ? 'Fresh proof is never saved. A failed or unavailable verifier is not downgraded.' : 'Administrator confirmation only. This operation does not require a fresh security code.'), typed.root, ...(securitySensitive ? [proof.root] : []), submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
     });
 }
 
 export function mountWorkspace(root, client) {
     let active = new AbortController(), state, dependencies = [], selectedTab = 'People', cleanup, generation = 0, skip = 0;
     const status = root.querySelector('.hubMessage'), content = root.querySelector('.hubContent'), tabs = root.querySelector('.hubTabs');
-    const names = ['People', 'Groups', 'Invites', 'Library', 'Seerr', 'Security', 'Audit', 'Notifications', 'DeletionQueue', 'Private SyncPlay', 'Discord', 'Settings'];
-    const dependencyIds = { Security: 'security', DeletionQueue: 'deletion-queue', 'Private SyncPlay': 'private-syncplay', Discord: 'discord' };
+    const names = ['People', 'Groups', 'Invites', 'Library', 'Security', 'Audit', 'Notifications', 'Settings'];
+    const dependencyIds = { Security: 'security' };
     const dependencyPanel = make('details'); dependencyPanel.className = 'hubDependencyHealth'; tabs.before(dependencyPanel);
     function renderDependencies() {
-        const missing = dependencies.filter(item => !item.available), summary = make('summary', 'Optional integrations — ' + missing.length + ' unavailable'), list = make('dl');
-        for (const item of dependencies) { const label = make('dt', item.name + ': ' + item.state), detail = make('dd', item.available ? item.reason : item.reason + ' ' + item.fix); detail.id = 'hub-dependency-' + item.id; list.append(label, detail); }
+        const relevant = dependencies.filter(item => ['security', 'discord'].includes(item.id));
+        const missing = relevant.filter(item => !item.available), summary = make('summary', 'Account security and notification integrations — ' + missing.length + ' unavailable'), list = make('dl');
+        for (const item of relevant) { const label = make('dt', item.name + ': ' + item.state), detail = make('dd', item.available ? item.reason : item.reason + ' ' + item.fix); detail.id = 'hub-dependency-' + item.id; list.append(label, detail); }
         dependencyPanel.replaceChildren(summary, list); dependencyPanel.open = missing.length > 0;
         for (const tab of tabs.children) {
             const dependency = dependencies.find(item => item.id === dependencyIds[tab.textContent]);
@@ -64,7 +65,10 @@ export function mountWorkspace(root, client) {
     }
     async function request(path, method = 'GET', payload, proof = false) {
         const scope = generation, signal = active.signal; let grant;
-        if (proof) { grant = await confirmation('Authorize ' + path.split('?')[0], active.signal); if (!grant) throw Error('Cancelled'); payload = { ...payload, ...grant }; }
+        if (proof) {
+            const operational = path.startsWith('audit/') || path.startsWith('seerr/') || path.startsWith('domains/') || path.startsWith('settings/notifications') || path === 'commands/settings.library' || path === 'commands/settings.seerr';
+            grant = await confirmation('Authorize ' + path.split('?')[0], active.signal, !operational); if (!grant) throw Error('Cancelled'); payload = { ...payload, ...grant };
+        }
         try {
             if (scope !== generation || signal.aborted) throw new DOMException('View changed', 'AbortError');
             const response = await fetch(client.getUrl('AccountHub/api/v1/' + path), { method, signal, credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + client.accessToken() + '"', 'Content-Type': 'application/json' }, body: payload === undefined ? undefined : JSON.stringify(payload) });
@@ -87,9 +91,7 @@ export function mountWorkspace(root, client) {
             const unavailable = dependencies.find(item => item.id === dependencyIds[name] && !item.available);
             if (unavailable) { content.append(make('h2', name), make('p', unavailable.reason), make('p', unavailable.fix)); return; }
             if (name === 'People') await people(); else if (name === 'Groups') await groups(); else if (name === 'Invites') await invites(); else if (name === 'Security') cleanup = mountSecurityPanel(content, client, { safeActions: true });
-            else if (name === 'Audit') audit(); else if (name === 'Notifications') await notifications(); else if (name === 'Settings') settings(); else if (name === 'Seerr') await seerr(); else if (name === 'Library') await library();
-            else if (name === 'Discord') { content.append(make('h2', 'Discord Bridge'), make('p', 'One separately installed Discord Bridge plugin owns the bot and all Discord delivery. Account Hub owns links and recovery. Commands are self-service only.')); const link = make('a', 'Configure Discord Bridge'); link.href = '#/configurationpage?name=DiscordBridge'; content.append(link, make('p', pretty(state.discord?.data || 'Bridge unavailable'))); }
-            else await domain(name === 'DeletionQueue' ? 'deletion-queue' : 'private-syncplay');
+            else if (name === 'Audit') audit(); else if (name === 'Notifications') await notifications(); else if (name === 'Settings') settings(); else if (name === 'Library') await library();
         } catch (error) { if (view === generation && error.name !== 'AbortError') status.textContent = error.message; }
     }
     async function people() {
@@ -142,10 +144,10 @@ export function mountWorkspace(root, client) {
     }
     function audit() {
         const filter = field('Exact event type (optional)', ''), rows = make('div'); let auditSkip = 0; content.append(filter.root, button('Search audit', async () => { auditSkip = 0; await load(); }), button('Verify chain', async () => { const data = await request('audit/verify', 'POST', {}, true); status.textContent = pretty(data); }), rows);
-        async function load() { const data = await request('audit/query', 'POST', { skip: auditSkip, limit: 50, eventType: filter.value() || null }, state.stepUpLevelMirror === 'Everything'); rows.replaceChildren(table(['Sequence', 'Time', 'Event', 'Actor', 'Subject'], data.items.map(row => [row.sequence, row.event.occurredAt, row.event.eventType, row.event.actorUserId, row.event.subjectId]))); }
+        async function load() { const data = await request('audit/query', 'POST', { skip: auditSkip, limit: 50, eventType: filter.value() || null }); rows.replaceChildren(table(['Sequence', 'Time', 'Event', 'Actor', 'Subject'], data.items.map(row => [row.sequence, row.event.occurredAt, row.event.eventType, row.event.actorUserId, row.event.subjectId]))); }
         content.append(button('Previous', async () => { auditSkip = Math.max(0, auditSkip - 50); await load(); }), button('Next', async () => { auditSkip += 50; await load(); }));
         for (const format of ['csv', 'json']) content.append(button('Export ' + format.toUpperCase(), async () => {
-            const data = await request('audit/export', 'POST', { format }, state.stepUpLevelMirror === 'Everything'), blob = new Blob([data.content], { type: format === 'csv' ? 'text/csv' : 'application/json' }), href = URL.createObjectURL(blob), link = make('a'); link.href = href; link.download = 'account-hub-audit.' + format; link.click(); URL.revokeObjectURL(href);
+            const data = await request('audit/export', 'POST', { format }), blob = new Blob([data.content], { type: format === 'csv' ? 'text/csv' : 'application/json' }), href = URL.createObjectURL(blob), link = make('a'); link.href = href; link.download = 'account-hub-audit.' + format; link.click(); URL.revokeObjectURL(href);
         }));
         load().catch(error => { status.textContent = error.message; });
     }
@@ -181,23 +183,6 @@ export function mountWorkspace(root, client) {
         const dependency = dependencies.find(item => item.id === 'discord');
         const link = button('Open Discord library announcement settings', async () => { location.hash = '/configurationpage?name=DiscordBridge'; }); link.disabled = !dependency?.available; link.title = dependency?.available ? '' : dependency?.reason + ' ' + dependency?.fix; content.append(link);
     }
-    async function seerr() {
-        const config = await request('seerr/connection'); content.append(make('h2', 'Seerr connection'));
-        const url = field('Seerr base URL (including reverse-proxy prefix)', config.baseUrl || ''), http = field('Explicitly allow HTTP', config.allowHttp), local = field('Explicitly allow private network addresses', config.allowPrivateNetwork), key = field('Replace Seerr API key (blank preserves)', '', { secret: true });
-        const test = button('Test authenticated connection', async () => { status.textContent = pretty(await request('seerr/test', 'POST', {})); });
-        const directoryButton = button('Read Seerr directory', async () => { const data = await request('seerr/users'); directory.replaceChildren(table(['Seerr user', 'Jellyfin ID', 'Permissions', 'Protected'], data.items.map(user => [user.username || user.id, user.jellyfinUserId, user.permissions, user.protectedAccount]))); });
-        for (const control of [test, directoryButton]) { control.disabled = !config.baseUrl || !config.keyConfigured; control.title = control.disabled ? 'Configure the Seerr destination and API key above, then save/reload. No Jellyfin integration plugin is required.' : ''; }
-        content.append(url.root, http.root, local.root, button('Save connection destination', async () => { await command('settings.seerr', { baseUrl: url.value(), allowHttp: http.value(), allowPrivateNetwork: local.value() }); await show(); }), key.root,
-            button('Store API key', async () => { if (!key.value()) throw Error('Enter a replacement key.'); try { await request('settings/secrets/seerr.apiKey', 'POST', { commandId: uuid(), revision: state.revision, secret: key.value() }, true); await show(); } finally { key.input.value = ''; } }),
-            make('p', config.keyConfigured ? 'An encrypted API key is configured.' : 'Seerr-dependent features are disabled until a destination and API key are configured. Install no extra Jellyfin plugin: connect directly to your Seerr service above.'), test);
-        const directory = make('div'); content.append(directoryButton, directory);
-        active.signal.addEventListener('abort', () => { key.input.value = ''; }, { once: true });
-        const lifecycle = make('section'); content.append(lifecycle);
-        const view = generation, module = await import(client.getUrl('AccountHub/assets/seerr-panel.mjs'));
-        if (view !== generation || active.signal.aborted) return;
-        const dispose = await module.mountSeerrPanel(lifecycle, { request, make, field, table, button, signal: active.signal });
-        if (view !== generation) dispose(); else cleanup = () => { key.input.value = ''; dispose(); };
-    }
     function settings() {
         content.append(make('h2', 'Account Hub settings'));
         const creation = make('section'), creationView = generation, creationSignal = active.signal;
@@ -226,11 +211,6 @@ export function mountWorkspace(root, client) {
             try { await request('settings/secrets/security.webhookSecret', 'POST', { commandId: uuid(), revision: state.revision, secret: secret.value() }, true); await show(); } finally { secret.input.value = ''; }
         }), make('p', 'Back up the AccountHub database, WAL and original keys together. Never disable 2FA to recover this plugin.'));
         active.signal.addEventListener('abort', () => { secret.input.value = ''; }, { once: true });
-    }
-    async function domain(key) {
-        const view = generation, module = await import(client.getUrl('AccountHub/assets/domain-panel.js'));
-        if (view !== generation || active.signal.aborted) return;
-        cleanup = module.mountDomainPanel(content, client, { key, signal: active.signal, dependency: dependencies.find(item => item.id === key), onMutation: async () => { state = await request('workspace'); } });
     }
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Account Hub sections');
     content.id = 'hub-panel-' + uuid(); content.setAttribute('role', 'tabpanel'); content.tabIndex = 0;

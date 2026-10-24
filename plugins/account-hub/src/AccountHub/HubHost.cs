@@ -158,7 +158,7 @@ public sealed class HubHost(IServiceProvider services, HubStore store, ExternalC
     }
     public async Task AuthorizeManagementAsync(HttpContext context, bool configurationWrite, CancellationToken ct)
     {
-        try { if (configurationWrite) await AuthorizeAsync(context, CommandRisk.Configuration, ct); else await RequireAdministratorAsync(context, ct); }
+        try { if (configurationWrite) await AuthorizeAsync(context, CommandRisk.Operational, ct); else await RequireAdministratorAsync(context, ct); }
         catch (SecurityFailure ex) { throw new NotificationException(ex.Code, ex.Code, ex.Status); }
     }
     public async Task AuthorizeAuditAsync(HttpContext context, CancellationToken ct)

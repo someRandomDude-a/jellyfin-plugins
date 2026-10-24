@@ -13,9 +13,9 @@
     <ProjectReference Include="../../../../modules/user-management/src/Jellyfin.Plugin.UserManager/Jellyfin.Plugin.UserManager.csproj" />
     <ProjectReference Include="../../../../shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Jellyfin.Controller" Version="12.2.0" ExcludeAssets="runtime" />
-    <PackageReference Include="Jellyfin.Model" Version="12.2.0" ExcludeAssets="runtime" />
-    <PackageReference Include="Jellyfin.Common" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Common" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" ExcludeAssets="runtime" />
     <EmbeddedResource Include="Configuration/configPage.html" LogicalName="AccountHub.Configuration.configPage.html" />
     <EmbeddedResource Include="Web/*" LogicalName="AccountHub.Web.%(Filename)%(Extension)" />

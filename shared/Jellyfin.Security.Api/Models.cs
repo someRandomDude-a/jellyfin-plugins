@@ -5,7 +5,7 @@ namespace AccountHub.Security;
 
 [JsonConverter(typeof(JsonStringEnumConverter<StepUpLevel>))]
 public enum StepUpLevel { Off, Destructive, AllConfigChanges, Everything }
-public enum CommandRisk { Destructive = 1, Configuration = 2, Audit = 3 }
+public enum CommandRisk { Destructive = 1, Configuration = 2, Audit = 3, Operational = 4 }
 
 public sealed record SecuritySettings(
     [property: JsonPropertyName("stepUpLevelMirror")] StepUpLevel StepUpLevelMirror = StepUpLevel.Destructive,

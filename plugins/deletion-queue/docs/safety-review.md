@@ -33,7 +33,7 @@ Per-proposal administrator approval is optional and defaults off. When required,
 
 ## Repeatable checks
 
-`.github/workflows/jellyfin-compatibility.yml` resolves the latest stable **Server and Web** releases, records the image digest used for that run, and exercises an isolated no-network/no-media Jellyfin instance on pull requests, pushes, weekly schedules and manual invocation. Releases require that workflow as well as the cross-platform safety/package tests. An SDK/ABI upgrade remains a reviewed metadata change; CI does not silently change the release ABI.
+The former standalone `.github/workflows/jellyfin-compatibility.yml` has been removed: nested component workflows do not run in this monorepo. Active automation lives in the repository-root `.github/workflows/`; do not treat the former standalone Server/Web drift and no-network/no-media checks as current CI evidence. An SDK/ABI upgrade remains a reviewed metadata change through `Jellyfin.Target.props`; CI does not silently change the release ABI.
 
 The API smoke checks reject malformed/oversized/deep/ambiguous JSON and adversarial settings without journal mutations. Chromium checks native CSS/custom theme overrides, the bell, explicit read acknowledgement, text-only rendering and logout privacy. Notice responses are mocked only in the browser fixture because this no-media fixture has no real proposals; domain tests cover persisted notice rules separately.
 

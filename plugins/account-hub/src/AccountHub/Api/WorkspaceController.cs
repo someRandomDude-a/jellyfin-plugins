@@ -70,7 +70,7 @@ public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUs
         var payload = body.GetProperty("payload");
         var revision = body.GetProperty("revision").GetInt64(); var command = body.GetProperty("commandId").GetGuid();
         return await commands.ExecuteAsync(caller.UserId, operation, command, revision, payload,
-            async (_, token) => await host.AuthorizeAsync(HttpContext, operation is "group.save" or "settings.public-url" or "settings.seerr" or "settings.library" ? CommandRisk.Configuration : CommandRisk.Destructive, token),
+            async (_, token) => await host.AuthorizeAsync(HttpContext, operation is "settings.seerr" or "settings.library" ? CommandRisk.Operational : operation is "group.save" or "settings.public-url" ? CommandRisk.Configuration : CommandRisk.Destructive, token),
             async token =>
             {
                 object result;

@@ -37,13 +37,25 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
         try { libraries = services.GetRequiredService<MediaBrowser.Controller.Library.ILibraryManager>().GetVirtualFolders().Select(folder => new { id = Guid.TryParse(folder.ItemId, out var libraryId) ? libraryId.ToString("D") : null, name = folder.Name }).Where(folder => folder.id is not null).Cast<object>().ToArray(); }
         catch { libraryStatus = "unavailable"; }
         return Envelope(new { revision = value.Revision, settings = value.Settings, tokenConfigured = value.Token is not null, connected = runtime.Connected, state = runtime.State, interactions = runtime.Interactions.Snapshot(),
-            authorization = hub ? "Account Hub policy" : "Standalone: native Jellyfin elevation plus fresh Security proof when available; explicit confirmation otherwise",
+            authorization = "Native Jellyfin administrator authorization; explicit confirmation, no fresh factor for Discord transport settings",
             security = security.State, libraryFolders = libraries, libraryStatus, libraryHealth = services.GetRequiredService<Jellyfin.LibraryNotifications.LibraryNoticeStore>().Health(), libraryCaptureOwner = hub ? "Account Hub (single intake; Discord Bridge owns channel delivery)" : "Discord Bridge (independent native library observer)",
             features = new[] {
                 new { id = "transport", name = "Bot / generic Discord delivery", available = true, reason = "No other suite plugin is required.", fix = "Configure this bot and its Discord permissions." },
                 new { id = "identity", name = "Link, unlink, reset and account status", available = hub, reason = hub ? "Account Hub identity provider is installed." : "Account Hub owns verified Jellyfin↔Discord links; Discord roles are not a replacement.", fix = "Install and enable Account Hub, restart Jellyfin, then link through /link." },
                 new { id = "watchparty", name = "Watch-party devices and invitations", available = hub && syncplay, reason = !hub ? "A verified account link from Account Hub is required." : !syncplay ? "Private SyncPlay's native party provider is missing or unavailable." : "Required identity and native party providers are installed.", fix = "Install and enable Account Hub and Private SyncPlay, restart, link your account, then open a real Jellyfin session." }
             } });
+    }
+    [HttpPost("connection/test")]
+    public async Task<IActionResult> TestConnection(CancellationToken ct)
+    {
+        if (!await Administrator()) return Envelope(new { code = "unauthorized" }, 403, false);
+        try
+        {
+            await runtime.TestConnectionAsync(ct);
+            return Envelope(new { status = "reachable", message = "Discord authenticated API read succeeded. No message was sent. Channel/DM delivery is not verified by this test." });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return Envelope(new { code = "connection_unavailable", message = "Discord connection could not be verified. Save valid bot settings, wait for the gateway to connect, and check outbound HTTPS/DNS access." }, 503, false); }
     }
     [HttpPut("settings"), RequestSizeLimit(16384)]
     public async Task<IActionResult> Save(JsonElement body, CancellationToken ct)
@@ -76,7 +88,7 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
                 var confirmation = body.TryGetProperty("confirmation", out var confirm) ? confirm.GetString() : null;
                 // Absence of Hub never lowers a configured Hub policy: standalone configuration
                 // conservatively requires proof for every write when Security has a factor.
-                evidence = await services.GetRequiredService<CommandAuthorization>().AuthorizeAsync(new(caller.UserId, caller.Token!, trusted), new(StepUpLevel.Everything), CommandRisk.Destructive, false, confirmation, "CONFIRM ACCOUNT HUB CHANGE", proof, ct);
+                evidence = await services.GetRequiredService<CommandAuthorization>().AuthorizeAsync(new(caller.UserId, caller.Token!, trusted), new(StepUpLevel.Everything), CommandRisk.Operational, false, confirmation, "CONFIRM ACCOUNT HUB CHANGE", proof, ct);
             }
             var config = body.GetProperty("settings").Deserialize<Configuration>(Json) ?? throw new ArgumentException();
             var token = body.TryGetProperty("token", out var secret) && secret.ValueKind == JsonValueKind.String ? secret.GetString() : null;

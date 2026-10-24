@@ -6,7 +6,7 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="Jellyfin.Common" Version="12.2.0" />
+    <PackageReference Include="Jellyfin.Common" Version="$(JellyfinVersion)" />
   </ItemGroup>
   <ItemGroup><None Include="fixtures/*.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

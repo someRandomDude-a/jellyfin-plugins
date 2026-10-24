@@ -23,16 +23,30 @@
       <p class="fieldDescription">Disabled by default; no existing-library backfill. Native additions are deduplicated and allowed 30 seconds for metadata. Hub captures once when installed; otherwise Bridge observes the native library itself. Uncertain Discord sends are not automatically replayed. In-app notifications are configured separately in Account Hub → Library and respect each user's library access.</p>
       <div class="inputContainer"><label class="inputLabel" for="bridgeToken">Replace bot token</label><input is="emby-input" id="bridgeToken" class="bridgeToken" type="password" autocomplete="new-password"/><div class="fieldDescription">Blank preserves the encrypted credential. Stored tokens are never read back.</div></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeClear"/><span>Clear stored bot token</span></label></div>
-      <div class="inputContainer"><label class="inputLabel" for="bridgeProof">Fresh Security code (when required)</label><input is="emby-input" id="bridgeProof" class="bridgeProof" type="password" autocomplete="off"/></div>
+      <input id="bridgeProof" class="bridgeProof" type="hidden" value=""/>
       <div class="inputContainer"><label class="inputLabel" for="bridgeConfirm">Type CONFIRM ACCOUNT HUB CHANGE</label><input is="emby-input" id="bridgeConfirm" class="bridgeConfirm" autocomplete="off" required/></div>
       <button is="emby-button" class="raised button-submit" type="submit"><span>Save</span></button>
-    </form><p class="bridgeStatus" role="status" aria-live="polite"></p>
+    </form><button type="button" is="emby-button" class="emby-button raised bridgeTestConnection"><span class="emby-button-foreground">Test connection</span></button><p class="fieldDescription">Tests saved bot settings with an authenticated read. Save changes first. Does not send messages or verify channel/DM delivery.</p><p class="bridgeConnectionResult" role="status" aria-live="polite"></p><p class="bridgeStatus" role="status" aria-live="polite"></p>
   </div></div>
   <script>
   (() => {
     const root = document.querySelector('.discordBridgePage'); if (!root || root.dataset.initialized) return; root.dataset.initialized = 'true';
     const get = name => root.querySelector('.bridge' + name), status = get('Status'); let revision = 0, active;
     get('ActivityUrl').href = ApiClient.getUrl('DiscordBridge/activity/');
+    let testing = false, testEpoch = 0, testController;
+    get('TestConnection').onclick = async () => {
+      if (testing) return; testing = true; const epoch = ++testEpoch, control = get('TestConnection'), result = get('ConnectionResult');
+      control.disabled = true; control.setAttribute('aria-busy', 'true'); control.querySelector('span').textContent = 'Testing…'; result.textContent = 'Checking saved Discord connection…';
+      testController = new AbortController();
+      try {
+        const response = await fetch(ApiClient.getUrl('DiscordBridge/admin/v1/connection/test'), { signal: testController.signal, method: 'POST', credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + ApiClient.accessToken() + '"' } });
+        if (epoch !== testEpoch) return;
+        result.textContent = response.ok ? 'Connection successful. Discord authenticated API is reachable; no message was sent.' : 'Connection failed. Save valid bot settings, wait for the gateway to connect, and check outbound HTTPS/DNS access.';
+      } catch { if (epoch === testEpoch) result.textContent = 'Connection test could not be confirmed. Check connectivity and try again manually.'; }
+      finally { if (epoch === testEpoch) { testing = false; control.disabled = false; control.removeAttribute('aria-busy'); control.querySelector('span').textContent = 'Test connection'; } }
+    };
+    const clearConnectionTest = () => { ++testEpoch; testController?.abort(); testing = false; get('ConnectionResult').textContent = ''; get('TestConnection').disabled = false; get('TestConnection').removeAttribute('aria-busy'); get('TestConnection').querySelector('span').textContent = 'Test connection'; };
+    root.addEventListener('viewhide', clearConnectionTest); root.addEventListener('viewdestroy', clearConnectionTest);
     async function request(method, payload) {
       active?.abort(); active = new AbortController();
       const response = await fetch(ApiClient.getUrl('DiscordBridge/admin/v1/settings'), { method, signal: active.signal, credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + ApiClient.accessToken() + '"', 'Content-Type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined });

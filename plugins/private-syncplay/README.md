@@ -2,9 +2,9 @@
 
 Native .NET 10 plugin with private SyncPlay groups, limited invite links, administrator-controlled guest viewing, and bundled Jellyfin Web controls.
 
-**Preview software.** Builds against Jellyfin **12.2.0**, target ABI **12.2.0.0**. Tested against a disposable Jellyfin **12.2 Docker server**, including catalog installation, native updates, guest HLS delivery, private API guards and permission revocation. Complete the deployment checklist before Internet exposure. Guest sharing is **off by default**.
+**Preview software.** Builds against Jellyfin **12.3.0**, target ABI **12.3.0.0**. The standalone disposable Jellyfin **12.3 Docker server** integration passes, including guest HLS delivery, private API guards and permission revocation. Installed-browser playback/navigation acceptance remains pending. Complete the deployment checklist before Internet exposure. Guest sharing is **off by default**.
 
-**Latest stable Jellyfin only: currently 12.2 / .NET 10** (checked 2026-10-17). `Directory.Build.props` defines the SDK, manifest ABI, runtime target and Docker image. Older releases are not supported or tested. CI checks Jellyfin's official latest stable release before testing/releasing, and weekly thereafter. A newer release fails with instructions to update and validate the target; CI never silently falls back to an older server or advertises unverified compatibility. Hardware/proxy-specific checks still apply.
+**Latest stable Jellyfin only: currently 12.3 / .NET 10** (checked 2026-10-25). The repository-root `Jellyfin.Target.props` defines the SDK, manifest ABI and Docker image. CI lives in the repository-root `.github/workflows`, not this component directory. Older releases are not supported or tested. CI checks Jellyfin's official latest stable release before testing/releasing. A newer release fails with instructions to update and validate the target; CI never silently falls back to an older server or advertises unverified compatibility. Hardware/proxy-specific checks still apply.
 
 ## Features
 
@@ -28,7 +28,7 @@ https://raw.githubusercontent.com/someRandomDude-a/private-syncplay-groups/catal
 
 1. Sign in as an administrator. Open **Dashboard → Plugins → Repositories** (or **Manage Repositories**).
 2. Choose **+**, enter **Private SyncPlay** as the repository name and the complete URL above as its URL, enable it, then **Save**.
-3. On the supported latest Jellyfin server (**12.2**), open/refresh the **Catalog**, select **Private SyncPlay** in **General**, choose its newest plugin version, and **Install**.
+3. On the supported latest Jellyfin server (**12.3**), open/refresh the **Catalog**, select **Private SyncPlay** in **General**, choose its newest plugin version, and **Install**. Use the platform catalog in the repository-root README for this monorepo; legacy catalogs below do not imply these local changes are published.
 4. **Restart Jellyfin**, then configure **Dashboard → Plugins → Private SyncPlay**.
 
 This follows Jellyfin's [third-party repository method](https://jellyfin.org/docs/general/server/plugins/#repositories): the URL serves a JSON array of plugin packages, not a GitHub page or ZIP. Each version points to its immutable release ZIP and required MD5. The `catalog` branch preserves version history independently of GitHub's latest-release selection. GitHub/raw content and release assets must be accessible to the server. **The catalog is already live. Latest-only support begins with plugin 0.1.3; if that version is not listed yet, it has not been published. Building this checkout alone does not update the public catalog or installed servers.**
@@ -60,6 +60,8 @@ dotnet test tests/Jellyfin.Plugin.PrivateSyncPlay.Tests -c Release
 Extract `artifacts/PrivateSyncPlay-0.1.3.zip` into a new `PrivateSyncPlay` subdirectory inside Jellyfin's plugins directory, keeping both packaged DLLs together, then restart Jellyfin. Do not install the separate developer SDK archive as a plugin or copy Jellyfin server assemblies into that directory. The package embeds its web scripts and hls.js, whose license is included.
 
 Configure **Dashboard → Plugins → Private SyncPlay**. Use the **Watch parties** toolbar button in Jellyfin Web to create a party, select its mode and concurrent-viewer cap, join by code, and manage invitations. The usual SyncPlay controls continue to handle signed-in playback.
+
+New invitation links are copied automatically when clipboard permission is available; otherwise the link is selected for manual copying. Creating another link replaces the displayed secret without revoking the previous invitation. Revocation clears the displayed link and disables copying. Group creation and joining wait for this device's native realtime connection and close plugin dialogs before sending the action, leaving native player navigation unobstructed. SyncPlay synchronizes playback, not members' browsing pages. Uncertain join responses are not automatically replayed.
 
 While a party/invitation dialog is open, typing and scrolling stay in that dialog instead of triggering player shortcuts or volume commands. An early input guard loads before Jellyfin's scripts, intercepting window capture handlers rather than relying on dialog bubbling. Normal text entry, tab navigation, Escape and scrolling are preserved; player shortcuts resume after all party dialogs close. After updating the plugin, restart Jellyfin and reload existing web tabs to load this early guard.
 

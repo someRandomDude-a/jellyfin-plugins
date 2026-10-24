@@ -2,6 +2,6 @@
   <PropertyGroup><Description>Portable optional Security client and fresh-proof policy; no controllers, workers, plugin identity or Hub dependency.</Description></PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Jellyfin.Common" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Common" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

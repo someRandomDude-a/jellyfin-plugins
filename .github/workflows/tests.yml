@@ -47,8 +47,13 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: plugins/discord-bridge/activity
       - name: All .NET, browser-unit and release-tool tests
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
-        run: ./scripts/test.ps1
+        run: |
+          node plugins/private-syncplay/scripts/jellyfin-versions.mjs
+          if ($LASTEXITCODE) { throw 'Latest stable Jellyfin target check failed' }
+          ./scripts/test.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -23,7 +23,7 @@
 | `Web/bell.js`, `Web/settings.js` | Own-user bell and embedded administrator routing/health panel |
 | `AuditCsv.cs` | Formula-safe CSV cell helper for the core writer |
 | `tests/` | .NET/ALC/HTTP/SQLite/transport and minimal DOM behavior tests |
-| `docs/`, `.github/workflows/test.yml`, solution/build files | Integration, remaining acceptance gates and repeatable validation |
+| `docs/`, repository-root `.github/workflows/tests.yml`, solution/build files | Integration, remaining acceptance gates and repeatable validation |
 
 ## Local results
 

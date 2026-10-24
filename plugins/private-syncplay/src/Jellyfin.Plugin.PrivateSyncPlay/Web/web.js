@@ -45,6 +45,15 @@
         const button = UI.button(label, parent, run, kind); if (id) button.dataset.pspAction = id; return button;
     }
     function description(text, parent) { return UI.element('p', text, parent, 'fieldDescription'); }
+    async function joinSession(path, body) {
+        const me = await request('PrivateSyncPlay/Me');
+        if (!me.realtimeReady) throw new Error('Jellyfin is still connecting this device. Wait for its connection, then try again. No group action was sent.');
+        // Release modal keyboard/command guards BEFORE native GroupJoined and
+        // PlayQueue events can arrive. Do not reopen a dialog over the player.
+        UI.disposeDialogs(); current = null;
+        try { await request(path, 'POST', body); }
+        catch (e) { if (e.name !== 'AbortError') error('Group action could not be confirmed. Check your current party before retrying; no action was automatically repeated.'); }
+    }
     function confirm(title, text, run) {
         const popup = UI.dialog(title); description(text, popup.content);
         action('Cancel', popup.content, () => popup.dialog.close());
@@ -125,24 +134,36 @@
                 await navigator.clipboard.writeText(me.party.code); UI.message(feedback, 'Join code copied.');
             });
             if (me.party.isOwner) {
-                ownerManagement(me, content, management);
-                UI.element('h3', 'Create invitation', content, 'sectionTitle');
-                const guests = UI.field('Allow guests', 'checkbox', false, content);
+                const invitation = UI.element('section', null, content, 'privateSyncPlaySection');
+                UI.element('h3', 'Invite someone', invitation, 'sectionTitle');
+                description('Create a scoped link for this party. The link is copied automatically when your browser permits it.', invitation);
+                const guests = UI.field('Allow guests', 'checkbox', false, invitation);
                 guests.disabled = !me.canInviteGuests || me.party.allowGuests === false || location.protocol !== 'https:';
                 if (!me.canInviteGuests) description('Guest invites are disabled by your administrator.', content);
                 else if (location.protocol !== 'https:') description('Open Jellyfin over HTTPS to create usable guest invite links.', content);
-                const uses = UI.field('Maximum invite uses', 'number', me.maxInviteUses, content); uses.min = '1'; uses.max = me.maxInviteUses;
-                const expiry = UI.field('Expires in minutes (optional)', 'number', '', content); expiry.min = '1';
-                action('Create invite link', content, async () => {
+                const fields = UI.element('div', null, invitation, 'privateSyncPlayFieldGrid');
+                const uses = UI.field('Maximum invite uses', 'number', me.maxInviteUses, fields); uses.min = '1'; uses.max = me.maxInviteUses;
+                const expiry = UI.field('Expires in minutes (optional)', 'number', '', fields); expiry.min = '1';
+                const result = UI.element('section', null, invitation, 'privateSyncPlayInviteResult');
+                action('Create invite link', invitation, async () => {
                     if (!uses.reportValidity() || !expiry.reportValidity()) return;
                     const invite = await request('PrivateSyncPlay/Invites', 'POST', { AllowGuests: guests.checked,
                         MaxUses: Number(uses.value), ExpiresAt: expiry.value ? new Date(Date.now() + Number(expiry.value) * 60000).toISOString() : null });
                     const url = new URL('Watch', root).href + '#' + invite.token;
-                    const output = UI.field('Invite link — copy now', 'text', url, content); output.readOnly = true; output.select();
-                    action('Copy link', content, async () => { await navigator.clipboard.writeText(url); UI.message(feedback, 'Invite link copied.'); });
-                    action('Revoke this invite', content, async () => {
-                        await request('PrivateSyncPlay/Invites/' + invite.id, 'DELETE'); output.value = 'Revoked'; UI.message(feedback, 'Invitation revoked.');
+                    for (const input of result.querySelectorAll('input')) input.value = '';
+                    result.replaceChildren();
+                    const output = UI.field('Invite link — copy now', 'text', url, result); output.readOnly = true;
+                    const actions = UI.element('div', null, result, 'privateSyncPlayActionRow');
+                    const copy = async () => {
+                        if (!output.isConnected || output.disabled || !output.value) return;
+                        try { await navigator.clipboard.writeText(output.value); if (dialog.open) UI.message(feedback, 'Invite link copied. Share it only with the intended viewers.'); }
+                        catch { if (dialog.open) { output.focus(); output.select(); UI.message(feedback, 'Invitation created. Automatic copying is unavailable; copy the selected link manually.'); } }
+                    };
+                    const copyButton = action('Copy link', actions, copy);
+                    action('Revoke this invite', actions, async () => {
+                        await request('PrivateSyncPlay/Invites/' + invite.id, 'DELETE'); output.value = ''; output.disabled = copyButton.disabled = true; UI.message(feedback, 'Invitation revoked.');
                     }, 'delete');
+                    await copy();
                 }, 'primary', 'create-invite');
                 if (me.party.invites.length) {
                     UI.element('h3', 'Invitations', content, 'sectionTitle');
@@ -156,6 +177,7 @@
                         revoke.className = 'emby-button button-flat listItemButton';
                     }
                 }
+                ownerManagement(me, content, management);
             } else description(`Your party permissions: playback ${me.party.canControlPlayback ? 'allowed' : 'read only'}; queue editing ${me.party.canEditQueue ? 'allowed' : 'not allowed'}.`, content);
             action('Leave party', content, async () => { await request('SyncPlay/Leave', 'POST'); dialog.close(); }, 'default', 'leave-party');
         } else {
@@ -165,12 +187,12 @@
                 for (const group of groups) {
                     const row = UI.element('div', null, list, 'listItem listItem-border');
                     const body = UI.element('div', null, row, 'listItemBody'); UI.element('div', group.groupName, body, 'listItemBodyText');
-                    const join = action('Join', row, async () => { await request('SyncPlay/Join', 'POST', { GroupId: group.groupId }); dialog.close(); });
+                    const join = action('Join', row, async () => { await joinSession('SyncPlay/Join', { GroupId: group.groupId }); });
                     join.className = 'emby-button button-flat listItemButton';
                 }
             }
             const code = UI.field('Private join code', 'text', '', content); code.maxLength = 8;
-            action('Join by code', content, async () => { await request('PrivateSyncPlay/JoinCode', 'POST', { Code: code.value.trim() }); dialog.close(); });
+            action('Join by code', content, async () => { await joinSession('PrivateSyncPlay/JoinCode', { Code: code.value.trim() }); });
             if (me.canCreatePublic || me.canCreatePrivate) {
                 UI.element('h3', 'Create party', content, 'sectionTitle');
                 const name = UI.field('Name', 'text', 'Watch party', content); name.maxLength = 200; name.required = true;
@@ -181,8 +203,7 @@
                 capacity.min = '1'; capacity.max = me.maxViewers; capacity.required = true;
                 action('Create', content, async () => {
                     if (!name.reportValidity() || !capacity.reportValidity()) return;
-                    await request('PrivateSyncPlay/Groups', 'POST', { Name: name.value, Mode: Number(mode.value), MaxViewers: Number(capacity.value) });
-                    await show();
+                    await joinSession('PrivateSyncPlay/Groups', { Name: name.value, Mode: Number(mode.value), MaxViewers: Number(capacity.value) });
                 }, 'primary', 'create-party');
             }
         }
@@ -219,9 +240,15 @@
             const token = pending; pending = null;
             // Jellyfin 12's SDK socket is separate from the legacy ApiClient.isWebSocketOpen flag.
             // Check the actual server-side session controller, not that stale client flag.
+            let joinSent = false;
             void request('PrivateSyncPlay/Me').then(me => {
                 if (!me.realtimeReady) { pending = token; retryAt = Date.now() + 1000; return false; }
                 inviteAttempts++;
+                UI.disposeDialogs(); current = null;
+                joinSent = true;
+                // A native navigation may arrive before the HTTP response. Never
+                // replay this mutation on refresh/reload after an uncertain result.
+                try { sessionStorage.removeItem(inviteKey); } catch { }
                 return request('PrivateSyncPlay/JoinInvite', 'POST', { Token: token }).then(() => true);
             }).then(joined => {
                 if (!joined) return;
@@ -232,9 +259,9 @@
             }).catch(e => {
                 if (e.name === 'AbortError') return;
                 if (e?.code === 'two_factor_required') { pending = token; twoFactorPending = true; error(e.message); return; }
-                if ((!e?.status || e.status >= 500) && inviteAttempts < 3) { pending = token; retryAt = Date.now() + inviteAttempts * 5000; }
+                if (!joinSent && (!e?.status || e.status >= 500) && inviteAttempts < 3) { pending = token; retryAt = Date.now() + 5000; }
                 else { try { sessionStorage.removeItem(inviteKey); } catch { } }
-                error('Could not join this invitation. It may be expired, full, revoked, or your account may not have access to its media.');
+                error(joinSent ? 'Invitation join could not be confirmed. Check your current party before retrying; no action was automatically repeated.' : 'Could not check this invitation. It may be expired, full, revoked, or your account may not have access to its media.');
             });
         }
     }

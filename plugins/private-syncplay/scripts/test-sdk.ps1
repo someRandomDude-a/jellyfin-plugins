@@ -10,7 +10,7 @@ if (Test-Path -LiteralPath $Directory) { throw 'SDK validation requires a fresh 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($zip)
 try {
-    $expected = @('Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.xml', 'plugin-api.md', 'LICENSE', 'Directory.Build.props',
+    $expected = @('Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.xml', 'plugin-api.md', 'LICENSE', 'Directory.Build.props', 'Jellyfin.Target.props',
         'examples/WatchPartyConsumer/WatchPartyConsumer.csproj', 'examples/WatchPartyConsumer/ConsumerPlugin.cs', 'examples/WatchPartyConsumer/InviteController.cs', 'examples/WatchPartyConsumer/PartyAutomation.cs', 'examples/WatchPartyConsumer/README.md')
     $actual = @($archive.Entries | ForEach-Object { $_.FullName })
     if ($actual.Count -ne $expected.Count -or @($actual | Where-Object { $_ -notin $expected }).Count -gt 0 -or @($expected | Where-Object { $_ -notin $actual }).Count -gt 0) { throw 'Unexpected SDK files, missing example, or accidentally packaged build outputs.' }

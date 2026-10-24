@@ -1,8 +1,10 @@
 # Jellyfin plugins
 
+> **Architecture update:** the requested target is now five focused plugins: Account Invitations, Private SyncPlay, Deletion Queue, Discord Bridge and standalone Notifications, with shared connection configuration and native login/2FA handoff. Migration is **not complete**; current package lists below describe the older implementation. See [authoritative requirements](docs/product-requirements.md) and the [owner compatibility profile](test-profiles/owner-server.json). Do not treat the earlier four-plugin matrix as five-plugin certification.
+
 ## Install plugins
 
-**Requires Jellyfin 12.2.** Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
+**Current build/test target: Jellyfin 12.3 (SDK 12.3.0).** Upstream stable-release discovery must agree with `Jellyfin.Target.props`; a newer stable version blocks CI until the SDK/server compatibility is updated. Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
 
 1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add a repository named **Jellyfin plugins**.
 2. Choose the URL matching your **Jellyfin server's** operating system and architecture:
@@ -20,16 +22,18 @@ Choose the server platform, not the device running your browser. Jellyfin does n
 
 ## Available plugins
 
+**Account Hub scope:** onboarding, user/group administration, creation ownership, verified identities, Security integration and notifications. It is no longer the unified administration screen for the suite: manage Discord transport, Deletion Queue and Private SyncPlay in their own plugin settings. Existing backend integration contracts and stored configuration are preserved; the Seerr administration tab is also removed from Hub's navigation.
+
 | Plugin | What it does | Optional integrations |
 |---|---|---|
 | **Account Hub** | Unified account workspace: onboarding invitations, group/policy management, verified account links, recovery, notifications and Seerr lifecycle integration through its HTTP API. Security and Notifications are embedded modules, not separate plugins. | Discord Bridge for Discord delivery/self-service; Deletion Queue and Private SyncPlay for their domain controls; compatible native Security for supported factor workflows. |
 | **Discord Bridge** | Owns the bot and encrypted Discord credentials. Delivers scoped media announcements and provides self-service commands and explicitly targeted watch-party invitations. Includes an SDK companion Activity that opens Jellyfin externally—**not video playback inside Discord**. | Account Hub for verified identity/link/recovery commands; Account Hub + Private SyncPlay for watch-party creation commands. Basic transport works independently. |
-| **Deletion Queue** | Consent-driven media deletion workflow with reviewable queue state and authenticated evidence. | Account Hub for integrated administration; Discord Bridge for supported Discord delivery. |
-| **Private SyncPlay** | Private watch parties, native account invitations and isolated anonymous guest playback with owner-controlled permissions. | Account Hub for integrated administration; Discord Bridge for Discord watch-party commands/delivery. |
+| **Deletion Queue** | Consent-driven media deletion workflow with reviewable queue state and authenticated evidence. Configure it in its own plugin settings. | Account Hub backend lifecycle/notification integration; Discord Bridge for supported Discord delivery. |
+| **Private SyncPlay** | Private watch parties, native account invitations and isolated anonymous guest playback with owner-controlled permissions. Configure it in its own plugin settings. | Account Hub backend identity/lifecycle integration; Discord Bridge for Discord watch-party commands/delivery. |
 
 Install any of the four independently or combine them. Missing optional integrations disable only dependent features and show repair instructions. Do **not** install the legacy User Manager alongside Account Hub. See [dependencies](docs/dependencies.md) and [remaining release gates](docs/v1-release-gates.md) before deployment.
 
-Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.2 / .NET 10.
+Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.3 / .NET 10. Owner compatibility target: Linux x86_64/amd64.
 
 ## Layout and status
 

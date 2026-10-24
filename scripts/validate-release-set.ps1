@@ -2,6 +2,7 @@ param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$T
 $ErrorActionPreference = 'Stop'
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected immutable vX.Y.Z tag' }
 $version = $Matches[1] + '.0'
+$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid repository' }
 $plugins = @{
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'
@@ -19,7 +20,7 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
         $entries = @($catalog | Where-Object { $_.guid -eq $plugins[$asset] })
         if ($entries.Count -ne 1) { throw "Missing/duplicate stable plugin identity: $asset/$runtime" }
         $releases = @($entries[0].versions | Where-Object version -eq $version)
-        if ($releases.Count -ne 1 -or $releases[0].targetAbi -ne '12.2.0.0') { throw "Version/ABI mismatch: $asset/$runtime" }
+        if ($releases.Count -ne 1 -or $releases[0].targetAbi -ne $targetAbi) { throw "Version/ABI mismatch: $asset/$runtime" }
         $name = "$asset-$version-$runtime.zip"
         $zip = Join-Path $Directory $name
         foreach ($suffix in @('', '.sha256', '.cdx.json', '.licenses.json')) {
@@ -42,7 +43,7 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
             }
             $reader = [IO.StreamReader]::new($archive.GetEntry('meta.json').Open())
             try { $meta = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
-            if ($meta.guid -ne $plugins[$asset] -or $meta.version -ne $version -or $meta.targetAbi -ne '12.2.0.0') { throw "Installed/catalog identity mismatch: $name" }
+            if ($meta.guid -ne $plugins[$asset] -or $meta.version -ne $version -or $meta.targetAbi -ne $targetAbi) { throw "Installed/catalog identity mismatch: $name" }
             if ($asset -eq 'DiscordBridge' -and ('Activity-THIRD-PARTY-NOTICES.txt' -notin $names -or 'activity-inventory.json' -notin $names)) { throw "Missing Activity distribution inventory: $name" }
             if ($asset -eq 'DeletionQueue') {
                 $native = if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' }

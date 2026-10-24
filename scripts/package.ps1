@@ -11,6 +11,7 @@ if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $jsonOp
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Use an immutable vX.Y.Z release tag.' }
 $version = $Matches[1] + '.0'
 $root = Split-Path $PSScriptRoot -Parent
+$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $root 'Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $root "artifacts/release/$Tag/$Runtime" }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -41,7 +42,7 @@ foreach ($plugin in $plugins) {
     }
     $assembly = Join-Path $stage $plugin.files[0]
     if ([Reflection.AssemblyName]::GetAssemblyName($assembly).Version.ToString() -ne $version) { throw 'Assembly/catalog version mismatch' }
-    $meta = [ordered]@{ guid=$plugin.id; name=$plugin.name; version=$version; targetAbi='12.2.0.0'; description=$plugin.description; overview=$plugin.description; owner=$Repository.Split('/')[0]; category='General' }
+    $meta = [ordered]@{ guid=$plugin.id; name=$plugin.name; version=$version; targetAbi=$targetAbi; description=$plugin.description; overview=$plugin.description; owner=$Repository.Split('/')[0]; category='General' }
     $meta | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'meta.json') -Encoding utf8NoBOM
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
     $archive = [IO.Compression.ZipFile]::OpenRead($zip)
@@ -57,7 +58,7 @@ foreach ($plugin in $plugins) {
     "$sha  $([IO.Path]::GetFileName($zip))" | Set-Content -LiteralPath "$zip.sha256" -Encoding ascii
     $old = @($history | Where-Object guid -eq $plugin.id | ForEach-Object { $_.versions })
     if (@($old | Where-Object { [Version]$_.version -ge [Version]$version }).Count) { throw 'Catalog versions must increase; existing releases are immutable.' }
-    $entry = @{ version=$version; targetAbi='12.2.0.0'; changelog='Preview monorepo release; see release notes and documented acceptance limits.'; sourceUrl="https://github.com/$Repository/releases/download/$Tag/$([IO.Path]::GetFileName($zip))"; checksum=$md5; timestamp=[DateTime]::UtcNow.ToString('o') }
+    $entry = @{ version=$version; targetAbi=$targetAbi; changelog='Preview monorepo release; see release notes and documented acceptance limits.'; sourceUrl="https://github.com/$Repository/releases/download/$Tag/$([IO.Path]::GetFileName($zip))"; checksum=$md5; timestamp=[DateTime]::UtcNow.ToString('o') }
     $manifest += [ordered]@{ guid=$plugin.id; name=$plugin.name; description=$plugin.description; overview=$plugin.description; owner=$Repository.Split('/')[0]; category='General'; versions=@($entry)+$old }
 }
 ConvertTo-Json -InputObject @($manifest) -Depth 15 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8NoBOM

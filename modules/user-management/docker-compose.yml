@@ -4,7 +4,7 @@ name: jellyfin-user-manager
 # The plugin is mounted from dist/plugin, so run ./scripts/package.ps1 first.
 services:
   jellyfin:
-    image: jellyfin/jellyfin:12.2
+    image: jellyfin/jellyfin:12.3
     container_name: jellyfin-usermanager
     restart: unless-stopped
     environment:

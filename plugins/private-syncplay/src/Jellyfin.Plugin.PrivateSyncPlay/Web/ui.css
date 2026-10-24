@@ -7,7 +7,17 @@
     inline-size: min(40em, calc(100vw - 2em));
     max-block-size: calc(100dvh - 2em);
 }
-.privateSyncPlayDialog .formDialogContent { overflow: auto; }
+.privateSyncPlayDialog { flex-direction: column; box-sizing: border-box; }
+.privateSyncPlayDialog .formDialogHeader { display: flex; align-items: center; gap: 1em; flex: 0 0 auto; }
+.privateSyncPlayDialog .formDialogContent { overflow: auto; min-block-size: 0; overscroll-behavior: contain; }
+.privateSyncPlayDialog .dialogContentInner { display: flex; flex-direction: column; gap: .75em; }
+.privateSyncPlayDialog .privateSyncPlaySection { padding-block: 1em; border-block-end: 1px solid currentColor; }
+.privateSyncPlayDialog .privateSyncPlayFieldGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr)); gap: 1em; }
+.privateSyncPlayDialog .privateSyncPlayFieldGrid > *, .privateSyncPlayDialog .inputContainer { min-inline-size: 0; }
+.privateSyncPlayDialog .emby-input { box-sizing: border-box; max-inline-size: 100%; }
+.privateSyncPlayDialog .privateSyncPlayActionRow { display: flex; flex-wrap: wrap; gap: .75em; }
+.privateSyncPlayDialog .privateSyncPlayActionRow > .emby-button { inline-size: auto; flex: 1 1 10em; margin: 0; }
+.privateSyncPlayDialog .privateSyncPlayInviteResult:empty { display: none; }
 .privateSyncPlayDialog .dialogContentInner { padding-block-end: 1.5em; }
 .privateSyncPlayDialog .privateSyncPlayClose { margin-inline-start: auto; }
 .privateSyncPlayDialog .listItemBody { min-inline-size: 0; overflow-wrap: anywhere; }

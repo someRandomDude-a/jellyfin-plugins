@@ -13,6 +13,7 @@ async function setup(otherServer=false) {
     Object.defineProperty(w.document,'currentScript',{value:{src:'https://media.example/jellyfin/PrivateSyncPlay/assets/web.js'}});
     w.HTMLElement.prototype.getClientRects=()=>[{width:10,height:10}];
     w.PrivateSyncPlayUI={dialog:()=>{dialogs++;throw new Error('Native join navigation must not be replaced with a plugin modal');},
+        disposeDialogs:()=>{},
         element:(tag,text,parent,className)=>{const node=w.document.createElement(tag);node.className=className;parent.append(node);return node;}};
     w.setInterval=fn=>{refresh=fn;};
     w.ApiClient={accessToken:()=>signedIn?'account-token':null,isWebSocketOpen:()=>false,
