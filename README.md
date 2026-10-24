@@ -1,5 +1,34 @@
 # Jellyfin plugins
 
+## Install plugins
+
+**Requires Jellyfin 12.2.** Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
+
+1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add a repository named **Jellyfin plugins**.
+2. Choose the URL matching your **Jellyfin server's** operating system and architecture:
+
+   | Server platform | Repository URL |
+   |---|---|
+   | Linux x64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest.json` |
+   | Linux ARM64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest-linux-arm64.json` |
+   | Windows x64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest-win-x64.json` |
+
+3. Open the plugin **Catalog**, select the plugins you want, and install them.
+4. **Restart Jellyfin**, then open each installed plugin's settings in the Dashboard.
+
+Choose the server platform, not the device running your browser. Jellyfin does not automatically select architecture-specific packages from a single catalog. Back up your Jellyfin configuration and plugin data before installing or upgrading previews. Never upload `.env`, bot tokens or other credentials to GitHub.
+
+## Available plugins
+
+| Plugin | What it does | Optional integrations |
+|---|---|---|
+| **Account Hub** | Unified account workspace: onboarding invitations, group/policy management, verified account links, recovery, notifications and Seerr lifecycle integration through its HTTP API. Security and Notifications are embedded modules, not separate plugins. | Discord Bridge for Discord delivery/self-service; Deletion Queue and Private SyncPlay for their domain controls; compatible native Security for supported factor workflows. |
+| **Discord Bridge** | Owns the bot and encrypted Discord credentials. Delivers scoped media announcements and provides self-service commands and explicitly targeted watch-party invitations. Includes an SDK companion Activity that opens Jellyfin externally—**not video playback inside Discord**. | Account Hub for verified identity/link/recovery commands; Account Hub + Private SyncPlay for watch-party creation commands. Basic transport works independently. |
+| **Deletion Queue** | Consent-driven media deletion workflow with reviewable queue state and authenticated evidence. | Account Hub for integrated administration; Discord Bridge for supported Discord delivery. |
+| **Private SyncPlay** | Private watch parties, native account invitations and isolated anonymous guest playback with owner-controlled permissions. | Account Hub for integrated administration; Discord Bridge for Discord watch-party commands/delivery. |
+
+Install any of the four independently or combine them. Missing optional integrations disable only dependent features and show repair instructions. Do **not** install the legacy User Manager alongside Account Hub. See [dependencies](docs/dependencies.md) and [remaining release gates](docs/v1-release-gates.md) before deployment.
+
 Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.2 / .NET 10.
 
 ## Layout and status
@@ -36,13 +65,7 @@ Root workflows:
 
 The release workflow also requires the reusable installed/plugin-combination matrix at the verified tag and validates the merged three-platform artifact set before release writes. See [GitHub release checklist and remaining limits](docs/github-release-checklist.md). Ordinary source uploads/pushes run tests; they do not create a release.
 
-After the first successful release, add this **Linux x64** repository URL in Jellyfin:
-
-```text
-https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest.json
-```
-
-For other platforms use `manifest-linux-arm64.json` or `manifest-win-x64.json` at the same URL. Jellyfin does not auto-select runtime assets from a single catalog. Every catalog preserves previous published versions and links directly to immutable ZIPs in this repository. The checked-in `manifest.json` starts empty: it does not advertise packages that have not been published. The generated release catalog is authoritative; the workflow does not push generated files into `main`.
+Installation URLs and steps are at the top of this README. Every release catalog preserves previous published versions and links directly to immutable ZIPs in this repository. The checked-in `manifest.json` starts empty: it does not advertise packages that have not been published. The generated release catalog is authoritative; the workflow does not push generated files into `main`.
 
 Local packaging (does not publish):
 
