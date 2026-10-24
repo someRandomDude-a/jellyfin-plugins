@@ -250,7 +250,10 @@
             document.querySelectorAll('.dq-bell, .dq-local-shortcut, .dq-two-factor').forEach(n => n.remove()); return;
         }
         // Never use the Enhanced tray: it intentionally collapses its children into a More menu.
-        const headers = [...document.querySelectorAll('.headerRight, .MuiToolbar-root')];
+        const userAnchor = [...document.querySelectorAll('.headerUserButton, [aria-controls="app-user-menu"]')].find(n => n.getClientRects().length);
+        const preferredHeader = userAnchor?.parentElement || [...document.querySelectorAll('.headerRight, .MuiToolbar-root')].find(n => n.getClientRects().length);
+        const headers = preferredHeader ? [preferredHeader] : [];
+        document.querySelectorAll('.dq-bell, .dq-local-shortcut').forEach(n => { if (n.parentElement !== preferredHeader) n.remove(); });
         for (const header of headers.filter(h => !h.closest('.videoOsdBottom') && !h.querySelector('.headerRight'))) {
             if (twoFactorPending) {
                 header.querySelectorAll('.dq-bell, .dq-local-shortcut').forEach(n => n.remove());
@@ -260,7 +263,7 @@
                 continue;
             }
             header.querySelectorAll('.dq-two-factor').forEach(n => n.remove());
-            const hosted = [...document.querySelectorAll('[data-account-hub-bell]')].some(b => b.getClientRects().length > 0);
+            const hosted = !!document.querySelector('[data-notifications-bootstrap]') || [...document.querySelectorAll('[data-account-hub-bell]')].some(b => b.getClientRects().length > 0);
             if (hosted || get(integration, 'deviceBell') === false || get(integration, 'notificationMode') === 'Disabled') {
                 header.querySelectorAll('.dq-bell').forEach(n => n.remove());
                 if (!header.querySelector('.dq-local-shortcut')) header.append(button('Deletion queue', center, 'emby-button button-flat dq-local-shortcut dq-web-owned'));
@@ -333,7 +336,9 @@
         const more = e.target.closest('.cardMenuButton, .btnMoreCommands, .btnMore, [data-action="menu"]');
         context = null;
         if (e.type !== 'contextmenu' && !more) return;
-        const id = card && ['Movie', 'Series'].includes(card.dataset.type) ? guid(card.dataset.id) : more ? routeId() : null;
+        // Modern cards do not necessarily expose data-type. The server preview
+        // remains authoritative for item kind, access and proposal permission.
+        const id = card ? guid(card.dataset.id) : more ? routeId() : null;
         if (id) context = { id, at: Date.now(), epoch, before: new Set(document.querySelectorAll('.actionSheet')) };
     }
     document.addEventListener('contextmenu', captureContext, true);

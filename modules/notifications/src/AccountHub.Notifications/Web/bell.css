@@ -1,0 +1,9 @@
+/* Layout only; native themes and server/user skins own colors and typography. */
+[data-notifications-bell] { position: relative; flex: 0 0 auto; }
+[data-notifications-bell] .notificationBadge { position: absolute; inset-inline-end: 0; inset-block-start: 0; font-size: .65em; border-radius: 1em; padding: .15em .35em; background: var(--theme-primary-color, transparent); color: inherit; border: 1px solid currentColor; }
+.accountHubInbox { position: fixed; inset-inline-end: 1rem; inset-block-start: 4rem; z-index: 2000; max-height: calc(100dvh - 5rem); overflow: auto; width: min(26rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 1rem; }
+.accountHubInbox[hidden], .notificationBadge[hidden] { display: none; }
+.accountHubInbox > h2 { margin-inline-end: 2.5em; }
+.accountHubInbox > .notificationSettings { position: absolute; inset-inline-end: .5rem; inset-block-start: .5rem; }
+.accountHubInbox > section { padding-block: .75em; border-block-end: 1px solid currentColor; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .accountHubInbox { inset-inline: 0; width: 100vw; min-height: min(70dvh, 40rem); } }

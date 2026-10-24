@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Tag, [string]$Repository = 'someRandomDude-a/jellyfin-plugins',
-    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue')][string]$Plugin = 'all', [string]$ReleaseTag = '')
+    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')][string]$Plugin = 'all', [string]$ReleaseTag = '')
 $ErrorActionPreference = 'Stop'
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected immutable vX.Y.Z tag' }
 $version = $Matches[1] + '.0'
@@ -9,12 +9,13 @@ $downloadTag = [Uri]::EscapeDataString($ReleaseTag)
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid repository' }
 $plugins = @{
+    Notifications = 'c18d78ec-4b70-47cf-a0d2-936d987c37ba'
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'
     DiscordBridge = '4b047046-a550-4415-b204-4206f1f18201'
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'
     DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'
 }
-$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue' }
+$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue'; 'notifications'='Notifications' }
 if ($Plugin -ne 'all') { $asset = $assets[$Plugin]; $plugins = @{ $asset = $plugins[$asset] } }
 $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
@@ -51,7 +52,7 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
             try { $meta = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
             if ($meta.guid -ne $plugins[$asset] -or $meta.version -ne $version -or $meta.targetAbi -ne $targetAbi) { throw "Installed/catalog identity mismatch: $name" }
             if ($asset -eq 'DiscordBridge' -and ('Activity-THIRD-PARTY-NOTICES.txt' -notin $names -or 'activity-inventory.json' -notin $names)) { throw "Missing Activity distribution inventory: $name" }
-            if ($asset -eq 'DeletionQueue') {
+            if ($asset -in @('DeletionQueue','Notifications')) {
                 $native = if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' }
                 if ($native -notin $names) { throw "Missing native SQLite runtime: $name" }
             }

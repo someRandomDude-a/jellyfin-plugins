@@ -1,4 +1,4 @@
-<div data-role="page" class="page type-interior accountHubPage">
+<div data-role="page" class="page type-interior accountHubPage suiteAdmin">
   <div data-role="content"><div class="content-primary">
     <h1>Account Hub</h1>
     <p class="hubMessage" role="status" aria-live="polite"></p>
@@ -12,4 +12,5 @@
       import(ApiClient.getUrl('AccountHub/assets/workspace.js')).then(module => module.mountWorkspace(page, ApiClient)).catch(() => { page.querySelector('.hubMessage').textContent = 'Account Hub assets could not be loaded. Check server version and plugin health.'; });
     })();
   </script>
+  <script src="configurationpage?name=AccountHubAdminUI.js"></script>
 </div>

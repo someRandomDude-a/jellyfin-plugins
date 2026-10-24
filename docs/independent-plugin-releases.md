@@ -8,7 +8,7 @@
 - **Update plugin manifests** is the same final reusable job and can also be run manually with either `vX.Y.Z` or `<plugin>/vX.Y.Z`. It requires an actual published release and validates downloaded assets before updating the three combined architecture feeds atomically.
 - Only the combined `catalog/manifest-<runtime>.json` feeds are now written. Old per-plugin branches are preserved for bootstrap/history, but no longer updated; migrate Jellyfin repositories to the combined links in README. No duplicate compatibility-feed publication or second release path is required.
 
-The current four installable plugins have independent release gates. The planned standalone Invitations/Notifications extraction remains unfinished; embedded modules are tested with their actual consumers, not advertised as independently releasable plugins.
+The five installable plugins have independent release gates, including **Release Notifications**. Notifications runs its own storage/migration/routing tests, the shared notification backend/frontend suites and common release contracts. Account Invitations extraction remains unfinished. The notification backend under `modules/notifications` is shared implementation, not another installable plugin.
 
 ## Gate ownership
 

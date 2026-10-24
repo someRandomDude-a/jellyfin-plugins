@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue')][string]$Plugin,
+param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')][string]$Plugin,
     [string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -17,6 +17,11 @@ Run '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
 Run '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
 Run 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-publish.test.ps1','-ProtocolOnly')
 switch ($Plugin) {
+    'notifications' {
+        DotnetTest 'plugins/notifications/tests/Notifications.Tests/Notifications.Tests.csproj'
+        DotnetTest 'modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj'
+        Run 'modules/notifications' node @('--test','tests/web/bell.test.cjs')
+    }
     'private-syncplay' {
         DotnetTest 'plugins/private-syncplay/tests/Jellyfin.Plugin.PrivateSyncPlay.Tests/Jellyfin.Plugin.PrivateSyncPlay.Tests.csproj'
         Run 'plugins/private-syncplay' npm @('run','check')

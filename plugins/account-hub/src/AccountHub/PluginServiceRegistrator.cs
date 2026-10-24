@@ -12,6 +12,7 @@ using Jellyfin.Plugin.UserManager.Services;
 using Jellyfin.Plugin.UserManager.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AccountHub;
 
@@ -45,17 +46,19 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         services.AddHostedService<InviteDeliveryWorker>();
         services.DeferHubWorker<InviteDeliveryWorker>();
         services.AddSingleton<Jellyfin.Plugin.PrivateSyncPlay.NativeWebStyles>();
-        services.AddSingleton<INotificationHost>(sp => sp.GetRequiredService<HubHost>());
+        services.TryAddSingleton<INotificationHost>(sp => sp.GetRequiredService<HubHost>());
         services.AddSingleton<ISecurityHubHost>(sp => sp.GetRequiredService<HubHost>());
         services.AddAccountHubSecurity();
         services.AddSingleton<DiscordBridgeClient>();
         services.AddSingleton<Jellyfin.LibraryNotifications.LibraryNoticeStore>(sp => new(sp.GetRequiredService<HubPaths>().Database));
         services.AddSingleton<Jellyfin.LibraryNotifications.ILibraryNoticeHost, HubLibraryNotices>();
         services.AddHostedService<Jellyfin.LibraryNotifications.LibraryNoticeWorker>();
-        services.AddSingleton<IDiscordTransport, DiscordTransport>();
-        services.AddAccountHubNotifications(sp => new NotificationOptions { DatabasePath = sp.GetRequiredService<HubPaths>().Database }, startWorker: false, registerProducer: false);
+        services.TryAddSingleton<IDiscordTransport, DiscordTransport>();
         // Never replace Jellyfin's global Data Protection provider with plugin-owned keys.
-        services.AddSingleton<NotificationStore>(sp => new(sp.GetRequiredService<NotificationOptions>(), sp.GetRequiredService<HubStore>().Protection, TimeProvider.System));
+        services.TryAddSingleton<NotificationStore>(sp => new(sp.GetRequiredService<NotificationOptions>(), sp.GetRequiredService<HubStore>().Protection, TimeProvider.System));
+        services.AddAccountHubNotifications(sp => new NotificationOptions { DatabasePath = sp.GetRequiredService<HubPaths>().Database }, startWorker: false, registerProducer: false);
+        services.AddKeyedSingleton<Func<AccountHub.Api.AuditEvent, CancellationToken, Task<object>>>("Notifications.HubAudit.1", (sp, _) => sp.GetRequiredService<HubHost>().AppendAuditAsync);
+        services.AddKeyedSingleton<Func<Guid, CancellationToken, Task<string?>>>("Notifications.DiscordLink.1", (sp, _) => sp.GetRequiredService<HubHost>().DiscordLinkAsync);
         services.AddSingleton<ISecurityReceiptStore, SecurityReceiptAdapter>();
         services.AddSingleton<ISecurityIngressBudget, SecurityIngressBudget>();
         services.AddControllers().AddApplicationPart(typeof(SecurityController).Assembly);

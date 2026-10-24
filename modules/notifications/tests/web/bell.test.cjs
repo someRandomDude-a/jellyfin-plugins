@@ -20,6 +20,10 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         setAttribute(k, v) { this.attrs[k] = v; }
         addEventListener(k, v) { (this.events ??= {})[k] = v; }
         focus() { focused = this; }
+        getClientRects() { return [{}]; }
+        getBoundingClientRect() { return { bottom: 50, right: 900 }; }
+        closest() { return null; }
+        contains(target) { return this === target || this.children.some(c => c.contains(target)); }
     }
     const body = new Element('body'), header = new Element('header'), anchor = new Element('button');
     body.append(header); header.append(anchor);
@@ -28,13 +32,14 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         body, documentElement: body, hidden,
         createElement: tag => new Element(tag),
         querySelector: selector => selector.includes('headerUserButton') ? anchor : all().find(e => e.dataset.accountHubBell),
+        querySelectorAll: selector => selector.includes('headerUserButton') ? [anchor] : [],
         addEventListener: (name, handler) => { listeners[name] = handler; }
     };
     const window = {
         ApiClient: { accessToken: () => 'session-secret', getCurrentUserId: () => 'alice', getUrl: p => { if (!p) throw Error('Url name cannot be empty'); return 'https://example.test/jellyfin/' + p; } },
         addEventListener: (name, handler) => { listeners[name] = handler; }
     };
-    const context = vm.createContext({ window, document, location: { href },
+    const context = vm.createContext({ window, document, location: { href }, innerWidth: 1024, innerHeight: 768,
         MutationObserver: class { observe() {} }, requestAnimationFrame: fn => fn(),
         setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
         fetch: async (url, options) => {
@@ -86,10 +91,23 @@ test('hidden pages do not poll', async () => { const h = harness({ hidden: true 
 test('episode-specific preference saves do not replace unrelated or global choices', async () => {
     const global = { source: '*', type: '*', channel: 'in-app', enabled: true };
     const h = harness({ preferences: [global] }); await settle();
+    h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick();
     const control = h.all().find(e => e.tag === 'button' && e.textContent === 'Mute new episodes on in-app');
     assert(control); await control.onclick(); await settle();
     const write = h.calls.find(c => c.options.method === 'PUT'); assert(write);
     assert.deepEqual(JSON.parse(write.options.body), [global, { source: 'account-hub', type: 'library.episode.added', channel: 'in-app', enabled: false }]);
+});
+test('opening refreshes silently, outside clicks dismiss and settings stay in the same panel', async () => {
+    const h = harness(); await settle();
+    const bell = h.all().find(e => e.dataset.accountHubBell);
+    const panel = h.all().find(e => e.id === 'account-hub-inbox');
+    bell.onclick(); await settle();
+    assert(h.calls.length >= 4);
+    assert(!h.all().some(e => e.tag === 'button' && e.textContent === 'Refresh'));
+    h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick();
+    assert(h.all().some(e => e.tag === 'h2' && e.textContent === 'Notification settings'));
+    h.listeners.pointerdown({ target: {} });
+    assert.equal(panel.hidden, true); assert.equal(h.focused, bell);
 });
 test('permission-filtered short pages can still navigate to older notifications', async () => {
     const h = harness({ hasMore: true }); await settle();

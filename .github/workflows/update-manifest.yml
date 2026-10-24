@@ -14,7 +14,7 @@ on:
         description: 'Published plugin to merge into catalogs'
         required: true
         type: choice
-        options: [private-syncplay, account-hub, discord-bridge, deletion-queue]
+        options: [private-syncplay, account-hub, discord-bridge, deletion-queue, notifications]
       release_tag:
         description: 'Published version (v0.2.0) or full plugin/v0.2.0 tag'
         required: true
@@ -41,7 +41,7 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if ($env:PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue')) { throw 'Unknown plugin' }
+          if ($env:PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')) { throw 'Unknown plugin' }
           if ($env:RELEASE_TAG -match '^v\d+\.\d+\.\d+$') { $env:RELEASE_TAG = "$env:PLUGIN/$env:RELEASE_TAG" }
           if ($env:RELEASE_TAG -notmatch "^$([regex]::Escape($env:PLUGIN))/(v\d+\.\d+\.\d+)$") { throw 'Release tag must belong to selected plugin' }
           $versionTag = $Matches[1]

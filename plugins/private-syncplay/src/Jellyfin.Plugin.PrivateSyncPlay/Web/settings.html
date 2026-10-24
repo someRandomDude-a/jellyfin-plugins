@@ -1,9 +1,9 @@
 <!doctype html><html><head><title>Private SyncPlay</title></head><body>
-<div id="privateSyncPlaySettings" data-role="page" class="page type-interior pluginConfigurationPage privateSyncPlaySettings">
+<div id="privateSyncPlaySettings" data-role="page" class="page type-interior pluginConfigurationPage privateSyncPlaySettings suiteAdmin">
 <div data-role="content"><div class="content-primary"><div class="readOnlyContent">
 <h2 class="sectionTitle">Private SyncPlay</h2>
 <p id="pspVersion" class="fieldDescription" role="status">Loading version…</p>
-<p class="fieldDescription">Limits apply server-side. Guests receive no Jellyfin account or general API access. HTTPS is required for guest viewing.</p>
+<p data-help-for="#EnableGuestInvites">Guests do not need a Jellyfin account. Use HTTPS for guest viewing. All guest limits are enforced by the server.</p>
 <p id="pspDependencyStatus" class="fieldDescription" role="status">Native parties and invitations work independently. Checking optional integrations…</p>
 <p><a is="emby-linkbutton" class="emby-button raised" href="#/configurationpage?name=privateSyncPlayPlayer">Guest player designer</a></p>
 <form id="pspForm"><p class="fieldDescription" role="status">Loading settings…</p></form>
@@ -25,8 +25,19 @@
         { key:'GuestInvites', label:'Guest invitations', choices:['Inherit','Allow','Deny'] }
     ];
     var bools = { EnablePrivateGroups:'Enable private groups', AllowPublicGroups:'Allow public groups',
-        EnableGuestInvites:'Enable guest invitations (server-wide master switch)', DefaultGuestPermission:'Permit guest invitations by default for users',
-        HubIntegrationEnabled:'Enable optional Account Hub publishing', PublishAudit:'Publish redacted audit summaries to Account Hub', NativeNotifications:'Enable optional native fallback notices (in-party safety feedback always remains)' };
+        EnableGuestInvites:'Enable guest invitations', DefaultGuestPermission:'Allow guest invitations by default',
+        HubIntegrationEnabled:'Enable shared publishing', PublishAudit:'Publish audit summaries', NativeNotifications:'Enable local fallback notices' };
+    var helpText = {
+        EnablePrivateGroups:'Allow invite-only watch parties.', AllowPublicGroups:'Allow public watch parties.',
+        EnableGuestInvites:'Server-wide switch. Guests can watch through an invitation without a Jellyfin account. Use HTTPS.',
+        DefaultGuestPermission:'Allow users to invite guests unless a user override denies it.',
+        HubIntegrationEnabled:'Publish events to the shared Notifications inbox and optional Account Hub integrations.',
+        PublishAudit:'Send redacted watch-party audit summaries to Account Hub when available.',
+        NativeNotifications:'Show local fallback notices. In-party safety feedback stays visible even when this is off.',
+        GuestVideoBitrateKbps:'Maximum video bitrate, not a fixed quality. Audio needs additional bandwidth. Conversion uses Jellyfin Playback → Transcoding settings.',
+        MaxGuestStreams:'Maximum number of guest streams across the server.', MaxViewers:'Maximum simultaneous viewers per party.',
+        MaxInviteUses:'Maximum uses allowed per invitation.', GuestLeaseSeconds:'Time a disconnected guest has to reconnect.'
+    };
     var numbers = { MaxGuestStreams:['Maximum concurrent guest streams (server-wide)',1,32], MaxViewers:['Maximum simultaneous viewers',1,1000], MaxInviteUses:['Maximum uses per invitation',1,10000],
         GuestLeaseSeconds:['Guest reconnect grace (seconds)',10,120], GuestVideoBitrateKbps:['Guest video bitrate cap (kbps)',256,10000] };
     function enumValue(value, choices) { return typeof value === 'number' ? choices[value] : value; }
@@ -104,7 +115,7 @@
     }
     function userTable(users, parent) {
         UI.element('h3', 'User overrides', parent, 'sectionTitle');
-        UI.element('p', 'Inherit follows server settings. Allow never overrides a disabled server capability or grants Jellyfin library/SyncPlay permissions. Changes, including resets, take effect only after Save.', parent, 'fieldDescription');
+        var overridesHelp = UI.element('p', 'Inherit follows server settings. Allow cannot enable a server-disabled capability or grant library access. Save to apply changes.', parent, 'fieldDescription'); overridesHelp.setAttribute('data-help-for','#pspUserSearch');
         var toolbar = UI.element('div', null, parent, 'privateSyncPlayUserToolbar');
         search = UI.field('Search users', 'search', '', toolbar, 'pspUserSearch'); search.oninput = filterUsers;
         search.onkeydown = function (event) { if (event.key === 'Enter') event.preventDefault(); };
@@ -212,7 +223,7 @@
         config = nextConfig; form.replaceChildren(); rows = []; dirty = false; undo = null; discardUnlisted = false;
         editor = UI.element('fieldset', null, form, 'privateSyncPlaySettingsEditor');
         UI.element('legend', 'Watch party settings', editor, 'privateSyncPlayVisuallyHidden');
-        Object.keys(bools).forEach(function (key) { UI.field(bools[key], 'checkbox', config[key], editor, key).onchange = function () { markDirty(false); }; });
+        Object.keys(bools).forEach(function (key) { var input = UI.field(bools[key], 'checkbox', config[key], editor, key); input.setAttribute('data-help',helpText[key]); input.onchange = function () { markDirty(false); }; });
         UI.select('Default creation mode', ['Public','Private'], enumValue(config.DefaultMode,['Public','Private']), editor, 'DefaultMode').onchange = function () { markDirty(false); };
         UI.select('Notification routing', ['Auto','Local','Hub','Disabled'], enumValue(config.NotificationMode ?? 'Auto',['Auto','Local','Hub','Disabled']), editor, 'NotificationMode').onchange = function () { markDirty(false); };
         try {
@@ -231,9 +242,9 @@
         Object.keys(numbers).forEach(function (key) {
             var spec = numbers[key], input = UI.field(spec[0], 'number', config[key], editor, key);
             input.min = spec[1]; input.max = spec[2]; input.required = true;
+            input.setAttribute('data-help',helpText[key]);
             input.oninput = function () { markDirty(false); };
         });
-        UI.element('p', 'The bitrate is a maximum video budget, not a fixed quality. A compatible existing party HLS stream is reused first; otherwise one guest stream adapts conservatively to the slowest measured guest. Audio/mux overhead needs additional bandwidth. Required conversion and resolution follow Jellyfin’s Playback → Transcoding settings, including hardware acceleration.', editor, 'fieldDescription');
         userTable(users, editor);
         feedback = UI.status(form, 'pspResult');
         var save = UI.button('Save', editor, null, 'primary'); save.type = 'submit'; save.id = 'pspSave';
@@ -297,4 +308,4 @@
     });
     refresh();
 })();
-</script></div></body></html>
+</script><script src="configurationpage?name=PrivateSyncPlayAdminUI.js"></script></div></body></html>

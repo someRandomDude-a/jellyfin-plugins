@@ -46,8 +46,8 @@ const root = resolve(option('root') || join(process.env.TEMP || '/tmp', 'opencod
 const packages = resolve(option('packages') || 'artifacts/runtime-review/packages');
 const platform = option('platform') || 'linux/amd64';
 assert(['linux/amd64', 'linux/arm64'].includes(platform), 'Only Linux amd64/arm64 disposable Docker fixtures are supported');
-const pluginNames = { hub: 'Account Hub', discord: 'Discord Bridge', deletion: 'Deletion Queue', syncplay: 'Private SyncPlay' };
-const selected = option('plugins') === 'none' ? [] : (option('plugins') || 'hub,discord,deletion,syncplay').split(',');
+const pluginNames = { hub: 'Account Hub', discord: 'Discord Bridge', deletion: 'Deletion Queue', syncplay: 'Private SyncPlay', notifications: 'Notifications' };
+const selected = option('plugins') === 'none' ? [] : (option('plugins') || 'hub,discord,deletion,syncplay,notifications').split(',');
 assert(selected.every(key => key in pluginNames), 'Unknown plugin selection');
 const has = key => selected.includes(key);
 const name = 'jellyfin-suite-test-' + randomUUID().slice(0, 8), keep = process.argv.includes('--keep');
@@ -300,7 +300,7 @@ try {
     rootCreated = true;
     await mkdir(join(root, 'config', 'config'), { recursive: true }); await mkdir(join(root, 'cache')); if (libraryFixture) await mkdir(join(root, 'media'));
     const manifest = JSON.parse(await readFile(join(packages, 'manifest.json'), 'utf8'));
-    assert(Array.isArray(manifest) && manifest.length >= 1 && manifest.length <= 4, 'Expected selected-plugin or aggregate package catalog');
+    assert(Array.isArray(manifest) && manifest.length >= 1 && manifest.length <= 5, 'Expected selected-plugin or aggregate package catalog');
     assert.equal(new Set(manifest.map(plugin=>plugin.name)).size,manifest.length,'Duplicate plugin package');
     assert(manifest.every(plugin=>Object.values(pluginNames).includes(plugin.name)),'Unknown plugin package');
     for(const key of selected)assert(manifest.some(plugin=>plugin.name===pluginNames[key]),'Selected plugin package missing: '+key);
@@ -341,6 +341,39 @@ try {
         assert.equal(dependencies.find(item => item.id === 'account-hub').available, has('hub'));
         assert.equal(dependencies.find(item => item.id === 'discord').available, has('discord'));
     }
+    if(has('notifications')) {
+        const endpoint='Notifications/api/v1/';
+        await request(endpoint+'notifications',{auth:null,expected:[401,403]});
+        const before=(await request(endpoint+'notifications/unread-count')).data.data.count;
+        await request(endpoint+'settings/notifications/test',{method:'POST'});
+        const inbox=(await request(endpoint+'notifications')).data.data.notifications;
+        assert(inbox.length>=1,'Standalone provider must persist and return notifications');
+        assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before+1);
+        await request(endpoint+'notifications/'+inbox[0].id+'/read',{method:'POST'});
+        assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before);
+        const credential=(await request(endpoint+'settings/notifications/producer-tokens',{method:'POST',expected:[201],body:{source:'deletion-queue',scopes:['notifications:write']}})).data.data;
+        const eventId=randomUUID();
+        const publication={apiVersion:'1',operation:'notifications.publish',requestId:randomUUID(),payload:{schemaVersion:1,eventId,source:'deletion-queue',type:'proposal.created',severity:'info',title:'Disposable proposal notification',body:'No media was changed.',audience:[guid(login.data.user.id)],adminOnly:false,occurredAt:new Date().toISOString()}};
+        const published=await request(endpoint+'producer/notifications',{method:'POST',auth:null,headers:{Authorization:'Bearer '+credential.token},body:publication});
+        assert.equal(published.data.data.status,'accepted');
+        const repeated=await request(endpoint+'producer/notifications',{method:'POST',auth:null,headers:{Authorization:'Bearer '+credential.token},body:publication});
+        assert.equal(repeated.data.data.status,'duplicate');
+        assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before+1,'Producer replay must not duplicate the inbox');
+        await request(endpoint+'producer/notifications',{method:'POST',auth:null,body:publication,expected:[400,401,403]});
+        if(process.argv.includes('--notifications-restart')) {
+            docker('restart',name);
+            base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
+            let ready=false;
+            for(let i=0;i<90;i++){try{if((await request('System/Info/Public',{auth:null,expected:null})).status===200){ready=true;break;}}catch{}await wait(1000);}
+            assert(ready,'Notification restart fixture did not recover');
+            assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before+1,'Read state/inbox must survive restart');
+        }
+        const html=(await request('web/index.html',{auth:null})).text;
+        assert(html.includes('data-notifications-bootstrap'),'Standalone Notifications owns Web injection');
+        assert(!html.includes('data-account-hub-bootstrap'),'Hub must not inject a competing bell');
+        assert.equal((html.match(/data-notifications-bootstrap/g)||[]).length,1);
+        console.log('PASS standalone notification inbox, native authorization, read state and exclusive Web ownership');
+    }
     if (has('discord')) {
         const bridge = (await request('DiscordBridge/admin/v1/settings')).data.data;
         const activity = await request('DiscordBridge/activity/', { auth: null });
@@ -379,7 +412,7 @@ try {
     assert.equal((await request('AccountHub/api/v1/notifications/unread-count')).data.ok, true);
     await request('AccountHub/api/v1/policy/preview', { method: 'POST', raw: '{"userIds":[],"userIds":[]}', expected: 400 });
     await request('AccountHub/api/v1/security/jellyfin-security', { method: 'POST', auth: null, body: {}, expected: [400, 401] });
-    const html = await request('web/index.html', { auth: null }); assert(html.text.includes('data-account-hub-bootstrap'), 'Hosted web must include bounded bell bootstrap');
+    const html = await request('web/index.html', { auth: null }); assert(html.text.includes(has('notifications')?'data-notifications-bootstrap':'data-account-hub-bootstrap'), 'Hosted web must include bounded bell bootstrap');
     const reset = await request('AccountHub/reset', { auth: null }); assert(reset.text.includes('/suite/AccountHub/'), 'Public shell must preserve BaseUrl'); assert.equal(reset.headers.get('referrer-policy'), 'no-referrer');
     const key = randomUUID(), command = { commandId: key, revision: workspace.data.data.revision, confirmation: 'CONFIRM ACCOUNT HUB CHANGE', payload: { name: 'Disposable', managedFields: { EnableMediaPlayback: true, EnableContentDownloading: false } } };
     const created = await request('AccountHub/api/v1/commands/group.save', { method: 'POST', body: command }); assert.equal(created.data.data.status, 'saved');
@@ -590,10 +623,13 @@ try {
         console.log('PASS real gateway command handlers acknowledged self-service responses and selected-destination invitation delivery; metrics retain no actor, channel, link or message payload.');
     }
     if (themeCheck) {
+        await mkdir(join(root, 'admin-screenshots'), { recursive: true });
         // No published port or host alias is needed: the browser shares only
         // this newly owned disposable server's network namespace.
         const output = docker('run', '--rm', '--network', 'container:' + name,
             '--mount', `type=bind,source=${resolve('scripts')},target=/checks,readonly`,
+            '--mount', `type=bind,source=${join(root, 'admin-screenshots')},target=/evidence`,
+            '--env', 'ADMIN_SCREENSHOTS=/evidence',
             '--env', 'DISPOSABLE_THEME_TEST=true', '--env', 'THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite',
             'mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a',
             '/bin/sh', '/checks/run-theme-acceptance.sh');

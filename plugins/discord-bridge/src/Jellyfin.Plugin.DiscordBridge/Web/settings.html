@@ -1,34 +1,34 @@
-<div data-role="page" class="page type-interior discordBridgePage">
+<div data-role="page" class="page type-interior discordBridgePage suiteAdmin">
   <div data-role="content"><div class="content-primary">
     <h1>Discord Bridge</h1>
-    <p>One bot for notifications and self-service. Account links and recovery belong to Account Hub. Discord roles never grant Jellyfin permissions.</p>
-    <section class="bridgeDependencyHealth" aria-label="Optional integration health"></section>
-    <section aria-label="Discord Activity companion"><h2>Activity companion</h2><p>The official Embedded App SDK frontend opens Jellyfin and same-server watch-party invitations outside Discord. In-Discord video playback is not implemented. No Discord identity grants media access.</p><p>Enable Activities in the development application's Developer Portal and configure explicit URL mappings for the Activity directory and native web styles. Remove temporary Cloudflare mappings after testing.</p><p><a class="bridgeActivityUrl" target="_blank" rel="noopener noreferrer">Activity endpoint (launch through Discord)</a></p></section>
+    <p>Connect Discord notifications and watch parties.</p>
+    <details class="suiteCard"><summary>Integrations</summary><section class="bridgeDependencyHealth" aria-label="Optional integration health"></section></details>
+    <details class="suiteCard"><summary data-help="Enable Activities in the Discord Developer Portal and map the Activity directory and native web styles. This companion opens Jellyfin outside Discord; in-Discord video playback is not supported.">Activity companion</summary><p><a class="bridgeActivityUrl" target="_blank" rel="noopener noreferrer">Open Activity endpoint</a></p></details>
     <form class="bridgeSettings">
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeEnabled"/><span>Enable bot</span></label></div>
-      <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeSelfService" disabled/><span>Enable account self-service commands (optional Account Hub)</span></label><p class="fieldDescription bridgeIdentityReason">Checking optional identity provider…</p></div>
-      <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeWatchParty" disabled/><span>Enable watch-party commands (optional Account Hub + Private SyncPlay)</span></label><p class="fieldDescription bridgePartyReason">Checking optional identity and party providers…</p></div>
-      <div class="inputContainer"><label class="inputLabel" for="bridgePublicUrl">Optional public HTTPS Jellyfin URL (including BaseUrl; needed for watch-party links)</label><input is="emby-input" id="bridgePublicUrl" class="bridgeUrl" type="url"/></div>
+       <div class="checkboxContainer" data-help="Requires Account Hub for verified account links and recovery. Discord roles do not grant Jellyfin permissions."><label><input type="checkbox" is="emby-checkbox" class="bridgeSelfService" disabled/><span>Enable account self-service</span></label><p class="fieldDescription bridgeIdentityReason">Checking account integration…</p></div>
+       <div class="checkboxContainer" data-help="Requires Account Hub and Private SyncPlay. Users still need permission to access the media."><label><input type="checkbox" is="emby-checkbox" class="bridgeWatchParty" disabled/><span>Enable watch-party commands</span></label><p class="fieldDescription bridgePartyReason">Checking watch-party integration…</p></div>
+       <div class="inputContainer" data-help="Public HTTPS address used in watch-party links. Include your Jellyfin BaseUrl, if configured."><label class="inputLabel" for="bridgePublicUrl">Public Jellyfin URL</label><input is="emby-input" id="bridgePublicUrl" class="bridgeUrl" type="url" placeholder="https://jellyfin.example.com"/></div>
       <div class="inputContainer"><label class="inputLabel" for="bridgeGuild">Discord guild ID</label><input is="emby-input" id="bridgeGuild" class="bridgeGuild" inputmode="numeric" required/></div>
-      <div class="inputContainer"><label class="inputLabel" for="bridgeChannels">Approved channel IDs (comma-separated)</label><input is="emby-input" id="bridgeChannels" class="bridgeChannels"/><div class="fieldDescription">Only these channels can receive generic notifications or explicitly confirmed watch-party links.</div></div>
+       <div class="inputContainer" data-help="Comma-separated Discord channel IDs. Only these channels can receive notifications or confirmed watch-party links."><label class="inputLabel" for="bridgeChannels">Approved channels</label><input is="emby-input" id="bridgeChannels" class="bridgeChannels"/></div>
       <h2>New library content</h2>
       <p class="bridgeLibraryStatus fieldDescription" role="status"></p>
       <p class="bridgeLibraryHealth fieldDescription" role="status"></p>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryEnabled"/><span>Announce future library additions on Discord</span></label></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryEpisodes"/><span>New episodes</span></label></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryMovies"/><span>New movies</span></label></div>
-      <div class="selectContainer"><label class="selectLabel" for="bridgeLibraryFolders">Announced libraries (select explicitly; no automatic all-libraries disclosure)</label><select is="emby-select" id="bridgeLibraryFolders" class="bridgeLibraryFolders" multiple size="5"></select></div>
-      <div class="inputContainer"><label class="inputLabel" for="bridgeLibraryChannels">Announcement channel IDs (subset of approved channels above)</label><input is="emby-input" id="bridgeLibraryChannels" class="bridgeLibraryChannels"/></div>
+       <div class="selectContainer" data-help="Choose which libraries may be announced. Only future additions are included."><label class="selectLabel" for="bridgeLibraryFolders">Libraries to announce</label><select is="emby-select" id="bridgeLibraryFolders" class="bridgeLibraryFolders" multiple size="5"></select></div>
+       <div class="inputContainer" data-help="Comma-separated IDs from the approved channels above."><label class="inputLabel" for="bridgeLibraryChannels">Announcement channels</label><input is="emby-input" id="bridgeLibraryChannels" class="bridgeLibraryChannels"/></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryDisclosure"/><span>I approve sharing selected library titles/episode metadata with members of these Discord channels, independently of their Jellyfin access.</span></label></div>
-      <p class="fieldDescription">Disabled by default; no existing-library backfill. Native additions are deduplicated and allowed 30 seconds for metadata. Hub captures once when installed; otherwise Bridge observes the native library itself. Uncertain Discord sends are not automatically replayed. In-app notifications are configured separately in Account Hub → Library and respect each user's library access.</p>
-      <div class="inputContainer"><label class="inputLabel" for="bridgeToken">Replace bot token</label><input is="emby-input" id="bridgeToken" class="bridgeToken" type="password" autocomplete="new-password"/><div class="fieldDescription">Blank preserves the encrypted credential. Stored tokens are never read back.</div></div>
+       <h2>Credentials</h2>
+       <div class="inputContainer" data-help="Leave blank to keep the saved token. Stored credentials are encrypted and never displayed."><label class="inputLabel" for="bridgeToken">Replace bot token</label><input is="emby-input" id="bridgeToken" class="bridgeToken" type="password" autocomplete="new-password"/></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeClear"/><span>Clear stored bot token</span></label></div>
       <input id="bridgeProof" class="bridgeProof" type="hidden" value=""/>
       <div class="inputContainer"><label class="inputLabel" for="bridgeConfirm">Type CONFIRM ACCOUNT HUB CHANGE</label><input is="emby-input" id="bridgeConfirm" class="bridgeConfirm" autocomplete="off" required/></div>
       <button is="emby-button" class="raised button-submit" type="submit"><span>Save</span></button>
-    </form><button type="button" is="emby-button" class="emby-button raised bridgeTestConnection"><span class="emby-button-foreground">Test connection</span></button><p class="fieldDescription">Tests saved bot settings with an authenticated read. Save changes first. Does not send messages or verify channel/DM delivery.</p><p class="bridgeConnectionResult" role="status" aria-live="polite"></p><p class="bridgeStatus" role="status" aria-live="polite"></p>
+     </form><div data-help="Save changes first. Checks the saved bot connection without sending messages. Channel and DM delivery are not tested."><button type="button" is="emby-button" class="emby-button raised bridgeTestConnection"><span class="emby-button-foreground">Test connection</span></button></div><p class="bridgeConnectionResult" role="status" aria-live="polite"></p><p class="bridgeStatus" role="status" aria-live="polite"></p>
   </div></div>
-  <script>
+   <script>
   (() => {
     const root = document.querySelector('.discordBridgePage'); if (!root || root.dataset.initialized) return; root.dataset.initialized = 'true';
     const get = name => root.querySelector('.bridge' + name), status = get('Status'); let revision = 0, active;
@@ -62,20 +62,22 @@
       for (const id of selected) { const option = document.createElement('option'); option.value = id; option.textContent = 'Previously selected library (currently unavailable): ' + id; option.selected = true; folders.append(option); }
       const unavailable = data.libraryStatus !== 'available' || !(data.libraryFolders || []).length;
       get('LibraryEnabled').disabled = unavailable && !data.settings.libraryAnnouncementsEnabled; folders.disabled = unavailable;
-      get('LibraryStatus').textContent = unavailable ? 'Library announcements need at least one configured native Jellyfin library. Add a library under Dashboard → Libraries, scan it, then reload. Bot transport remains independent.' : 'Library source: ' + data.libraryCaptureOwner + '. Select libraries and approved channels, acknowledge disclosure, then enable announcements.';
-      get('LibraryHealth').textContent = data.libraryHealth ? 'Library intake health: ' + JSON.stringify(data.libraryHealth) : '';
+       get('LibraryStatus').textContent = unavailable ? 'Add a library in Dashboard → Libraries, scan it, then reload.' : '';
+       const libraryHealth = get('LibraryHealth'); libraryHealth.replaceChildren();
+       if (data.libraryHealth) { const details = document.createElement('details'), summary = document.createElement('summary'), pre = document.createElement('pre'); summary.textContent = 'Library diagnostics'; pre.textContent = JSON.stringify(data.libraryHealth, null, 2); details.append(summary, pre); libraryHealth.append(details); }
       const health = get('DependencyHealth'); health.replaceChildren();
       for (const feature of data.features) { const row = document.createElement('p'); row.textContent = feature.name + ': ' + (feature.available ? 'Available. ' : 'Unavailable. ') + feature.reason + (!feature.available ? ' ' + feature.fix : ''); health.append(row);
-        if (feature.id === 'identity' || feature.id === 'watchparty') { const input = get(feature.id === 'identity' ? 'SelfService' : 'WatchParty'), reason = get(feature.id === 'identity' ? 'IdentityReason' : 'PartyReason'); input.disabled = !feature.available; input.title = feature.reason + ' ' + feature.fix; reason.textContent = feature.reason + (!feature.available ? ' ' + feature.fix : ''); }
+         if (feature.id === 'identity' || feature.id === 'watchparty') { const input = get(feature.id === 'identity' ? 'SelfService' : 'WatchParty'), reason = get(feature.id === 'identity' ? 'IdentityReason' : 'PartyReason'); input.disabled = !feature.available; input.title = feature.reason + ' ' + feature.fix; reason.textContent = feature.available ? '' : feature.reason + ' ' + feature.fix; }
       }
       status.textContent = data.state + (data.tokenConfigured ? ' — token configured' : ' — no token') + '. Authorization: ' + data.authorization;
     } catch (e) { if (e.name !== 'AbortError') status.textContent = e.message; } }
     root.querySelector('form').onsubmit = async event => {
-      event.preventDefault(); const button = root.querySelector('button'); button.disabled = true;
+       event.preventDefault(); const button = root.querySelector('button[type="submit"]'); button.disabled = true;
       try { await request('PUT', { revision, settings: { enabled: get('Enabled').checked, enableSelfServiceCommands: get('SelfService').checked, enableWatchPartyCommands: get('WatchParty').checked, publicServerUrl: get('Url').value, guildId: get('Guild').value, allowedChannelIds: get('Channels').value.split(',').map(v => v.trim()).filter(Boolean), libraryAnnouncementsEnabled: get('LibraryEnabled').checked, libraryEpisodes: get('LibraryEpisodes').checked, libraryMovies: get('LibraryMovies').checked, libraryChannelIds: get('LibraryChannels').value.split(',').map(v => v.trim()).filter(Boolean), libraryIds: [...get('LibraryFolders').selectedOptions].map(option => option.value), libraryDisclosureAcknowledged: get('LibraryDisclosure').checked }, token: get('Token').value || null, clearToken: get('Clear').checked, stepUp: { code: get('Proof').value }, confirmation: get('Confirm').value }); status.textContent = 'Settings saved; bot reconnects automatically.'; revision++; } catch (e) { status.textContent = e.message; } finally { get('Token').value = get('Proof').value = get('Confirm').value = ''; button.disabled = false; }
     };
     get('Enabled').addEventListener('change', () => { get('Guild').required = get('Enabled').checked; });
     root.addEventListener('viewshow', load); root.addEventListener('viewhide', () => { active?.abort(); get('Token').value = get('Proof').value = get('Confirm').value = ''; }); root.addEventListener('viewdestroy', () => active?.abort()); load();
   })();
-  </script>
+   </script>
+   <script src="configurationpage?name=DiscordBridgeAdminUI.js"></script>
 </div>

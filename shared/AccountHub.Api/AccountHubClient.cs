@@ -11,8 +11,9 @@ public sealed class AccountHubClient
     private readonly Func<Func<string, CancellationToken, Task<string>>?> resolve;
     private readonly SemaphoreSlim gate = new(1, 1);
     private Task<string>? inflight;
+    private readonly IServiceProvider? services;
 
-    public AccountHubClient(IServiceProvider services) : this(() => services.GetKeyedService<Func<string, CancellationToken, Task<string>>>(ServiceKey)) { }
+    public AccountHubClient(IServiceProvider services) : this(() => services.GetKeyedService<Func<string, CancellationToken, Task<string>>>(ServiceKey) ?? services.GetKeyedService<Func<string, CancellationToken, Task<string>>>("Notifications.Api.1")) { this.services=services; }
     public AccountHubClient(Func<Func<string, CancellationToken, Task<string>>?> resolve) => this.resolve = resolve;
     public bool IsAvailable { get { try { return resolve() is not null; } catch { return false; } } }
 
@@ -24,7 +25,8 @@ public sealed class AccountHubClient
         {
             // A host ignoring cancellation cannot accumulate abandoned tasks on repeated polls.
             if (inflight is { IsCompleted: false }) return null;
-            var handler = resolve();
+            var handler = operation.StartsWith("notifications.", StringComparison.Ordinal) || operation is "hello" or "health"
+                ? services?.GetKeyedService<Func<string, CancellationToken, Task<string>>>("Notifications.Api.1") ?? resolve() : resolve();
             if (handler is null) return null;
             var request = Contract.Serialize(new { apiVersion = "1", operation, requestId = Guid.NewGuid(), payload });
             if (Encoding.UTF8.GetByteCount(request) > Contract.BatchLimit) return null;

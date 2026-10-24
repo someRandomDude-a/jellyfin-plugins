@@ -48,6 +48,7 @@ public sealed class NotificationException(string code, string message, int statu
 public sealed class NotificationOptions
 {
     public required string DatabasePath { get; init; }
+    public bool RequireExistingDatabase { get; init; }
     public HashSet<string> Sources { get; init; } = ["account-hub", "deletion-queue", "private-syncplay", "jellyfin-security"];
     public HashSet<string> AllowedLinkHosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public int MaxAudience { get; init; } = 1000;

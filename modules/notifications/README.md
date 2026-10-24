@@ -1,5 +1,7 @@
 # Account Hub Notifications
 
+**Current runtime ownership:** this directory is now the shared backend library used by the independently installable [Notifications plugin](../../plugins/notifications/README.md). It is not a second plugin or worker. The standalone plugin owns new storage, key protection, inbox/settings APIs and lifecycle; legacy Hub tables are moved once into the owned store. The older embedding documentation below is retained as historical implementation context, not the current installation model.
+
 Implementation of the notifications module described by `04-notifications.md` in the supplied Account Hub plan. **This is an embeddable .NET 10 module, not a standalone Jellyfin plugin.** This repository initially contained only its license; the Hub/core and Security adapters are not present here.
 
 ## Included

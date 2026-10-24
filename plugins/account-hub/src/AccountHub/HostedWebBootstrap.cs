@@ -1,14 +1,16 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using MediaBrowser.Controller;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AccountHub;
 
 /// <summary>Bounded text-response adapter. Overflow streams the original unchanged; no disk edits.</summary>
-public sealed class HostedWebBootstrap(RequestDelegate next, IServerApplicationHost app)
+public sealed class HostedWebBootstrap(RequestDelegate next, IServerApplicationHost app, IServiceProvider? services = null)
 {
     public async Task InvokeAsync(HttpContext context)
     {
+        if (services?.GetKeyedService<Func<bool>>("Notifications.Owner.1")?.Invoke() == true) { await next(context); return; }
         var path = context.Request.Path.Value;
         var prefix = new Uri(app.GetLocalApiUrl("127.0.0.1", "http", app.HttpPort)).AbsolutePath.TrimEnd('/');
         if (!HttpMethods.IsGet(context.Request.Method) || path is null || !(path.Equals(prefix + "/web/index.html", StringComparison.OrdinalIgnoreCase) || path.Equals(prefix + "/web/", StringComparison.OrdinalIgnoreCase) || path.Equals(prefix + "/web", StringComparison.OrdinalIgnoreCase))) { await next(context); return; }
@@ -26,7 +28,8 @@ public sealed class HostedWebBootstrap(RequestDelegate next, IServerApplicationH
             if (anchor >= 0 && !html.Contains("data-account-hub-bootstrap", StringComparison.Ordinal))
             {
                 var src = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.js");
-                html = html.Insert(anchor, $"<script defer data-account-hub-bootstrap src=\"{src}\"></script>");
+                var css = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.css");
+                html = html.Insert(anchor, $"<link rel=\"stylesheet\" href=\"{css}\"><script defer data-account-hub-bootstrap src=\"{src}\"></script>");
                 bytes = Encoding.UTF8.GetBytes(html);
                 context.Response.ContentLength = bytes.Length; context.Response.Headers.Remove("ETag"); context.Response.Headers.Remove("Last-Modified"); context.Response.Headers.Remove("Accept-Ranges"); context.Response.Headers.CacheControl = "no-store";
             }

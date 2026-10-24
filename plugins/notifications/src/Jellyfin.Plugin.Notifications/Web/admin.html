@@ -1,0 +1,10 @@
+<!doctype html><html><head><title>Notifications</title></head><body>
+<div id="notificationsAdmin" data-role="page" class="page type-interior pluginConfigurationPage suiteAdmin"><div data-role="content"><div class="content-primary"><h2 class="sectionTitle" data-help="Manage the shared inbox and delivery routes. Discord delivery requires Discord Bridge.">Notifications</h2><div data-notification-settings></div><p role="status" data-status></p></div></div>
+<script>
+(()=>{'use strict';const page=document.querySelector('#notificationsAdmin');let dispose;
+async function show(){try{
+if(!window.AccountHubNotificationSettings)await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=ApiClient.getUrl('Notifications/assets/settings.js');script.onload=resolve;script.onerror=reject;document.head.append(script);});
+dispose?.();dispose=await window.AccountHubNotificationSettings.mount(page.querySelector('[data-notification-settings]'),async(path,method='GET',body)=>{const response=await ApiClient.ajax({url:ApiClient.getUrl('Notifications/api/v1/'+path),type:method,contentType:'application/json',dataType:'json',data:body===undefined?undefined:JSON.stringify(body)});if(!response.ok)throw new Error('Notification settings unavailable. Check authorization and storage.');return response.data;});
+}catch{page.querySelector('[data-status]').textContent='Could not load notification settings. Verify administrator access and storage health.';}}
+page.addEventListener('viewshow',show);for(const name of ['viewhide','viewdestroy'])page.addEventListener(name,()=>{dispose?.();dispose=null;});show();})();
+</script><script src="configurationpage?name=NotificationsAdminUI.js"></script></div></body></html>

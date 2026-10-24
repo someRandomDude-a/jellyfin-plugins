@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Version>0.1.0</Version></PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Notifications.Tests" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <ProjectReference Include="../../../../modules/notifications/src/AccountHub.Notifications/AccountHub.Notifications.csproj" />
+    <ProjectReference Include="../../../../shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
+    <EmbeddedResource Include="Web/*" />
+  </ItemGroup>
+</Project>

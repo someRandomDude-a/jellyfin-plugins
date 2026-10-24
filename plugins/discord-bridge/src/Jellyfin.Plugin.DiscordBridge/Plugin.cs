@@ -29,5 +29,5 @@ public sealed class Plugin(IApplicationPaths paths, IXmlSerializer serializer) :
     public override Guid Id => Guid.Parse(PluginId);
     public override string Name => "Discord Bridge";
     public override string Description => "One Discord bot and transport for Account Hub and domain self-service commands.";
-    public IEnumerable<PluginPageInfo> GetPages() => [new() { Name = "DiscordBridge", EmbeddedResourcePath = "Jellyfin.Plugin.DiscordBridge.Web.settings.html", EnableInMainMenu = true, MenuSection = "Plugins", MenuIcon = "chat" }];
+    public IEnumerable<PluginPageInfo> GetPages() => [new() { Name = "DiscordBridge", EmbeddedResourcePath = "Jellyfin.Plugin.DiscordBridge.Web.settings.html", EnableInMainMenu = true, MenuSection = "Plugins", MenuIcon = "chat" }, new() { Name = "DiscordBridgeAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" }];
 }

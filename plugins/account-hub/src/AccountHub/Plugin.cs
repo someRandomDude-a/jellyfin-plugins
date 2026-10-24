@@ -21,6 +21,7 @@ public sealed class Plugin(IApplicationPaths paths, IXmlSerializer serializer)
             Name = "AccountHub",
             EmbeddedResourcePath = "AccountHub.Configuration.configPage.html",
             EnableInMainMenu = true
-        }
+        },
+        new PluginPageInfo { Name = "AccountHubAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" }
     ];
 }

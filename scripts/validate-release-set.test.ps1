@@ -5,6 +5,7 @@ $stage = Join-Path $root 'stage'
 $validator = Join-Path $PSScriptRoot 'validate-release-set.ps1'
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 $plugins = @{
+    Notifications = 'c18d78ec-4b70-47cf-a0d2-936d987c37ba'
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'; DiscordBridge = '4b047046-a550-4415-b204-4206f1f18201'
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'; DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'
 }
@@ -28,7 +29,7 @@ try {
                 'fixture notices' | Set-Content (Join-Path $item 'Activity-THIRD-PARTY-NOTICES.txt')
                 '{}' | Set-Content (Join-Path $item 'activity-inventory.json')
             }
-            if ($asset -eq 'DeletionQueue') { 'native fixture' | Set-Content (Join-Path $item $(if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' })) }
+            if ($asset -in @('DeletionQueue','Notifications')) { 'native fixture' | Set-Content (Join-Path $item $(if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' })) }
             $name = "$asset-1.2.3.0-$runtime.zip"; $zip = Join-Path $release $name
             [IO.Compression.ZipFile]::CreateFromDirectory($item, $zip)
             "$((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())  $name" | Set-Content "$zip.sha256"

@@ -1,6 +1,6 @@
 # Jellyfin plugins
 
-> **Architecture update:** the requested target is now five focused plugins: Account Invitations, Private SyncPlay, Deletion Queue, Discord Bridge and standalone Notifications, with shared connection configuration and native login/2FA handoff. Migration is **not complete**; current package lists below describe the older implementation. See [authoritative requirements](docs/product-requirements.md) and the [owner compatibility profile](test-profiles/owner-server.json). Do not treat the earlier four-plugin matrix as five-plugin certification.
+> **Architecture update:** Notifications now has its own installable plugin, storage, inbox API, settings and delivery worker. Existing notification data has a checkpointed one-time migration out of Account Hub. Account Hub → Account Invitations extraction and the shared connection registry remain unfinished. See [authoritative requirements](docs/product-requirements.md), [Notifications upgrade instructions](plugins/notifications/README.md) and the [owner compatibility profile](test-profiles/owner-server.json). Historical four-plugin evidence does not certify the expanded set.
 
 ## Install plugins
 
@@ -26,12 +26,13 @@ Choose the server platform, not the device running your browser. Jellyfin does n
 
 | Plugin | What it does | Optional integrations |
 |---|---|---|
-| **Account Hub** | Unified account workspace: onboarding invitations, group/policy management, verified account links, recovery, notifications and Seerr lifecycle integration through its HTTP API. Security and Notifications are embedded modules, not separate plugins. | Discord Bridge for Discord delivery/self-service; Deletion Queue and Private SyncPlay for their domain controls; compatible native Security for supported factor workflows. |
+| **Account Hub** | Account workspace: onboarding invitations, group/policy management, verified account links, recovery and Seerr lifecycle integration through its HTTP API. Security remains an integration module. | Notifications for the shared inbox/delivery; Discord Bridge for Discord delivery/self-service; compatible native Security for supported factor workflows. |
+| **Notifications** | Owns the shared inbox, read/dismiss state, preferences, server delivery settings, Web bell and worker. Migrates existing notification data into its own database and key ring. | Discord Bridge for delivery; Account Hub for verified DM identity links and its audit provider. Neither is needed for the standalone inbox. |
 | **Discord Bridge** | Owns the bot and encrypted Discord credentials. Delivers scoped media announcements and provides self-service commands and explicitly targeted watch-party invitations. Includes an SDK companion Activity that opens Jellyfin externally—**not video playback inside Discord**. | Account Hub for verified identity/link/recovery commands; Account Hub + Private SyncPlay for watch-party creation commands. Basic transport works independently. |
 | **Deletion Queue** | Consent-driven media deletion workflow with reviewable queue state and authenticated evidence. Configure it in its own plugin settings. | Account Hub backend lifecycle/notification integration; Discord Bridge for supported Discord delivery. |
 | **Private SyncPlay** | Private watch parties, native account invitations and isolated anonymous guest playback with owner-controlled permissions. Configure it in its own plugin settings. | Account Hub backend identity/lifecycle integration; Discord Bridge for Discord watch-party commands/delivery. |
 
-Install any of the four independently or combine them. Missing optional integrations disable only dependent features and show repair instructions. Do **not** install the legacy User Manager alongside Account Hub. See [dependencies](docs/dependencies.md) and [remaining release gates](docs/v1-release-gates.md) before deployment.
+Install the five plugins independently or combine them. For the initial Notifications extraction, update existing consumers together as described in its upgrade instructions. Missing optional integrations disable only dependent features. Do **not** install the legacy User Manager alongside Account Hub. See [dependencies](docs/dependencies.md) and [remaining release gates](docs/v1-release-gates.md).
 
 Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.3 / .NET 10. Owner compatibility target: Linux x86_64/amd64.
 
@@ -41,12 +42,12 @@ Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.3 / .
 - `plugins/account-hub`: integration preview with the native workspace, embedded Security/Notifications and lifecycle/recovery services; not yet the complete planned control plane.
 - `plugins/deletion-queue`, `plugins/private-syncplay`: independent domain plugins.
 - `plugins/discord-bridge`: independently packaged single bot, Discord delivery, self-service/watch-party commands and an Embedded App SDK companion frontend. Hub owns verified links and recovery. The companion opens playback in Jellyfin outside Discord; in-Discord video playback is not implemented. See [Activity development and temporary HTTPS testing](docs/discord-activity-development.md).
-- `modules/security`, `modules/notifications`: embedded Hub modules, never standalone installable plugins.
+- `modules/security`: shared Security integration; `modules/notifications`: shared notification backend library, not a second runtime plugin. `plugins/notifications` owns the standalone lifecycle.
 - `modules/user-management`: owner-authorized MIT lifecycle source compiled as `AccountHub.Lifecycle`; legacy controllers, plugin entry, bot and File Transformation hooks are excluded. Do not install the old plugin alongside Hub.
 
 Consolidation does not certify the complete plan. See [review status](docs/review-status.md) for remaining blockers.
 
-All four installable plugins support independent installation and arbitrary combinations. Missing optional providers disable only their dependent controls, with visible reasons and remediation. See the [feature dependency matrix](docs/dependencies.md).
+All five installable plugins support independent installation and combinations. Missing optional providers disable only their dependent controls. See the [feature dependency matrix](docs/dependencies.md).
 
 ## Development
 

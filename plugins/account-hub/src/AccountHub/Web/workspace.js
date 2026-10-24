@@ -8,7 +8,7 @@ const make = (tag, text) => {
     if (tag === 'select') { node.setAttribute('is', 'emby-select'); node.className = 'emby-select'; }
     return node;
 };
-const pretty = value => typeof value === 'object' ? JSON.stringify(value) : String(value ?? 'Inherit');
+const pretty = value => typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? 'Inherit');
 const title = name => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
 function field(name, value, metadata = {}) {
     const root = make('div'); root.className = 'inputContainer hubField'; const id = 'hub-' + uuid(), label = make('label', title(name)); label.className = 'inputLabel'; label.htmlFor = id;
@@ -16,6 +16,7 @@ function field(name, value, metadata = {}) {
     if (metadata.values) { input = make('select'); for (const item of metadata.values) { const option = make('option', item === null ? 'Inherit' : item); option.value = item === null ? '' : item; input.append(option); } input.value = value ?? ''; }
     else { input = make('input'); input.type = typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' || name === 'MaxParentalRating' ? 'number' : metadata.secret ? 'password' : 'text'; if (input.type === 'checkbox') { input.setAttribute('is', 'emby-checkbox'); input.className = 'emby-checkbox'; input.checked = value; root.className = 'checkboxContainer hubField'; } else input.value = Array.isArray(value) ? value.join(', ') : value ?? ''; }
     input.id = id; input.autocomplete = metadata.secret ? 'new-password' : 'off'; if (metadata.min !== undefined) input.min = metadata.min; if (metadata.max !== undefined) input.max = metadata.max;
+    if (metadata.help) root.dataset.help = metadata.help;
     if (input.type === 'checkbox') {
         label.className = 'emby-checkbox-label'; label.textContent = ''; const caption = make('span', title(name)); caption.className = 'checkboxLabel'; const outline = make('span'); outline.className = 'checkboxOutline'; outline.setAttribute('aria-hidden', 'true'); const checked = make('span'), unchecked = make('span'); checked.className = 'material-icons checkboxIcon checkboxIcon-checked check'; unchecked.className = 'material-icons checkboxIcon checkboxIcon-unchecked'; outline.append(checked, unchecked); input.setAttribute('data-embycheckbox', 'true'); label.append(input, caption, outline); root.append(label);
     } else {
@@ -28,7 +29,7 @@ function field(name, value, metadata = {}) {
 function table(columns, rows) {
     const wrapper = make('div'); wrapper.className = 'hubTableWrap'; const node = make('table'); node.className = 'tbl hubTable'; const head = make('tr');
     for (const label of columns) { const cell = make('th', label); cell.scope = 'col'; head.append(cell); } const thead = make('thead'); thead.append(head); node.append(thead);
-    const body = make('tbody'); for (const row of rows) { const tr = make('tr'); for (const value of row) { const td = make('td'); td.append(value instanceof Node ? value : document.createTextNode(pretty(value))); tr.append(td); } body.append(tr); } node.append(body); wrapper.append(node); return wrapper;
+    const body = make('tbody'); for (const row of rows) { const tr = make('tr'); for (const value of row) { const td = make('td'); td.append(value instanceof Node ? value : value !== null && typeof value === 'object' ? make('pre', pretty(value)) : document.createTextNode(pretty(value))); tr.append(td); } body.append(tr); } node.append(body); wrapper.append(node); return wrapper;
 }
 function confirmation(description, signal, securitySensitive = true) {
     return new Promise(resolve => {
@@ -42,7 +43,7 @@ function confirmation(description, signal, securitySensitive = true) {
         signal?.addEventListener('abort', abort, { once: true });
         cancel.onclick = () => close(null); dialog.addEventListener('cancel', event => { event.preventDefault(); close(null); });
         form.onsubmit = event => { event.preventDefault(); if (typed.value() !== 'CONFIRM ACCOUNT HUB CHANGE') { typed.input.focus(); return; } close({ confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: proof.value() } }); };
-        form.append(make('h2', description), make('p', securitySensitive ? 'Fresh proof is never saved. A failed or unavailable verifier is not downgraded.' : 'Administrator confirmation only. This operation does not require a fresh security code.'), typed.root, ...(securitySensitive ? [proof.root] : []), submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
+        form.append(make('h2', description), typed.root, ...(securitySensitive ? [proof.root] : []), submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
     });
 }
 
@@ -56,7 +57,7 @@ export function mountWorkspace(root, client) {
         const relevant = dependencies.filter(item => ['security', 'discord'].includes(item.id));
         const missing = relevant.filter(item => !item.available), summary = make('summary', 'Account security and notification integrations — ' + missing.length + ' unavailable'), list = make('dl');
         for (const item of relevant) { const label = make('dt', item.name + ': ' + item.state), detail = make('dd', item.available ? item.reason : item.reason + ' ' + item.fix); detail.id = 'hub-dependency-' + item.id; list.append(label, detail); }
-        dependencyPanel.replaceChildren(summary, list); dependencyPanel.open = missing.length > 0;
+            dependencyPanel.replaceChildren(summary, list); dependencyPanel.open = false;
         for (const tab of tabs.children) {
             const dependency = dependencies.find(item => item.id === dependencyIds[tab.textContent]);
             tab.disabled = dependency ? !dependency.available : false;
@@ -177,15 +178,16 @@ export function mountWorkspace(root, client) {
     }
     async function library() {
         const data = await request('library/settings'), enabled = field('Notify new library additions in the notification center', data.settings.enabled), episodes = field('New episodes', data.settings.episodes), movies = field('New movies', data.settings.movies);
-        content.append(make('h2', 'New library content'), make('p', 'Enable notifications for future additions, not an existing-library backfill. Each episode/movie is deduplicated durably and given 30 seconds for metadata to settle. Recipients must have native Jellyfin access; inbox reads and DM delivery recheck that access. Personal notification preferences still apply.'), enabled.root, episodes.root, movies.root,
-            button('Save library notifications', async () => { await command('settings.library', { revision: data.settings.revision, enabled: enabled.value(), episodes: episodes.value(), movies: movies.value() }); await show(); }), make('p', 'Intake health: ' + pretty(data.health)),
-            make('p', 'Discord is a separate opt-in in Discord Bridge: choose specific libraries and approved channels, and acknowledge that channel members may see titles regardless of their individual Jellyfin access. With both plugins installed Hub captures additions once; Bridge remains the Discord transport.'));
+        enabled.root.dataset.help = 'Notify users about future additions they can access. Existing items are not included. Personal preferences still apply.';
+        const health = make('details'), healthTitle = make('summary', 'Library diagnostics'); health.append(healthTitle, make('pre', pretty(data.health))); health.className = 'suiteCard';
+        content.append(make('h2', 'New library content'), enabled.root, episodes.root, movies.root,
+            button('Save library notifications', async () => { await command('settings.library', { revision: data.settings.revision, enabled: enabled.value(), episodes: episodes.value(), movies: movies.value() }); await show(); }), health);
         const dependency = dependencies.find(item => item.id === 'discord');
         const link = button('Open Discord library announcement settings', async () => { location.hash = '/configurationpage?name=DiscordBridge'; }); link.disabled = !dependency?.available; link.title = dependency?.available ? '' : dependency?.reason + ' ' + dependency?.fix; content.append(link);
     }
     function settings() {
         content.append(make('h2', 'Account Hub settings'));
-        const creation = make('section'), creationView = generation, creationSignal = active.signal;
+        const creation = make('section'), creationView = generation, creationSignal = active.signal; creation.className = 'suiteCard';
         content.append(creation);
         async function creationStatus() {
             const policy = await request('user-creation');
@@ -196,20 +198,24 @@ export function mountWorkspace(root, client) {
                 button(policy.owner === 'native' ? 'End native override and resume Hub' : 'Enable native creation for five minutes', async () => {
                     await request('user-creation/native-override', 'POST', { commandId: uuid(), revision: (await request('workspace')).revision, enabled: policy.owner !== 'native' }, true);
                     await creationStatus();
-                }), button('Refresh creation status', creationStatus), make('p', 'The override expires automatically and is cleared on restart. It does not bypass native administrator authorization. Internal creation by other plugins is outside this HTTP guard.'));
+                }), button('Refresh creation status', creationStatus));
+            creation.dataset.help = 'The native creation override expires after five minutes and is cleared on restart. Administrator authorization still applies.';
         }
         creationStatus().catch(error => { if (creationView === generation && !creationSignal.aborted) status.textContent = error.message; });
-        const auditDays = field('Audit retention (15–365 days)', state.auditRetentionDays, { min: 15, max: 365 });
-        content.append(auditDays.root, button('Save audit retention', async () => { await request('settings/retention', 'POST', { commandId: uuid(), revision: state.revision, auditRetentionDays: auditDays.value(), notificationRetentionDays: state.notificationRetentionDays }, true); await show(); }));
-        const publicUrl = field('Public HTTPS Jellyfin base URL', state.publicBaseUrl || ''); content.append(publicUrl.root, button('Save public URL', async () => { await command('settings.public-url', { publicBaseUrl: publicUrl.value() }); }));
+        const auditDays = field('Keep audit history (days)', state.auditRetentionDays, { min: 15, max: 365, help: 'Retain audit events for 15–365 days.' });
+        const general = make('section'); general.className = 'suiteCard'; content.append(general);
+        general.append(make('h3', 'History and public links'), auditDays.root, button('Save audit retention', async () => { await request('settings/retention', 'POST', { commandId: uuid(), revision: state.revision, auditRetentionDays: auditDays.value(), notificationRetentionDays: state.notificationRetentionDays }, true); await show(); }));
+        const publicUrl = field('Public Jellyfin URL', state.publicBaseUrl || '', { help: 'HTTPS address used for public links. Include your Jellyfin BaseUrl if configured.' }); general.append(publicUrl.root, button('Save public URL', async () => { await command('settings.public-url', { publicBaseUrl: publicUrl.value() }); }));
+        const security = make('section'); security.className = 'suiteCard'; security.append(make('h3', 'Security integration')); content.append(security);
         const mirror = field('Manual step-up mirror', state.stepUpLevelMirror, { values: ['Off', 'Destructive', 'AllConfigChanges', 'Everything'] }), mode = field('Security alert mode', state.securityAlertMode, { values: ['native', 'hub', 'both'] }), passwords = field('Local password login policy', state.passwordLoginPolicy, { values: ['auto', 'local_disabled', 'allow_local'] });
-        content.append(make('p', 'The mirror must match Jellyfin Security. Lowering it is authorized under the old level. Native/both channel choices never edit Security configuration.'), mirror.root, mode.root, passwords.root, button('Save Security integration settings', async () => {
+        mirror.root.dataset.help = 'Match the level configured in Jellyfin Security. Lowering this level still requires authorization under the previous level. Alert routing does not edit Security configuration.';
+        security.append(mirror.root, mode.root, passwords.root, button('Save Security integration settings', async () => {
             const grant = await confirmation('Change Security integration settings', active.signal); if (!grant) return; grant.confirmation = 'CHANGE SECURITY SETTINGS';
             try { await request('security/settings', 'PUT', { commandId: uuid(), revision: state.revision, settings: { stepUpLevelMirror: mirror.value(), alertMode: mode.value(), passwordLoginPolicy: passwords.value() }, ...grant }); await show(); } finally { grant.stepUp.code = null; }
         }));
-        const secret = field('Replace Security webhook secret (minimum 32 characters)', '', { secret: true }); content.append(secret.root, button('Store signing secret', async () => {
+        const secret = field('Replace webhook secret', '', { secret: true, help: 'At least 32 characters. Keep the original database and keys together when backing up. Never disable 2FA to recover this plugin.' }); security.append(secret.root, button('Store signing secret', async () => {
             try { await request('settings/secrets/security.webhookSecret', 'POST', { commandId: uuid(), revision: state.revision, secret: secret.value() }, true); await show(); } finally { secret.input.value = ''; }
-        }), make('p', 'Back up the AccountHub database, WAL and original keys together. Never disable 2FA to recover this plugin.'));
+        }));
         active.signal.addEventListener('abort', () => { secret.input.value = ''; }, { once: true });
     }
     tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Account Hub sections');

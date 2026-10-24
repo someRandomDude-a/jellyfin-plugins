@@ -1,10 +1,11 @@
 using AccountHub.Core;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AccountHub;
 
-public sealed class CompositeWorker(IHubMaintenance maintenance, HubStore store, HubWorkerHealth health, TimeProvider clock, ILogger<CompositeWorker> logger) : BackgroundService
+public sealed class CompositeWorker(IHubMaintenance maintenance, HubStore store, HubWorkerHealth health, TimeProvider clock, ILogger<CompositeWorker> logger, IServiceProvider? services = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,6 +27,7 @@ public sealed class CompositeWorker(IHubMaintenance maintenance, HubStore store,
                 }
                 await GuardAsync("notifications", async () =>
                 {
+                    if (services?.GetKeyedService<Func<bool>>("Notifications.Owner.1")?.Invoke() == true) return;
                     if (delivery?.ExecuteTask?.IsCompleted == true)
                     {
                         // Observe unexpected termination before replacing this read/delivery worker.

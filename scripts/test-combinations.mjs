@@ -10,8 +10,8 @@ const output = resolve(option('output') || 'artifacts/combination-tests/' + Date
 const security = option('security');
 const jobs = Number(option('jobs') || 2); assert(Number.isInteger(jobs) && jobs >= 1 && jobs <= 4);
 await mkdir(output, { recursive: true });
-const names = ['hub', 'discord', 'deletion', 'syncplay'], cases = [];
-for (const withSecurity of security ? [false, true] : [false]) for (let mask = 0; mask < 16; mask++) cases.push({ plugins: names.filter((_, bit) => mask & (1 << bit)).join(',') || 'none', withSecurity });
+const names = ['hub', 'discord', 'deletion', 'syncplay', 'notifications'], cases = [];
+for (const withSecurity of security ? [false, true] : [false]) for (let mask = 0; mask < (1 << names.length); mask++) cases.push({ plugins: names.filter((_, bit) => mask & (1 << bit)).join(',') || 'none', withSecurity });
 let next = 0; const results = [];
 async function worker() {
     while (next < cases.length) {

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AccountHub.Notifications;
 
@@ -13,25 +14,25 @@ public static class Endpoints
 {
     public static IServiceCollection AddAccountHubNotifications(this IServiceCollection services, NotificationOptions options)
     {
-        services.AddSingleton(options);
+        services.TryAddSingleton(options);
         return Register(services, true, true);
     }
 
     public static IServiceCollection AddAccountHubNotifications(this IServiceCollection services, Func<IServiceProvider, NotificationOptions> options, bool startWorker, bool registerProducer)
     {
-        services.AddSingleton(options);
+        services.TryAddSingleton(options);
         return Register(services, startWorker, registerProducer);
     }
     private static IServiceCollection Register(IServiceCollection services, bool startWorker, bool registerProducer)
     {
         services.AddSingleton(TimeProvider.System);
         services.AddDataProtection(); // Host MUST configure a persistent, protected key ring.
-        services.AddSingleton<NotificationStore>();
-        services.AddSingleton<NotificationService>();
-        services.AddSingleton<IngressLimiter>();
-        services.AddSingleton<SecurityIngress>();
-        services.AddSingleton<WebhookSender>();
-        services.AddSingleton<SecretDelivery>();
+        services.TryAddSingleton<NotificationStore>();
+        services.TryAddSingleton<NotificationService>();
+        services.TryAddSingleton<IngressLimiter>();
+        services.TryAddSingleton<SecurityIngress>();
+        services.TryAddSingleton<WebhookSender>();
+        services.TryAddSingleton<SecretDelivery>();
         if (startWorker) services.AddHostedService<DeliveryWorker>();
         if (registerProducer) services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(Contract.ServiceKey,
             (sp, _) => (json, ct) => sp.GetRequiredService<NotificationService>().DispatchAsync(json, ct));
@@ -46,15 +47,19 @@ public static class Endpoints
         return services;
     }
 
-    public static IEndpointRouteBuilder MapAccountHubNotifications(this IEndpointRouteBuilder endpoints, bool mapSecurityReceiver = true)
+    public static IEndpointRouteBuilder MapAccountHubNotifications(this IEndpointRouteBuilder endpoints, bool mapSecurityReceiver = true, string prefix = "/AccountHub/api/v1", string assets = "/AccountHub/assets/notifications")
     {
-        const string prefix = "/AccountHub/api/v1";
-        endpoints.MapGet("/AccountHub/assets/notifications/bell.js", () =>
+        endpoints.MapGet(assets + "/bell.css", () =>
+        {
+            var stream = typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.bell.css")!;
+            return Results.Stream(stream, "text/css");
+        }).AllowAnonymous();
+        endpoints.MapGet(assets + "/bell.js", () =>
         {
             var stream = typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.bell.js")!;
             return Results.Stream(stream, "text/javascript");
         }).AllowAnonymous();
-        endpoints.MapGet("/AccountHub/assets/notifications/settings.js", () =>
+        endpoints.MapGet(assets + "/settings.js", () =>
         {
             var stream = typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.settings.js")!;
             return Results.Stream(stream, "text/javascript");

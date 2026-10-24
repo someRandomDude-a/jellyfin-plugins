@@ -12,11 +12,13 @@ public sealed class NotificationStore
     private readonly IDataProtector protector;
     private readonly object gate = new();
     private readonly TimeProvider time;
+    private readonly bool requireExistingDatabase;
     public bool Ready { get; private set; } = true;
 
     public NotificationStore(NotificationOptions options, IDataProtectionProvider protection, TimeProvider time)
     {
         this.time = time;
+        requireExistingDatabase = options.RequireExistingDatabase;
         protector = protection.CreateProtector("AccountHub.Notifications.v1");
         connectionString = new SqliteConnectionStringBuilder { DataSource = options.DatabasePath, DefaultTimeout = 10 }.ToString();
         try
@@ -24,6 +26,8 @@ public sealed class NotificationStore
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(options.DatabasePath))!);
             Run(c =>
             {
+                using(var moved=Command(c,"SELECT count(*) FROM sqlite_master WHERE type='table' AND name='nh_moved'"))
+                    if(Convert.ToInt32(moved.ExecuteScalar())!=0)throw new InvalidOperationException("Notifications moved to their standalone provider; legacy store must not be reopened");
                 Execute(c, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
                 using var transaction = c.BeginTransaction(deferred: false);
                 Execute(c, "CREATE TABLE IF NOT EXISTS nh_schema(version INTEGER NOT NULL); INSERT INTO nh_schema SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM nh_schema);");
@@ -56,7 +60,7 @@ public sealed class NotificationStore
         {
             if (!Ready) throw new NotificationException("unavailable", "Notification storage unavailable", 503);
             var builder = new SqliteConnectionStringBuilder(connectionString);
-            if (File.Exists(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(builder.DataSource))!, "installation.id"))) builder.Mode = SqliteOpenMode.ReadWrite;
+            if (requireExistingDatabase || File.Exists(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(builder.DataSource))!, "installation.id"))) builder.Mode = SqliteOpenMode.ReadWrite;
             using var c = new SqliteConnection(builder.ToString());
             c.Open();
             Execute(c, "PRAGMA synchronous=FULL;");

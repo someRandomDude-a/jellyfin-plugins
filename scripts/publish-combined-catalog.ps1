@@ -40,7 +40,7 @@ try {
                 '[]' | Set-Content $previous
                 # Bootstrap a new combined feed from already published independent
                 # feeds, rather than hiding other plugins until their next release.
-                foreach ($plugin in @('account-hub','discord-bridge','private-syncplay','deletion-queue')) {
+                foreach ($plugin in @('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')) {
                     $branch = "catalog-$plugin"
                     $legacyRefs = @(Api "git/matching-refs/heads/$branch" | Where-Object ref -eq "refs/heads/$branch")
                     if (!$legacyRefs.Count) { continue }

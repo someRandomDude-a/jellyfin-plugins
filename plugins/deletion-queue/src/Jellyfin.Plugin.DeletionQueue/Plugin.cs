@@ -32,6 +32,7 @@ public sealed class Plugin : BasePlugin, IHasWebPages
         };
         yield return new PluginPageInfo
         { Name = "DeletionQueueAdmin.js", EmbeddedResourcePath = GetType().Namespace + ".Web.admin.js" };
+        yield return new PluginPageInfo { Name = "DeletionQueueAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" };
     }
 }
 

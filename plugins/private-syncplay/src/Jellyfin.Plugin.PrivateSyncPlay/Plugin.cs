@@ -40,5 +40,5 @@ public sealed class Plugin : BasePlugin<Configuration>, IHasWebPages
     {
         Name = "privateSyncPlayPlayer",
         EmbeddedResourcePath = "Jellyfin.Plugin.PrivateSyncPlay.Web.player-settings.html"
-    }];
+    }, new() { Name = "PrivateSyncPlayAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" }];
 }

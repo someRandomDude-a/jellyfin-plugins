@@ -82,6 +82,16 @@ const http = require('node:http');
             headers: document.querySelectorAll('.headerRight, .MuiToolbar-root').length
         }));
         assert(deletionUi.controls > 0, 'Deletion Queue toolbar integration missing: ' + JSON.stringify(deletionUi));
+        const ownsNotifications = await page.locator('[data-notifications-bootstrap]').count() > 0;
+        if (ownsNotifications) {
+            assert.equal(await page.locator('[data-notifications-bell]').count(), 1, 'Standalone plugin must own exactly one bell');
+            assert.equal(await page.locator('.dq-bell').count(), 0, 'Deletion Queue must not mount a competing bell');
+            await page.locator('[data-notifications-bell]').click();
+            await page.locator('#account-hub-inbox').waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Notification settings', exact: true }).click();
+            await page.getByRole('heading', { name: 'Notification settings', exact: true }).waitFor();
+            await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
+        }
         // Installed injection + bounded DOM/API contracts; no deletion or real media access.
         const deletionItem = '11111111111111111111111111111111';
         let deletionPreviews = 0;
@@ -114,6 +124,29 @@ const http = require('node:http');
         await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
         await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
         assert.equal(deletionPreviews, 3, 'Detail, Enhanced request and right-click must each open a preview without proposing deletion');
+        await page.evaluate(() => document.querySelector('#dq-installed-contract')?.remove());
+        const adminPages = [];
+        for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
+            await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=' + name);
+            await page.locator(ready).first().waitFor();
+            await page.waitForLoadState('networkidle');
+            if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+            const help = page.locator('.suiteAdmin:visible .suiteHelpButton:visible').first(); await help.waitFor();
+            for (const width of [320, 1280]) {
+                await page.setViewportSize({ width, height: 900 });
+                if (name === 'DiscordBridge') assert(await page.locator('.discordBridgePage:visible .checkboxContainer').evaluateAll(items => items.every(item => {
+                    const label = item.querySelector('label'); return !label || label.getBoundingClientRect().bottom <= item.getBoundingClientRect().bottom + 2;
+                })), name + '/' + width + ': checkbox text escapes its row');
+                await help.blur(); await help.focus();
+                assert.equal(await help.getAttribute('aria-expanded'), 'true', name + '/' + width + ': keyboard help did not open ' + JSON.stringify(await help.evaluate(e => ({ disabled: e.matches(':disabled'), focused: e === document.activeElement, parent: e.parentElement.outerHTML.slice(0, 900), active: document.activeElement?.outerHTML.slice(0, 300) }))));
+                assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2), name + '/' + width + ': admin page overflows');
+                await help.press('Escape'); assert.equal(await help.getAttribute('aria-expanded'), 'false');
+                await help.blur(); await help.hover(); assert.equal(await help.getAttribute('aria-expanded'), 'true');
+                await page.mouse.move(0, 0);
+                if (process.env.ADMIN_SCREENSHOTS) await page.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/' + name + '-' + width + '.png', fullPage: true });
+                adminPages.push({ name, width, help: true, noOverflow: true });
+            }
+        }
         await page.goto(base.href.replace(/\/$/, '') + '/DiscordBridge/activity/');
         await page.getByRole('heading', { name: 'Jellyfin watch-party companion', exact: true }).waitFor();
         await page.waitForFunction(() => document.querySelector('[data-status]')?.textContent.includes('Activity unavailable'));
@@ -127,6 +160,6 @@ const http = require('node:http');
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2), `Activity/${width}: page overflows`);
             activity.push({ width, unavailableFailsClosed: true, nativeLabels: true });
         }
-        console.log(JSON.stringify({ checks: results, customThemeOverride: true, keyboardTabNavigation: true, syncplaySettings: true, activity }));
+        console.log(JSON.stringify({ checks: results, customThemeOverride: true, keyboardTabNavigation: true, syncplaySettings: true, adminPages, activity }));
     } finally { await browser.close(); relay.closeAllConnections(); await new Promise(resolve => relay.close(resolve)); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -1,10 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="Version;AssemblyVersion;FileVersion">
+  <PropertyGroup><Version>1.0.0</Version><AssemblyVersion>1.0.0.0</AssemblyVersion><FileVersion>1.0.0.0</FileVersion></PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <EmbeddedResource Include="Web/bell.js" />
+    <EmbeddedResource Include="Web/bell.css" />
     <EmbeddedResource Include="Web/settings.js" />
   </ItemGroup>
 </Project>

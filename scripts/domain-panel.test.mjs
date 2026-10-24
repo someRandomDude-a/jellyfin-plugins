@@ -66,7 +66,7 @@ test('Explicit same-command retry does not reissue uncertain effects and shows p
     let attempts = 0;
     const f = await fixture({ total: 3, respond: async (_url, _options, payload) => { if (payload && payload.route !== 'policy/preview' && ++attempts === 1) throw TypeError('Connection lost'); } });
     f.select('Select User 2', true); await f.click('Edit selected overrides'); await f.click('Preview user changes');
-    await f.click('Apply reviewed change'); await f.grant(); assert.match(f.root.textContent, /No automatic retry/);
+    await f.click('Apply reviewed change'); await f.grant(); assert.match(f.root.textContent, /Use Retry to check this change/);
     await f.click('Retry exact command'); await f.grant(); const writes = f.calls.filter(c => c.payload && c.payload.route !== 'policy/preview');
     assert.equal(writes.length, 2); assert.equal(writes[0].payload.commandId, writes[1].payload.commandId); assert.deepEqual(writes[0].payload.payload, writes[1].payload.payload);
     assert.match(f.root.querySelector('[aria-label="Command result"]').textContent, /applied/); assert.match(f.root.querySelector('[aria-label="Command result"]').textContent, /revision_changed/); f.close();

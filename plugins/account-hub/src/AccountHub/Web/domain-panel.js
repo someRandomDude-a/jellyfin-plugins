@@ -61,7 +61,7 @@ export function mountDomainPanel(root, client, { key, signal, dependency, onMuta
         if (busy || disposed) return; busy = true; message.textContent = '';
         try { await fn(); } catch (error) {
             if (!disposed && error.name !== 'AbortError') {
-                message.textContent = error.code === 'revision_changed' ? 'Settings changed. Reload and preview again; no automatic replay was attempted.' : error.message;
+                message.textContent = error.code === 'revision_changed' ? 'Settings changed. Reload and preview again.' : error.message;
                 if (error.code === 'revision_changed') invalidate();
             }
         } finally { busy = false; }
@@ -138,7 +138,7 @@ export function mountDomainPanel(root, client, { key, signal, dependency, onMuta
         try { reply = await request(domain('command'), 'POST', { ...command, ...grant }); }
         catch (error) {
             if (!disposed && error.code !== 'revision_changed') {
-                review.replaceChildren(node('p', 'No automatic retry. If the outcome is uncertain, retry this exact command to retrieve its stored result; do not start a new change.'), button('Retry exact command', apply));
+                review.replaceChildren(node('p', 'Could not confirm the result. Use Retry to check this change before starting another.'), button('Retry exact command', apply));
             }
             throw error;
         } finally { grant.stepUp.code = ''; }

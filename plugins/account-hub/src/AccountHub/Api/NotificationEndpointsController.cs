@@ -24,6 +24,7 @@ public sealed class NotificationEndpointsController(NotificationEndpointAdapter 
     public Task Producer() => adapter.ExecuteAsync(HttpContext);
 
     [AllowAnonymous, HttpGet("AccountHub/assets/notifications/bell.js")]
+    [HttpGet("AccountHub/assets/notifications/bell.css")]
     [HttpGet("AccountHub/assets/notifications/settings.js")]
     public Task Asset() => adapter.ExecuteAsync(HttpContext);
 }

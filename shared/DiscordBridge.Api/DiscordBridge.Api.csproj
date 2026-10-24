@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><Version>1.0.0</Version><PackageLicenseExpression>MIT</PackageLicenseExpression></PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="Version;AssemblyVersion;FileVersion">
+  <PropertyGroup><Version>1.0.0</Version><AssemblyVersion>1.0.0.0</AssemblyVersion><FileVersion>1.0.0.0</FileVersion><PackageLicenseExpression>MIT</PackageLicenseExpression></PropertyGroup>
   <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
 </Project>

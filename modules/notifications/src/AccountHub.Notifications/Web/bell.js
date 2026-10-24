@@ -3,14 +3,15 @@
     'use strict';
     if (window.__accountHubBellV1) return;
     window.__accountHubBellV1 = true;
-    let button, panel, timer, etag, rows = [], hasMore = false, paused = false, delay = 30000, identity, generation = 0, inFlight = false, skip = 0;
+    let button, panel, timer, etag, rows = [], hasMore = false, paused = false, delay = 30000, identity, generation = 0, inFlight = false, skip = 0, settingsView = false, unreadCount = 0;
     const forbidden = () => /login|challenge|twofactorauth|invite|reset|linktoken/i.test(location.href);
     const client = () => window.ApiClient;
-    const url = path => client().getUrl('AccountHub/api/v1/' + path);
+    const apiPrefix = document.querySelector('[data-notifications-bootstrap]')?.dataset.notificationsApi || 'AccountHub/api/v1/';
+    const url = path => client().getUrl(apiPrefix + path);
     const element = (tag, text) => { const e = document.createElement(tag); if (tag === 'button') { e.className = 'emby-button raised'; e.setAttribute('is', 'emby-button'); e.type = 'button'; } if (text) e.textContent = text; return e; };
     function clear() {
         clearTimeout(timer); timer = null; etag = undefined; rows = [];
-        generation++; skip = 0; hasMore = false;
+        generation++; skip = 0; hasMore = false; unreadCount = 0; settingsView = false;
         button?.remove(); panel?.remove(); button = panel = null;
     }
     async function request(path, method = 'GET', body, headers = {}) {
@@ -40,7 +41,11 @@
     function close() { if (panel) panel.hidden = true; button?.setAttribute('aria-expanded', 'false'); button?.focus(); }
     function render() {
         if (!panel) return;
+        if (settingsView) { renderSettings(); return; }
         panel.replaceChildren(element('h2', 'Notifications'));
+        const settings = element('button', ''); settings.className = 'paper-icon-button-light notificationSettings'; settings.setAttribute('aria-label', 'Notification settings');
+        const gear = element('span', 'settings'); gear.className = 'material-icons'; gear.setAttribute('aria-hidden', 'true'); settings.append(gear);
+        settings.onclick = () => { settingsView = true; render(); }; panel.append(settings);
         const all = element('button', 'Mark all read'); all.onclick = async () => { await request('notifications/read-all', 'POST'); etag = undefined; poll(); }; panel.append(all);
         for (const row of rows) {
             const item = element('section'); item.append(element('h3', row.event.title), element('p', row.event.body));
@@ -57,6 +62,11 @@
         previous.onclick = () => { skip = Math.max(0, skip - 100); etag = undefined; poll(); };
         const next = element('button', 'Older notifications'); next.disabled = !hasMore;
         next.onclick = () => { skip += 100; etag = undefined; poll(); }; panel.append(previous, next);
+        const dismiss = element('button', 'Close notifications'); dismiss.onclick = close; panel.append(dismiss);
+    }
+    function renderSettings() {
+        panel.replaceChildren(element('h2', 'Notification settings'));
+        const back = element('button', 'Back to notifications'); back.onclick = () => { settingsView = false; render(); }; panel.append(back);
         for (const channel of ['discord', 'in-app']) for (const enabled of [true, false]) {
             const prefs = element('button', (enabled ? 'Enable' : 'Mute') + ' non-critical ' + channel + ' notifications');
             prefs.onclick = async () => {
@@ -95,10 +105,15 @@
         if (forbidden() || !client()?.accessToken?.() || !client()?.getCurrentUserId?.()) { clear(); return false; }
         const nextIdentity = url('notifications') + ':' + client().getCurrentUserId();
         if (identity !== nextIdentity) { clear(); paused = false; identity = nextIdentity; }
-        if (button?.isConnected) return true;
-        const anchor = document.querySelector('.headerUserButton, [aria-controls="app-user-menu"]');
+        const anchor = [...document.querySelectorAll('.headerUserButton, [aria-controls="app-user-menu"]')].find(node => node.getClientRects().length && !node.closest('.videoOsdBottom'));
+        if (button?.isConnected && anchor?.parentElement) {
+            if (button.parentElement !== anchor.parentElement) anchor.parentElement.insertBefore(button, anchor);
+            return true;
+        }
         if (!anchor?.parentElement || document.querySelector('[data-account-hub-bell]')) return false;
-        button = element('button', 'Notifications'); button.dataset.accountHubBell = 'v1';
+        button?.remove(); panel?.remove();
+        button = element('button'); button.className = 'paper-icon-button-light headerButton'; button.dataset.accountHubBell = 'v1';
+        button.dataset.notificationsBell = 'v1';
         button.setAttribute('aria-label', 'Notifications'); button.setAttribute('aria-expanded', 'false');
         button.setAttribute('aria-live', 'polite');
         button.setAttribute('aria-controls', 'account-hub-inbox');
@@ -108,12 +123,26 @@
         panel.className = 'dialog paperList accountHubInbox';
         panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Notifications'); panel.tabIndex = -1;
         // Non-modal: no focus trap that could interfere with Jellyfin navigation.
-        Object.assign(panel.style, { position: 'fixed', right: '1rem', top: '4rem', zIndex: '2000',
-            maxHeight: '75vh', overflow: 'auto', maxWidth: '32rem', padding: '1rem' });
         panel.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-        button.onclick = () => { panel.hidden = !panel.hidden; button.setAttribute('aria-expanded', String(!panel.hidden)); if (!panel.hidden) panel.focus(); };
-        anchor.parentElement.insertBefore(button, anchor); document.body.append(panel);
+        button.onclick = () => {
+            panel.hidden = !panel.hidden; settingsView = false;
+            button.setAttribute('aria-expanded', String(!panel.hidden));
+            if (!panel.hidden) {
+                const rect = button.getBoundingClientRect();
+                panel.style.top = Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) + 'px';
+                panel.style.right = innerWidth <= 600 ? '0' : Math.max(8, innerWidth - rect.right) + 'px';
+                panel.style.width = innerWidth <= 600 ? '100vw' : 'min(26rem, calc(100vw - 2rem))';
+                etag = undefined; render(); panel.focus(); void poll();
+            }
+        };
+        anchor.parentElement.insertBefore(button, anchor); document.body.append(panel); paintCount(unreadCount); render();
         return true;
+    }
+    function paintCount(count) {
+        if (!button) return;
+        const icon = element('span', 'notifications'); icon.className = 'material-icons'; icon.setAttribute('aria-hidden', 'true');
+        const badge = element('span', count > 99 ? '99+' : String(count)); badge.className = 'notificationBadge'; badge.hidden = !count;
+        badge.setAttribute('aria-hidden', 'true'); button.replaceChildren(icon, badge); button.setAttribute('aria-label', count + ' unread notifications');
     }
     async function poll() {
         clearTimeout(timer);
@@ -127,7 +156,7 @@
             if (identity !== activeIdentity || generation !== activeGeneration || forbidden()) return;
             if (!response.unchanged) { rows = response.notifications; hasMore = response.hasMore ?? rows.length === 100; etag = response.etag; render(); }
             const count = await request('notifications/unread-count');
-            button.textContent = 'Notifications (' + count.count + ')'; button.setAttribute('aria-label', count.count + ' unread notifications');
+            unreadCount = count.count; paintCount(unreadCount);
             delay = 30000;
         } catch { delay = Math.min(delay * 2, 300000); }
         finally {
@@ -138,6 +167,9 @@
         if (!paused && generation === activeGeneration) timer = setTimeout(poll, delay);
     }
     const resume = () => { paused = false; poll(); };
+    document.addEventListener('pointerdown', event => {
+        if (panel && !panel.hidden && !panel.contains(event.target) && !button?.contains(event.target)) close();
+    }, true);
     window.addEventListener('focus', resume);
     window.addEventListener('hashchange', () => { clear(); resume(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(timer); else resume(); });
@@ -145,7 +177,7 @@
     let scheduled = false;
     new MutationObserver(() => {
         if (scheduled) return; scheduled = true;
-        requestAnimationFrame(() => { scheduled = false; if (!button?.isConnected && mount() && !timer) poll(); });
+        requestAnimationFrame(() => { scheduled = false; if (mount() && !timer && !inFlight) poll(); });
     }).observe(document.documentElement, { subtree: true, childList: true });
     poll();
 })();
