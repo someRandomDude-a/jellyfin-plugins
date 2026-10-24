@@ -131,9 +131,32 @@ const http = require('node:http');
             await page.locator(ready).first().waitFor();
             await page.waitForLoadState('networkidle');
             if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+            if (name === 'privateSyncPlay') {
+                await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
+                // Hold an actual refresh at dependency loading: network-idle or
+                // the previous Save button alone does not establish readiness.
+                let release;
+                const gate = new Promise(resolve => { release = resolve; });
+                const pending = page.waitForRequest(request => request.url().endsWith('/PrivateSyncPlay/admin/dependencies'));
+                const pattern = '**/PrivateSyncPlay/admin/dependencies';
+                await page.route(pattern, async route => { await gate; await route.continue(); });
+                await page.locator('#privateSyncPlaySettings').dispatchEvent('viewshow');
+                await pending;
+                try {
+                    assert.equal(await page.locator('#pspForm').getAttribute('aria-busy'), 'true');
+                    assert(await page.locator('.privateSyncPlaySettingsEditor').evaluate(e => e.disabled), 'SyncPlay draft must remain disabled during refresh');
+                } finally { release(); }
+                await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
+                await page.unroute(pattern);
+            }
             const help = page.locator('.suiteAdmin:visible .suiteHelpButton:visible').first(); await help.waitFor();
             for (const width of [320, 1280]) {
                 await page.setViewportSize({ width, height: 900 });
+                if (name === 'privateSyncPlay') await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
+                await page.waitForFunction(() => {
+                    const button = [...document.querySelectorAll('.suiteAdmin .suiteHelpButton')].find(e => e.getClientRects().length);
+                    return button && !button.matches(':disabled');
+                });
                 if (name === 'DiscordBridge') assert(await page.locator('.discordBridgePage:visible .checkboxContainer').evaluateAll(items => items.every(item => {
                     const label = item.querySelector('label'); return !label || label.getBoundingClientRect().bottom <= item.getBoundingClientRect().bottom + 2;
                 })), name + '/' + width + ': checkbox text escapes its row');

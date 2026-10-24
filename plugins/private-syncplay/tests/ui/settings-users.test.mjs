@@ -22,9 +22,9 @@ async function settings({users,config,failRead=false,uiFailures=0}={}) {
     w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
     w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
     w.ApiClient={getUrl:path=>'https://server.example/jellyfin/'+path,
-        getPluginConfiguration:async()=>{fixture.reads++;if(fixture.failRead)throw {status:403,responseText:'sensitive response'};return clone(fixture.server);},
+        getPluginConfiguration:async()=>{fixture.reads++;if(fixture.holdRead)await new Promise(resolve=>fixture.releaseRead=resolve);if(fixture.failRead)throw {status:403,responseText:'sensitive response'};return clone(fixture.server);},
         getUsers:async()=>users||[{Id:ids.carol,Name:'Carol'},{Id:ids.bob,Name:'Bob <img src=x onerror=alert(1)>',Policy:{IsDisabled:true}},{Id:ids.alice,Name:'Alice'}],
-        ajax:async()=>({PluginVersion:'0.1.3.0',ServerVersion:'12.3'}),
+        ajax:async options=>{if(fixture.holdHealth && options.url.endsWith('/admin/dependencies'))await new Promise(resolve=>fixture.releaseHealth=resolve);return {PluginVersion:'0.1.3.0',ServerVersion:'12.3'};},
         updatePluginConfiguration:async(_,next)=>{fixture.writes.push(clone(next));if(fixture.fail)throw new Error('Server rejected settings');
             if(fixture.hold)await new Promise(resolve=>fixture.resolve=resolve);fixture.server=clone(next);}};
     Object.defineProperty(d,'currentScript',{value:{src:'https://server.example/jellyfin/PrivateSyncPlay/assets/ui.js'}});
@@ -74,6 +74,22 @@ test('failed UI download does not poison the cached loader and retry loads the s
         assert.equal(p.w.privateSyncPlayUILoading,null);
         p.d.getElementById('pspRetrySettings').click();await tick();await tick();
         assert(p.d.getElementById('pspSave'));assert.equal(p.fixture.reads,1);
+    }finally{p.close();}
+});
+test('refresh stays busy and help stays disabled until configuration and dependency loading finish',async()=>{
+    const p=await settings();try {
+        const form=p.d.getElementById('pspForm'), oldEditor=form.querySelector('fieldset');
+        assert.equal(form.getAttribute('aria-busy'),'false');
+        p.fixture.holdRead=true;p.fixture.holdHealth=true;
+        p.d.getElementById('privateSyncPlaySettings').dispatchEvent(new p.w.Event('viewshow'));await tick();
+        assert.equal(form.getAttribute('aria-busy'),'true');assert(oldEditor.disabled);
+        p.fixture.releaseRead();await tick();await tick();
+        const nextEditor=form.querySelector('fieldset');assert.notEqual(nextEditor,oldEditor);assert(nextEditor.disabled);
+        const help=p.d.createElement('button');help.type='button';nextEditor.append(help);
+        assert(help.matches(':disabled'));assert.equal(form.getAttribute('aria-busy'),'true');
+        p.fixture.releaseHealth();await tick();await tick();
+        assert.equal(form.getAttribute('aria-busy'),'false');assert(!nextEditor.disabled);assert(!help.matches(':disabled'));
+        assert(!p.d.getElementById('pspSave').matches(':disabled'));
     }finally{p.close();}
 });
 test('select-all applies only to visible rows, reports hidden selections, and uses indeterminate checkbox state',async()=>{

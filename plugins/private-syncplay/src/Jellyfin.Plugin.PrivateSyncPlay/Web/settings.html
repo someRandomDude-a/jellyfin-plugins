@@ -222,6 +222,7 @@
         }
         config = nextConfig; form.replaceChildren(); rows = []; dirty = false; undo = null; discardUnlisted = false;
         editor = UI.element('fieldset', null, form, 'privateSyncPlaySettingsEditor');
+        editor.disabled = true;
         UI.element('legend', 'Watch party settings', editor, 'privateSyncPlayVisuallyHidden');
         Object.keys(bools).forEach(function (key) { var input = UI.field(bools[key], 'checkbox', config[key], editor, key); input.setAttribute('data-help',helpText[key]); input.onchange = function () { markDirty(false); }; });
         UI.select('Default creation mode', ['Public','Private'], enumValue(config.DefaultMode,['Public','Private']), editor, 'DefaultMode').onchange = function () { markDirty(false); };
@@ -252,6 +253,7 @@
     }
     function load() {
         if (loading || saving) return loading;
+        form.setAttribute('aria-busy', 'true');
         var previousEditor = editor;
         if (previousEditor) previousEditor.disabled = true;
         loading = readSettings().catch(function (error) {
@@ -266,7 +268,9 @@
             }
         }).finally(function () {
             if (previousEditor?.isConnected) previousEditor.disabled = false;
+            if (editor?.isConnected) editor.disabled = false;
             loading = null;
+            form.setAttribute('aria-busy', 'false');
         });
         return loading;
     }
@@ -293,7 +297,7 @@
             columns.forEach(function (column) { var value = row.fields[column.key].value; entry[column.key] = column.key === 'DefaultMode' && value === 'Inherit' ? null : value; });
             if (entry.DefaultMode != null || columns.slice(1).some(function (column) { return entry[column.key] !== 'Inherit'; })) next.Users.push(entry);
         });
-        saving = true; editor.disabled = true;
+        saving = true; editor.disabled = true; form.setAttribute('aria-busy', 'true');
         try {
             await ApiClient.updatePluginConfiguration(id, next); config = await ApiClient.getPluginConfiguration(id);
             rows.forEach(function(row) {
@@ -304,7 +308,7 @@
             UI.message(feedback, 'Saved. Guest permission changes revoke affected sessions.');
         }
         catch (error) { var mapped = UI.authError(error); UI.message(feedback, mapped?.code === 'two_factor_required' ? mapped.message : 'Save failed. Reload settings if another administrator changed them; check limits and allowed default modes.', true); }
-        finally { saving = false; editor.disabled = false; }
+        finally { saving = false; editor.disabled = false; form.setAttribute('aria-busy', 'false'); }
     });
     refresh();
 })();
