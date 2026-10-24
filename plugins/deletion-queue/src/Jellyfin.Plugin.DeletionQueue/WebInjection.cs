@@ -18,11 +18,14 @@ public sealed class WebInjection : IStartupFilter
     public static async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
         var path = context.Request.Path.Value;
+        var suffix = new[] { "/web/index.html", "/web/", "/web" }
+            .FirstOrDefault(value => path?.EndsWith(value, StringComparison.OrdinalIgnoreCase) == true);
         if (!HttpMethods.IsGet(context.Request.Method) ||
-            !(string.Equals(path, "/web", StringComparison.OrdinalIgnoreCase) ||
-              string.Equals(path, "/web/", StringComparison.OrdinalIgnoreCase) ||
-              string.Equals(path, "/web/index.html", StringComparison.OrdinalIgnoreCase)))
+            suffix is null)
         { await next(context); return; }
+        // Startup filters can run before Jellyfin moves BaseUrl into PathBase.
+        // Capture both portions before downstream middleware restores them.
+        var assetRoot = (context.Request.PathBase.Value ?? "") + path![..^suffix.Length] + "/DeletionQueue/assets/";
 
         var saved = new[] { "Accept-Encoding", "Range", "If-Range", "If-None-Match", "If-Modified-Since" }
             .ToDictionary(k => k, k => context.Request.Headers[k]);
@@ -45,7 +48,7 @@ public sealed class WebInjection : IStartupFilter
                     var end = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
                     if (end >= 0 && !html.Contains("id=\"dq-web-client\"", StringComparison.Ordinal))
                     {
-                        var root = HtmlEncoder.Default.Encode((context.Request.PathBase.Value ?? "") + "/DeletionQueue/assets/");
+                        var root = HtmlEncoder.Default.Encode(assetRoot);
                         var version = typeof(WebInjection).Assembly.GetName().Version!.ToString();
                         var tags = $"<link rel=\"stylesheet\" href=\"{root}integrated.css?v={version}\"><script id=\"dq-web-client\" defer src=\"{root}integrated.js?v={version}\"></script>";
                         bytes = Encoding.UTF8.GetBytes(html.Insert(end, tags));

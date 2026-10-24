@@ -74,6 +74,46 @@ const http = require('node:http');
         await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=privateSyncPlay');
         await page.waitForFunction(() => document.querySelector('#pspSave') || document.querySelector('#pspForm')?.textContent.includes('Could not load settings'));
         assert.equal(await page.locator('#pspSave').count(), 1, 'Private SyncPlay settings must load: ' + await page.locator('#pspForm').textContent());
+        const deletionUi = await page.evaluate(() => ({
+            injected: !!document.querySelector('#dq-web-client'), loaded: !!window.__deletionQueueWeb,
+            controls: document.querySelectorAll('.dq-bell, .dq-local-shortcut').length,
+            serverAddressType: typeof window.ApiClient?.serverAddress,
+            userMethod: typeof window.ApiClient?.getCurrentUserId,
+            headers: document.querySelectorAll('.headerRight, .MuiToolbar-root').length
+        }));
+        assert(deletionUi.controls > 0, 'Deletion Queue toolbar integration missing: ' + JSON.stringify(deletionUi));
+        // Installed injection + bounded DOM/API contracts; no deletion or real media access.
+        const deletionItem = '11111111111111111111111111111111';
+        let deletionPreviews = 0;
+        await page.route('**/DeletionQueue/targets/items/*/capabilities', route => route.fulfill({ json: { canPropose: true } }));
+        await page.route('**/DeletionQueue/targets/items/*/preview', route => {
+            deletionPreviews++;
+            return route.fulfill({ json: { title: 'Deletion UI fixture', kind: 'Movie', executionAvailable: false } });
+        });
+        await page.evaluate(id => {
+            history.replaceState(null, '', '#/details?id=' + id);
+            const fixture = document.createElement('section'); fixture.id = 'dq-installed-contract';
+            fixture.innerHTML = `<div class="mainDetailButtons"></div><div class="card" data-type="Movie" data-id="${id}"><div class="cardScalable">Fixture</div></div><div class="je-request-card"><div class="je-request-info"><span data-media-id="${id}">Enhanced available request fixture</span><div class="je-request-actions"></div></div></div>`;
+            document.body.append(fixture);
+        }, deletionItem);
+        for (const selector of ['#dq-installed-contract .mainDetailButtons .dq-media-action', '#dq-installed-contract .dq-request-action']) {
+            await page.locator(selector).waitFor({ state: 'attached' });
+            await page.locator(selector).dispatchEvent('click');
+            await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
+            await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
+        }
+        await page.locator('#dq-installed-contract .card').dispatchEvent('contextmenu');
+        await page.evaluate(() => {
+            const menu = document.createElement('div'); menu.className = 'actionSheet';
+            menu.innerHTML = '<div class="actionSheetScroller"></div>';
+            menu.addEventListener('click', () => { menu.dispatchEvent(new Event('close')); menu.remove(); });
+            document.body.append(menu);
+        });
+        await page.locator('.dq-context-action').waitFor({ state: 'attached' });
+        await page.locator('.dq-context-action').dispatchEvent('click');
+        await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
+        await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
+        assert.equal(deletionPreviews, 3, 'Detail, Enhanced request and right-click must each open a preview without proposing deletion');
         await page.goto(base.href.replace(/\/$/, '') + '/DiscordBridge/activity/');
         await page.getByRole('heading', { name: 'Jellyfin watch-party companion', exact: true }).waitFor();
         await page.waitForFunction(() => document.querySelector('[data-status]')?.textContent.includes('Activity unavailable'));

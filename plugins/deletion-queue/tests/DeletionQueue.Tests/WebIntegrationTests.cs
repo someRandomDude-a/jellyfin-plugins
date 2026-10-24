@@ -98,6 +98,18 @@ public sealed class WebIntegrationTests
     }
 
     [Theory]
+    [InlineData("/suite/web")]
+    [InlineData("/suite/web/")]
+    [InlineData("/suite/web/index.html")]
+    public async Task InjectorRecognizesBaseUrlBeforePathBaseMiddleware(string path)
+    {
+        var ctx = Context(path);
+        await WebInjection.InvokeAsync(ctx, async c => await c.Response.WriteAsync("<html><body>Native</body></html>"));
+        Assert.Contains("/suite/DeletionQueue/assets/integrated.js", Text(ctx));
+        Assert.Equal(1, Text(ctx).Split("id=\"dq-web-client\"").Length - 1);
+    }
+
+    [Theory]
     [InlineData("/web/main.js", "GET", 200, "text/html", "<body>native</body>")]
     [InlineData("/web/", "HEAD", 200, "text/html", "")]
     [InlineData("/web/", "GET", 500, "text/html", "<body>error</body>")]
