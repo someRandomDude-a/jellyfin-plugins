@@ -18,7 +18,11 @@ test('releases depend on selected reusable checks, never the full suite/matrix',
     assert(!release.includes('uses: ./.github/workflows/integration.yml'));
     assert(release.includes('needs: [verify-ref, selected-checks]'));
     assert(release.includes('-Plugin $env:PLUGIN'));
-    assert(release.includes('catalog-$env:PLUGIN'));
+    assert(release.includes('uses: ./.github/workflows/update-manifest.yml'));
+    assert(release.includes('needs: [verify-ref, publish]'));
+    const manifest=await read('.github/workflows/update-manifest.yml');
+    assert(manifest.includes('publish-combined-catalog.ps1'));
+    assert(manifest.includes('validate-release-set.ps1'));
     assert(!release.includes('continue-on-error'));
 });
 test('plugin test dispatch never runs the all-project solution or aggregate runner',async()=>{

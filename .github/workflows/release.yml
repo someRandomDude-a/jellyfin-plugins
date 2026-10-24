@@ -154,7 +154,7 @@ jobs:
     timeout-minutes: 10
     environment: plugin-release
     concurrency:
-      group: catalog-${{ needs.verify-ref.outputs.plugin }}
+      group: publish-${{ needs.verify-ref.outputs.plugin }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -175,7 +175,7 @@ jobs:
           PLUGIN: ${{ needs.verify-ref.outputs.plugin }}
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: ./scripts/validate-release-set.ps1 -Directory release -Tag $env:VERSION_TAG -ReleaseTag $env:RELEASE_TAG -Plugin $env:PLUGIN -Repository $env:RELEASE_REPOSITORY
-      - name: Publish immutable selected-plugin release and its own platform feeds
+      - name: Publish immutable selected-plugin release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,11 +189,11 @@ jobs:
           if ($LASTEXITCODE) { throw 'Upload failed; release remains draft' }
           gh release edit $env:RELEASE_TAG --draft=false --latest=false
           if ($LASTEXITCODE) { throw 'Could not publish uploaded release' }
-          foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
-            $branch = "catalog-$env:PLUGIN"
-            $refs = @(gh api "repos/$env:GH_REPO/git/matching-refs/heads/$branch" | ConvertFrom-Json | Where-Object { $_.ref -eq "refs/heads/$branch" })
-            if ($LASTEXITCODE) { throw 'Cannot read catalog parent' }
-            $parent = if ($refs.Count) { $refs[0].object.sha } else { '' }
-            ./plugins/private-syncplay/scripts/publish-catalog.ps1 -Repository $env:GH_REPO -Manifest "release/manifest-$runtime.json" -ParentCommit $parent -CatalogBranch $branch -CatalogPath "manifest-$runtime.json"
-          }
-          ./scripts/publish-combined-catalog.ps1 -Repository $env:GH_REPO -Directory release
+  update-manifest:
+    needs: [verify-ref, publish]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-manifest.yml
+    with:
+      plugin: ${{ needs.verify-ref.outputs.plugin }}
+      release_tag: ${{ needs.verify-ref.outputs.tag }}

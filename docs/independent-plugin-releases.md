@@ -12,6 +12,8 @@ Private SyncPlay's developer SDK keeps its independent 1.1.0.0 assembly identity
 
 ## Tags and publication
 
+Manifest publication is centralized in **Update plugin manifests** (`update-manifest.yml`). Every plugin release calls it as the final job, after publication succeeds. It downloads and validates the published immutable assets before merging architecture catalogs and legacy compatibility feeds. Run it manually with a plugin and existing published tag to retry catalog updates without rebuilding, creating tags or republishing packages. Replaying an older release preserves newer catalog history.
+
 **Combined installation feeds:** users add only `catalog/manifest-linux-x64.json`, `catalog/manifest-linux-arm64.json` or `catalog/manifest-win-x64.json` from this repository's raw GitHub URL. Independent releases also merge their entry into these shared feeds. All three files update in one non-forced commit; concurrent publications re-read/re-merge the latest parent (up to four attempts). Other plugins and existing versions are preserved; conflicting immutable version metadata is rejected. Existing per-plugin feeds remain updated for compatibility, but are no longer required for installation. These combined URLs become available after approved publication; standalone Notifications is not listed until implemented and published.
 
 Use the dedicated Actions task **Release Private SyncPlay**, **Release Account Hub**, **Release Discord Bridge** or **Release Deletion Queue**. Select its branch in **Run workflow** and enter only the version tag. These tasks call the shared release engine; the former plugin dropdown is no longer needed. The automatic relevant-commit/tag behavior described below is unchanged.

@@ -1,0 +1,79 @@
+name: Update plugin manifests
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        required: true
+        type: string
+      release_tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Published plugin to merge into catalogs'
+        required: true
+        type: choice
+        options: [private-syncplay, account-hub, discord-bridge, deletion-queue]
+      release_tag:
+        description: 'Existing published tag, for example private-syncplay/v0.2.0'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: plugin-release
+    concurrency:
+      group: manifest-${{ inputs.plugin }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and validate immutable published release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLUGIN: ${{ inputs.plugin }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ($env:PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue')) { throw 'Unknown plugin' }
+          if ($env:RELEASE_TAG -notmatch "^$([regex]::Escape($env:PLUGIN))/(v\d+\.\d+\.\d+)$") { throw 'Release tag must belong to selected plugin' }
+          $versionTag = $Matches[1]
+          $release = gh release view $env:RELEASE_TAG --json isDraft,tagName | ConvertFrom-Json
+          if ($LASTEXITCODE -or $release.isDraft -or $release.tagName -cne $env:RELEASE_TAG) { throw 'An existing published release is required' }
+          gh release download $env:RELEASE_TAG --dir release
+          if ($LASTEXITCODE) { throw 'Cannot download published release assets' }
+          ./scripts/validate-release-set.ps1 -Directory release -Tag $versionTag -ReleaseTag $env:RELEASE_TAG -Plugin $env:PLUGIN -Repository $env:GH_REPO
+      - name: Update combined architecture catalogs and compatibility feeds
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          ./scripts/publish-combined-catalog.ps1 -Repository $env:GH_REPO -Directory release
+          foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
+            $branch = "catalog-$env:PLUGIN"
+            $refs = @(gh api "repos/$env:GH_REPO/git/matching-refs/heads/$branch" | ConvertFrom-Json | Where-Object { $_.ref -eq "refs/heads/$branch" })
+            if ($LASTEXITCODE) { throw 'Cannot read compatibility catalog parent' }
+            $parent = if ($refs.Count) { $refs[0].object.sha } else { '' }
+            $manifest = "release/manifest-$runtime.json"
+            if ($parent) {
+              $tree = gh api "repos/$env:GH_REPO/git/trees/${parent}?recursive=1" | ConvertFrom-Json
+              if ($LASTEXITCODE -or $tree.truncated) { throw 'Cannot inspect compatibility catalog tree' }
+              $file = @($tree.tree | Where-Object path -eq "manifest-$runtime.json")
+              if ($file.Count) {
+                $blob = gh api "repos/$env:GH_REPO/git/blobs/$($file[0].sha)" | ConvertFrom-Json
+                if ($LASTEXITCODE -or $blob.encoding -ne 'base64') { throw 'Cannot read compatibility history' }
+                [IO.File]::WriteAllBytes('previous.json', [Convert]::FromBase64String($blob.content))
+                ./scripts/merge-plugin-catalog.ps1 -Incoming $manifest -Previous previous.json -Output merged.json
+                $manifest = 'merged.json'
+              }
+            }
+            ./plugins/private-syncplay/scripts/publish-catalog.ps1 -Repository $env:GH_REPO -Manifest $manifest -ParentCommit $parent -CatalogBranch $branch -CatalogPath "manifest-$runtime.json"
+          }
