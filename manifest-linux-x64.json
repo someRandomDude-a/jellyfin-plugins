@@ -84,24 +84,6 @@
     ]
   },
   {
-    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
-    "name": "Notifications",
-    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "timestamp": "2026-10-24T23:36:46.8418801Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-linux-x64.zip",
-        "version": "0.1.5.0",
-        "targetAbi": "12.3.0.0",
-        "checksum": "7cfd48385cabc244105b766fb44982d7",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits."
-      }
-    ]
-  },
-  {
     "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
     "name": "Account Hub",
     "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
@@ -182,6 +164,24 @@
         "timestamp": "2026-10-24T17:52:14.4843429Z",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/PrivateSyncPlay-0.1.0.0-linux-x64.zip",
         "checksum": "bfef809f32dce4b0d80de86ab141d9bf"
+      }
+    ]
+  },
+  {
+    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
+    "name": "Notifications",
+    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "timestamp": "2026-10-24T23:36:46.8418801Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-linux-x64.zip",
+        "version": "0.1.5.0",
+        "targetAbi": "12.3.0.0",
+        "checksum": "7cfd48385cabc244105b766fb44982d7",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits."
       }
     ]
   }

@@ -84,24 +84,6 @@
     ]
   },
   {
-    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
-    "name": "Notifications",
-    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "targetAbi": "12.3.0.0",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "version": "0.1.5.0",
-        "checksum": "0e0704a7bf9e195c51aa96ac561eae77",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-win-x64.zip",
-        "timestamp": "2026-10-24T23:36:33.7013471Z"
-      }
-    ]
-  },
-  {
     "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
     "name": "Account Hub",
     "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
@@ -182,6 +164,24 @@
         "timestamp": "2026-10-24T17:52:05.5392001Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "targetAbi": "12.2.0.0"
+      }
+    ]
+  },
+  {
+    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
+    "name": "Notifications",
+    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.1.5.0",
+        "checksum": "0e0704a7bf9e195c51aa96ac561eae77",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-win-x64.zip",
+        "timestamp": "2026-10-24T23:36:33.7013471Z"
       }
     ]
   }
