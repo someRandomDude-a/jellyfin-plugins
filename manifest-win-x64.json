@@ -9,6 +9,14 @@
     "versions": [
       {
         "targetAbi": "12.3.0.0",
+        "checksum": "c0bfbe59dae54d10558f160d65c92b29",
+        "version": "0.1.3.0",
+        "timestamp": "2026-10-24T21:00:44.9623287Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.3/AccountHub-0.1.3.0-win-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits."
+      },
+      {
+        "targetAbi": "12.3.0.0",
         "timestamp": "2026-10-24T20:51:25.0596824Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-win-x64.zip",
