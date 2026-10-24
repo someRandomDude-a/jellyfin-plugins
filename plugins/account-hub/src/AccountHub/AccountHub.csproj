@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Jellyfin.Plugin.AccountHub</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeWebStyles.cs" Link="NativeWebStyles.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/DependencyHealth.cs" Link="DependencyHealth.cs" />
+    <ProjectReference Include="../AccountHub.Core/AccountHub.Core.csproj" />
+    <ProjectReference Include="../../../../shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
+    <ProjectReference Include="../../../../modules/security/src/AccountHub.Security/AccountHub.Security.csproj" />
+    <ProjectReference Include="../../../../modules/notifications/src/AccountHub.Notifications/AccountHub.Notifications.csproj" />
+    <ProjectReference Include="../../../../modules/user-management/src/Jellyfin.Plugin.UserManager/Jellyfin.Plugin.UserManager.csproj" />
+    <ProjectReference Include="../../../../shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Common" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" ExcludeAssets="runtime" />
+    <EmbeddedResource Include="Configuration/configPage.html" LogicalName="AccountHub.Configuration.configPage.html" />
+    <EmbeddedResource Include="Web/*" LogicalName="AccountHub.Web.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../../../modules/security/web/security-client.mjs" LogicalName="AccountHub.Web.security-client.mjs" />
+    <EmbeddedResource Include="../../../../modules/security/web/security-panel.mjs" LogicalName="AccountHub.Web.security-panel.mjs" />
+  </ItemGroup>
+</Project>

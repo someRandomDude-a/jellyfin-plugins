@@ -1,0 +1,114 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { JSDOM } from 'jsdom';
+
+const directory = new URL('../../src/Jellyfin.Plugin.PrivateSyncPlay/Web/', import.meta.url);
+const source = await readFile(new URL('ui.js', directory), 'utf8');
+function page() {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url:'https://party.example/web/', runScripts:'outside-only' });
+    const script = dom.window.document.createElement('script'); script.src='https://party.example/PrivateSyncPlay/assets/ui.js';
+    Object.defineProperty(dom.window.document, 'currentScript', { value:script });
+    dom.window.eval(source);
+    return dom;
+}
+test('buttons expose native skin hooks and let skin CSS own appearance', () => {
+    const dom = page(), { document, PrivateSyncPlayUI:UI } = dom.window;
+    const style = document.createElement('style'); style.textContent='.button-submit {background:rgb(10, 20, 30)}'; document.head.append(style);
+    const button = UI.button('Create', document.body, null, 'primary');
+    assert(button.classList.contains('emby-button')); assert(button.classList.contains('raised'));
+    assert.equal(button.getAttribute('is'),'emby-button');
+    assert.equal(button.querySelector('span').textContent,'Create');
+    assert.equal(button.getAttribute('style'),null);
+    assert.equal(dom.window.getComputedStyle(button).backgroundColor,'rgb(10, 20, 30)');
+    assert(UI.button('Revoke',document.body,null,'delete').classList.contains('button-delete'));
+    dom.window.close();
+});
+test('inputs have native containers, associated labels and focus state classes', () => {
+    const dom=page(), {document,PrivateSyncPlayUI:UI}=dom.window;
+    const input=UI.field('Name','text','Party',document.body);
+    assert(input.matches('.inputContainer > .emby-input'));
+    assert.equal(input.getAttribute('is'),'emby-input');
+    const label=input.parentNode.querySelector('.inputLabel'); assert.equal(label.htmlFor,input.id);
+    input.focus(); assert(label.classList.contains('inputLabelFocused'));
+    input.blur(); assert(label.classList.contains('inputLabelUnfocused'));
+    const select=UI.select('Visibility',['Public','Private'],'Private',document.body);
+    assert(select.matches('.selectContainer > .emby-select.emby-select-withcolor'));
+    assert.equal(select.value,'Private'); assert.equal(select.labels[0].textContent,'Visibility');
+    assert(select.parentNode.querySelector('.selectArrowContainer .selectArrow'));
+    dom.window.close();
+});
+test('checkbox structure matches native checked/disabled skin selectors', () => {
+    const dom=page(), {document,PrivateSyncPlayUI:UI}=dom.window;
+    const input=UI.field('Allow guests','checkbox',false,document.body);
+    assert(input.matches('.checkboxContainer .emby-checkbox-label > .emby-checkbox'));
+    assert(input.nextElementSibling.matches('.checkboxLabel'));
+    assert(input.nextElementSibling.nextElementSibling.matches('.checkboxOutline'));
+    input.labels[0].click(); assert.equal(input.checked,true);
+    input.disabled=true; input.labels[0].click(); assert.equal(input.checked,true);
+    dom.window.close();
+});
+test('dialogs and feedback use native classes and accessible naming', () => {
+    const dom=page(), {document,PrivateSyncPlayUI:UI}=dom.window;
+    const d=UI.dialog('Watch parties');
+    assert(d.dialog.matches('.dialog.formDialog'));
+    assert(d.content.matches('.formDialogContent > .dialogContentInner'));
+    assert.equal(document.getElementById(d.dialog.getAttribute('aria-labelledby')).textContent,'Watch parties');
+    UI.message(d.feedback,'Invalid code',true); assert.equal(d.feedback.getAttribute('role'),'alert');
+    assert(d.feedback.classList.contains('infoBanner'));
+    assert.equal(d.dialog.getAttribute('style'),null);
+    dom.window.close();
+});
+test('shared plugin CSS has no fixed palette, font, floating launcher or global control rules', async () => {
+    const css=await readFile(new URL('ui.css',directory),'utf8');
+    assert.doesNotMatch(css,/#[\da-f]{3,8}\b|rgba?\(|font-family\s*:|background(?:-color)?\s*:/i);
+    assert.doesNotMatch(css,/z-index/);
+    for(const [,selector,body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+        if(/position\s*:\s*fixed/.test(body)) assert.equal(selector.trim(),'.privateSyncPlayGuest #videoOsdPage','Only the standalone guest player fills its viewport; no floating app launcher');
+    const web=await readFile(new URL('web.js',directory),'utf8');
+    assert.doesNotMatch(web,/\balert\(|Object\.assign\([^)]*style/);
+    assert.match(web,/cloneNode\(false\)/);
+});
+test('party dialogs isolate typing and scrolling from player shortcuts without cancelling default input behavior',()=>{
+    const dom=page(), w=dom.window, {document,PrivateSyncPlayUI:UI}=w;
+    try {
+        const d=UI.dialog('Invitation');d.dialog.setAttribute('open','');
+        const field=UI.field('Party name','text','',d.content);
+        let playerKeys=0,playerWheels=0,commands=0,targetKeys=0;
+        document.addEventListener('keydown',()=>playerKeys++);document.addEventListener('keyup',()=>playerKeys++);
+        document.addEventListener('wheel',()=>playerWheels++);
+        w.addEventListener('command',()=>commands++);
+        field.addEventListener('keydown',()=>targetKeys++);
+        for(const key of ['m','f',' ','ArrowUp','ArrowDown','Tab','Escape']){
+            const event=new w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});
+            field.dispatchEvent(event);assert(!event.defaultPrevented,'Typing, browser focus/navigation and escape must retain their defaults');
+            field.dispatchEvent(new w.KeyboardEvent('keyup',{key,bubbles:true}));
+        }
+        const wheel=new w.WheelEvent('wheel',{deltaY:80,bubbles:true,cancelable:true});
+        d.content.dispatchEvent(wheel);assert(!wheel.defaultPrevented,'Scrolling remains a normal browser action');
+        assert.equal(playerKeys,0);assert.equal(playerWheels,0);assert.equal(targetKeys,7);
+        for(const target of [field,document.body,w]){
+            const command=new w.CustomEvent('command',{detail:{command:'togglemute'},bubbles:true,cancelable:true});
+            target.dispatchEvent(command);assert(command.defaultPrevented,'Native inputManager must see the command as handled');
+        }
+        assert.equal(commands,0);
+        const nested=UI.dialog('Confirm');nested.dialog.setAttribute('open','');d.dialog.remove();
+        assert(!windowDispatch('volumeup'));
+        nested.dialog.remove();assert(windowDispatch('togglemute'));assert.equal(commands,1);
+        document.body.dispatchEvent(new w.KeyboardEvent('keydown',{key:'m',bubbles:true}));assert.equal(playerKeys,1);
+        function windowDispatch(command){return w.dispatchEvent(new w.CustomEvent('command',{detail:{command},cancelable:true}));}
+    } finally {dom.window.close();}
+});
+test('guest player and settings page retain native hooks without loading the normal app', async () => {
+    const html=await readFile(new URL('guest.html',directory),'utf8');
+    const dom=new JSDOM(html);
+    assert(dom.window.document.querySelector('button.emby-button.button-submit'));
+    assert(dom.window.document.querySelector('.mdl-slider-container .mdl-slider'));
+    assert(dom.window.document.querySelector('link[href="../Branding/Css"]'));
+    assert.doesNotMatch(html,/<style|style=|main\.jellyfin.*\.js|ApiClient/);
+    const settings=await readFile(new URL('settings.html',directory),'utf8');
+    const settingsDom=new JSDOM(settings); const script=settingsDom.window.document.querySelector('script').textContent;
+    assert.doesNotThrow(()=>new Function(script));
+    assert.match(script,/UI\.field/); assert.match(script,/UI\.select/); assert.match(script,/UI\.button/);
+    dom.window.close(); settingsDom.window.close();
+});

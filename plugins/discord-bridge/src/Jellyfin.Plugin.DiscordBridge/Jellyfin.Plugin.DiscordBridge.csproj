@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Version>0.2.0</Version></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeWebStyles.cs" Link="NativeWebStyles.cs" />
+    <Compile Include="../../../../shared/Jellyfin.StorageSafety/InstallationIdentity.cs" Link="InstallationIdentity.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeJsonBodyFilter.cs" Link="NativeJsonBodyFilter.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/DependencyHealth.cs" Link="DependencyHealth.cs" />
+    <ProjectReference Include="../../../../shared/Jellyfin.Security.Api/Jellyfin.Security.Api.csproj" />
+    <ProjectReference Include="../../../../shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.2.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Discord.Net" Version="3.20.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.11" ExcludeAssets="runtime" />
+    <ProjectReference Include="../../../../shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
+    <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" />
+    <ProjectReference Include="../../../private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay.Api/Jellyfin.Plugin.PrivateSyncPlay.Api.csproj" GlobalPropertiesToRemove="Version" />
+    <EmbeddedResource Include="Web/*" />
+    <EmbeddedResource Include="../../activity/dist/activity.js" LogicalName="Jellyfin.Plugin.DiscordBridge.Web.activity.bundle.js" />
+    <EmbeddedResource Include="../../activity/dist/embedded-app-sdk.LICENSE" LogicalName="Jellyfin.Plugin.DiscordBridge.Web.embedded-app-sdk.LICENSE" />
+    <ActivitySource Include="../../activity/src/*.mjs;../../activity/build.mjs;../../activity/package.json;../../activity/package-lock.json" />
+  </ItemGroup>
+  <Target Name="BuildActivity" BeforeTargets="PrepareForBuild" Inputs="@(ActivitySource)" Outputs="$(MSBuildProjectDirectory)/../../activity/dist/activity.js;$(MSBuildProjectDirectory)/../../activity/dist/embedded-app-sdk.LICENSE;$(MSBuildProjectDirectory)/../../activity/dist/activity-inventory.json">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../activity" Command="npm ci --ignore-scripts" />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../activity" Command="npm run build" />
+  </Target>
+</Project>

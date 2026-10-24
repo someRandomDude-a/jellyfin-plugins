@@ -1,0 +1,96 @@
+name: Disposable Jellyfin integration
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+      package_tag:
+        type: string
+        default: v0.2.0
+  workflow_dispatch:
+    inputs:
+      cloudflare_tunnel:
+        description: 'Run accountless public HTTPS smoke against a harmless disposable sentinel (no Discord/Jellyfin credentials)'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '23 5 * * 1'
+permissions:
+  contents: read
+jobs:
+  cloudflare-tunnel:
+    if: github.event_name == 'workflow_dispatch' && inputs.cloudflare_tunnel
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Secret-free tunnel predicates and cleanup contracts
+        run: node --test scripts/discord-tunnel.test.mjs scripts/discord-acceptance.test.mjs
+      - name: Real temporary Cloudflare HTTPS with normal TLS validation
+        run: node scripts/discord-tunnel-smoke.mjs --allow-public-disposable-tunnel
+      - name: Remove only owned test tunnel/sentinel containers after cancellation or failure
+        if: always()
+        shell: bash
+        run: |
+          docker ps -aq --filter 'label=jellyfin.suite.tunnel-test=true' | xargs -r docker rm -f
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - shell: pwsh
+        env:
+          PACKAGE_TAG: ${{ inputs.package_tag || 'v0.2.0' }}
+        run: ./scripts/package.ps1 -Tag $env:PACKAGE_TAG -Runtime linux-x64 -OutputDirectory artifacts/suite-packages
+      - name: Verify every independent/plugin combination with and without native Security
+        run: |
+          curl --fail --location --output "${{ runner.temp }}/security-jf12.zip" https://github.com/ZL154/JellyfinSecurity/releases/download/v2.6.4/Jellyfin.Plugin.TwoFactorAuthv2.6.4.0-jf12.zip
+          node scripts/test-combinations.mjs --packages=artifacts/suite-packages --security="${{ runner.temp }}/security-jf12.zip" --output=artifacts/suite-combinations --jobs=2
+      - name: Verify library additions and fresh real TOTP for combined Hub and standalone Discord
+        run: |
+          node scripts/integration.mjs --packages=artifacts/suite-packages --security="${{ runner.temp }}/security-jf12.zip" --proof --library
+          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord --security="${{ runner.temp }}/security-jf12.zip" --proof --library
+          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=hub --library
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-combination-results
+          path: artifacts/suite-combinations
+  syncplay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: plugins/private-syncplay
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: dotnet build examples/WatchPartyConsumer -c Release
+      - shell: pwsh
+        run: ./scripts/package.ps1
+      - run: node scripts/validate-package.mjs
+      - run: node scripts/integration.mjs "${{ runner.temp }}/private-syncplay-integration" --with-consumer --install-from-catalog

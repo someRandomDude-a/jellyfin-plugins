@@ -1,0 +1,18 @@
+{
+  "apiVersion": "1",
+  "operation": "audit.publish",
+  "requestId": "8e7a9c53-472b-4237-9495-54082ddbf9a7",
+  "payload": {
+    "schemaVersion": 1,
+    "eventId": "c4d93622-acd5-407a-b9ed-b0fa7f911e64",
+    "source": "deletion-queue",
+    "eventType": "deletion.proposal.created",
+    "actorUserId": null,
+    "subjectType": "proposal",
+    "subjectId": "example-proposal",
+    "outcome": "success",
+    "occurredAt": "2026-10-22T12:00:00Z",
+    "correlationId": null,
+    "metadata": { "proposalId": "example-proposal" }
+  }
+}

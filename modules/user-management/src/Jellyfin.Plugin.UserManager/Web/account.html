@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>My account - User Manager</title>
+    <script>
+        (function () {
+            var path = location.pathname || '/';
+            var index = path.toLowerCase().indexOf('/usermanager');
+            var prefix = index >= 0 ? path.substring(0, index) : '';
+            document.write('<base href="' + location.origin + prefix + '/UserManager/">');
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="um-shell">
+    <header class="um-topbar">
+        <div class="um-brand">
+            <h1>My account</h1>
+            <span>Jellyfin User Manager</span>
+        </div>
+        <div class="um-actions">
+            <a class="um-btn" id="back-to-jellyfin" href="#">Back to Jellyfin</a>
+            <a class="um-btn primary" id="admin-link" href="#" hidden>Admin dashboard</a>
+        </div>
+    </header>
+
+    <main id="account-main">
+        <div class="um-card"><div class="um-loading"><span class="um-spinner"></span>Loading your account…</div></div>
+    </main>
+
+    <div class="um-footer">Passwords are stored and verified by Jellyfin. This plugin never stores your password.</div>
+</div>
+
+<script src="common.js"></script>
+<script src="account.js"></script>
+</body>
+</html>

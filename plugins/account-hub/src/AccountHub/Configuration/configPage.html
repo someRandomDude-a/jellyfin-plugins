@@ -1,0 +1,15 @@
+<div data-role="page" class="page type-interior accountHubPage">
+  <div data-role="content"><div class="content-primary">
+    <h1>Account Hub</h1>
+    <p class="hubMessage" role="status" aria-live="polite"></p>
+    <nav class="hubTabs" role="tablist" aria-label="Account Hub sections"></nav>
+    <section class="hubContent" aria-label="Account Hub workspace"></section>
+  </div></div>
+  <script>
+    (() => {
+      const page = document.querySelector('.accountHubPage'); if (!page || page.dataset.initialized) return; page.dataset.initialized = 'true';
+      if (!document.querySelector('[data-account-hub-layout]')) { const style = document.createElement('link'); style.rel = 'stylesheet'; style.href = ApiClient.getUrl('AccountHub/assets/workspace.css'); style.dataset.accountHubLayout = 'v1'; document.head.append(style); }
+      import(ApiClient.getUrl('AccountHub/assets/workspace.js')).then(module => module.mountWorkspace(page, ApiClient)).catch(() => { page.querySelector('.hubMessage').textContent = 'Account Hub assets could not be loaded. Check server version and plugin health.'; });
+    })();
+  </script>
+</div>

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/AccountHub.Security/AccountHub.Security.csproj" />
+  <Project Path="tests/AccountHub.Security.Tests/AccountHub.Security.Tests.csproj" />
+</Solution>

@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AccountHub.Lifecycle</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.UserManager</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <DebugType>embedded</DebugType>
+    <!-- Plugins are libraries: copy NuGet dependencies into the output so they can ship in the zip. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Retained legacy sources are not discoverable controllers/plugins/bot workers. -->
+    <Compile Remove="Api/**/*.cs;Discord/**/*.cs;FileTransformation/**/*.cs;Plugin.cs;PluginServiceRegistrator.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Supplied by the Jellyfin server at runtime. -->
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <!-- Jellyfin 12 ships Microsoft.Data.Sqlite (and its native provider), so reuse it. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" ExcludeAssets="runtime" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\*.html" />
+    <EmbeddedResource Include="Web\*.js" />
+    <EmbeddedResource Include="Web\*.css" />
+  </ItemGroup>
+
+</Project>

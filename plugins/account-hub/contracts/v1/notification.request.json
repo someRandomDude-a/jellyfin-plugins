@@ -1,0 +1,21 @@
+{
+  "apiVersion": "1",
+  "operation": "notifications.publish",
+  "requestId": "1a05845a-cde4-4bbd-b27b-9ec56d952a66",
+  "payload": {
+    "schemaVersion": 1,
+    "eventId": "c7c1695d-0098-401e-ae0a-92e89250bd2c",
+    "source": "deletion-queue",
+    "type": "proposal.updated",
+    "severity": "info",
+    "title": "Deletion proposal updated",
+    "body": "Review your private proposal status.",
+    "link": "#/configurationpage?name=DeletionQueue",
+    "audience": ["a3672542-3cb4-4443-bec3-e914a3466edf"],
+    "adminOnly": false,
+    "dedupeKey": "deletionqueue:notice:example-notice",
+    "occurredAt": "2026-10-22T12:00:00Z",
+    "correlationId": null,
+    "metadata": { "proposalId": "example-proposal" }
+  }
+}

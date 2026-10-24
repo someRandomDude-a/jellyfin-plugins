@@ -1,0 +1,11 @@
+{
+  "name": "jellyfin-discord-activity",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": { "@discord/embedded-app-sdk": "2.5.0" },
+  "devDependencies": { "esbuild": "0.28.2", "jsdom": "26.1.0" }
+}

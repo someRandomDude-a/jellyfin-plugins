@@ -1,0 +1,7 @@
+<Project>
+  <!-- Jellyfin 12.2's provider API. One SQLitePCL family in combined test hosts. -->
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Data.Sqlite;Microsoft.Data.Sqlite.Core;Microsoft.EntityFrameworkCore.Sqlite;Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageReference Update="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+  </ItemGroup>
+</Project>

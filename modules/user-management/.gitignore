@@ -1,0 +1,13 @@
+bin/
+obj/
+artifacts/
+dist/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+coverage/
+docker/config/
+docker/data/
+manifest.local.json

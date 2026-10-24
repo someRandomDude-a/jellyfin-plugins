@@ -1,0 +1,23 @@
+name: Security adapter
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: dotnet test AccountHub.Security.slnx -c Release
+      - run: node --test web/security-client.test.mjs
+      - run: node --check web/security-panel.mjs
+      - name: Fail closed on upstream release drift
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/verify-security-baseline.ps1

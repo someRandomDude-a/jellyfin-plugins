@@ -1,0 +1,135 @@
+name: Publish plugin packages
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing immutable vX.Y.Z tag to release'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: plugin-release
+  cancel-in-progress: false
+jobs:
+  verify-ref:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ref.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - id: ref
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Expected vX.Y.Z tag' }
+          git fetch --tags --force
+          if ($LASTEXITCODE) { throw 'Tag fetch failed' }
+          $tagCommit = git rev-parse "$($env:RELEASE_TAG)^{commit}"
+          if ($LASTEXITCODE -or $tagCommit -ne (git rev-parse HEAD)) { throw 'Checkout must match existing tag' }
+          "tag=$($env:RELEASE_TAG)" >> $env:GITHUB_OUTPUT
+  tests:
+    needs: verify-ref
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ needs.verify-ref.outputs.tag }}
+  installed-integration:
+    needs: verify-ref
+    uses: ./.github/workflows/integration.yml
+    with:
+      ref: ${{ needs.verify-ref.outputs.tag }}
+      package_tag: ${{ needs.verify-ref.outputs.tag }}
+  package:
+    needs: [verify-ref, tests, installed-integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [linux-x64, linux-arm64, win-x64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-ref.outputs.tag }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/discord-bridge/activity
+      - name: Preserve previously published catalog history
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          New-Item -ItemType Directory -Path previous | Out-Null
+          $releases = gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'Cannot read release history' }
+          if ($releases.Count) {
+            gh release download $releases[0].tagName --pattern "manifest-$env:RUNTIME.json" --dir previous
+            if ($LASTEXITCODE) { throw 'Cannot download published catalog; refusing to discard history' }
+          } else { '[]' | Set-Content "previous/manifest-$env:RUNTIME.json" }
+      - name: Build, validate and checksum immutable packages
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          ./scripts/package.ps1 -Tag $env:RELEASE_TAG -Repository $env:RELEASE_REPOSITORY -Runtime $env:RUNTIME -OutputDirectory artifacts/packages -PreviousManifest "previous/manifest-$env:RUNTIME.json"
+          Copy-Item artifacts/packages/manifest.json "artifacts/packages/manifest-$env:RUNTIME.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.runtime }}
+          path: |
+            artifacts/packages/*.zip
+            artifacts/packages/*.sha256
+            artifacts/packages/*.cdx.json
+            artifacts/packages/*.licenses.json
+            artifacts/packages/manifest-${{ matrix.runtime }}.json
+  publish:
+    needs: [verify-ref, package]
+    runs-on: ubuntu-latest
+    environment: plugin-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-ref.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: release
+          merge-multiple: true
+      - name: Validate merged release set before any GitHub release write
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/validate-release-set.ps1 -Directory release -Tag $env:RELEASE_TAG -Repository $env:RELEASE_REPOSITORY
+      - name: Publish packages and platform catalogs to this repository
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+        run: |
+          Copy-Item release/manifest-linux-x64.json release/manifest.json
+          gh release create $env:RELEASE_TAG --verify-tag --draft --title "Jellyfin plugins $env:RELEASE_TAG" --notes 'Integration preview packages for Account Hub, Discord Bridge, DeletionQueue and Private SyncPlay. Security/Notifications are embedded modules, not installable plugins. Review documented acceptance limits before using these packages.'
+          if ($LASTEXITCODE) { throw 'Release exists or could not be created; immutable assets will not be overwritten' }
+          gh release upload $env:RELEASE_TAG (Get-ChildItem release -File | ForEach-Object FullName)
+          if ($LASTEXITCODE) { throw 'Asset upload failed; release remains a draft' }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE) { throw 'Could not publish fully uploaded release' }

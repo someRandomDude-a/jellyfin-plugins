@@ -1,0 +1,41 @@
+# State, integrity failures and backups
+
+## Account Hub integration upgrade
+
+The integration update appends an authenticated migration from snapshot payload format 1 to 2. The strict SQL journal schema remains version 1; no outbox table or second database is added. Keys, existing ciphertext/history, consent, claims and local notices are retained; old notices are not forwarded to Hub. Earlier binaries reject format 2. A binary-only downgrade is unsupported: use a stopped, consistent pre-upgrade database/key/seal backup, with automatic deletion disabled and Seerr outcomes reviewed. Never mix state/head/keys from different backups. See [the adapter/outbox handoff](account-hub-v1.md) for delivery ownership, limits and combined-system gates.
+
+## Storage
+
+The plugin stores its state under `IApplicationPaths.DataPath/deletion-queue` (usually `/config/data/deletion-queue` in Docker). This is independent of the versioned plugin binary directory.
+
+- `queue.sqlite3` and any SQLite WAL/SHM files: append-only encrypted authenticated events and snapshots.
+- `keys.json`: installation identity and master key; keep confidential. Purpose-specific encryption/seal keys are derived from it.
+- `head.seal`: authenticated committed local journal head.
+- Initialization markers and `writer.lock`: installation/one-writer safeguards.
+
+All plugin settings, including the Seerr key, live inside encrypted state. The standard Jellyfin plugin-configuration loader is deliberately not used because its reset-on-deserialization-error behavior is inappropriate for authorization state.
+
+## On integrity failure
+
+1. Stop Jellyfin and any test/proxy process using this instance.
+2. Preserve the entire state directory and server logs, including seemingly corrupt or temporary files. Do not edit SQL, overwrite seals, regenerate keys or truncate the journal.
+3. Keep execution unavailable. An authenticated DB commit with an older/missing head seal is still a mismatch; the plugin does not silently pick a side.
+4. Investigate using copies. This release deliberately provides no “repair/reset/trust everything” button or generic recovery mutation API.
+
+Missing keys or database files in an initialized installation are not a fresh installation. Startup will not recreate them. Uninstalling the plugin does not remove its retained state.
+
+## Stopped, consistent backups only
+
+1. Stop Jellyfin completely; ensure no worker/request remains in flight.
+2. Back up the **entire** plugin state directory, plugin binaries/configuration and a manifest of the stopped set. Use Jellyfin's supported procedure for any separate Jellyfin configuration backup; the plugin never writes Jellyfin databases.
+3. Keep the backup/key material confidential and access-restricted.
+4. Restore only a complete consistent set while stopped. Do not restore an individual key, a single DB file or an older head checkpoint into newer authorization history.
+5. Restart and inspect the elevated integrity/coverage status. A collection gap starts warm-up again; it is never treated as no viewer activity.
+
+**Accepted limitation:** the local journal/head pair cannot detect a wholesale rollback of a complete consistent database/key/seal backup. Execution now relies on these local seals without an independent witness. Disable automatic deletion before backup/restore and manually compare against Seerr outcomes. Never use an old backup to retry an attempt; it can replay old authorization/claims. Do not claim the existing local seal prevents whole-installation rollback.
+
+## Claimed/uncertain outcomes
+
+The tested execution domain consumes a claim before sending a destructive request. A timeout/crash/ambiguous response never releases that claim for another deletion. Recovery may inspect the pinned files only; file absence must be verified and persisted as a separate FilesDeleted checkpoint before monitoring cleanup or completion.
+
+The admin backlog exposes **Recheck Seerr outcome (never resend deletion)** for uncertain proposals. This explicit authenticated POST reads Seerr status and may record FilesDeleted; it never dispatches deletion. The scheduler separately completes a persisted FilesDeleted checkpoint. Never remove claims/history or create an overlapping proposal to work around uncertainty.

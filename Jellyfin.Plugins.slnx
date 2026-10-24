@@ -1,0 +1,26 @@
+<Solution>
+  <Project Path="shared/AccountHub.Api/AccountHub.Api.csproj" />
+  <Project Path="shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
+  <Project Path="shared/Jellyfin.Security.Api/Jellyfin.Security.Api.csproj" />
+  <Project Path="shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
+  <Project Path="plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Jellyfin.Plugin.DiscordBridge.csproj" />
+  <Project Path="plugins/discord-bridge/tests/DiscordBridge.Tests/DiscordBridge.Tests.csproj" />
+  <Project Path="plugins/account-hub/src/AccountHub/AccountHub.csproj" />
+  <Project Path="plugins/account-hub/src/AccountHub.Core/AccountHub.Core.csproj" />
+  <Project Path="modules/security/src/AccountHub.Security/AccountHub.Security.csproj" />
+  <Project Path="modules/notifications/src/AccountHub.Notifications/AccountHub.Notifications.csproj" />
+  <Project Path="modules/user-management/src/Jellyfin.Plugin.UserManager/Jellyfin.Plugin.UserManager.csproj" />
+  <Project Path="plugins/private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay/Jellyfin.Plugin.PrivateSyncPlay.csproj" />
+  <Project Path="plugins/private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay.Api/Jellyfin.Plugin.PrivateSyncPlay.Api.csproj" />
+  <Project Path="plugins/private-syncplay/src/PrivateSyncPlay.IntegrationStore/PrivateSyncPlay.IntegrationStore.csproj" />
+  <Project Path="plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Jellyfin.Plugin.DeletionQueue.csproj" />
+  <Project Path="plugins/deletion-queue/src/DeletionQueue.Infrastructure/DeletionQueue.Infrastructure.csproj" />
+  <Project Path="plugins/deletion-queue/src/DeletionQueue.Core/DeletionQueue.Core.csproj" />
+  <Project Path="plugins/deletion-queue/tests/AccountHub.HostFixture/AccountHub.HostFixture.csproj" />
+  <Project Path="plugins/account-hub/tests/AccountHub.Tests/AccountHub.Tests.csproj" />
+  <Project Path="modules/security/tests/AccountHub.Security.Tests/AccountHub.Security.Tests.csproj" />
+  <Project Path="modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj" />
+  <Project Path="modules/user-management/tests/Jellyfin.Plugin.UserManager.Tests/Jellyfin.Plugin.UserManager.Tests.csproj" />
+  <Project Path="plugins/private-syncplay/tests/Jellyfin.Plugin.PrivateSyncPlay.Tests/Jellyfin.Plugin.PrivateSyncPlay.Tests.csproj" />
+  <Project Path="plugins/deletion-queue/tests/DeletionQueue.Tests/DeletionQueue.Tests.csproj" />
+</Solution>

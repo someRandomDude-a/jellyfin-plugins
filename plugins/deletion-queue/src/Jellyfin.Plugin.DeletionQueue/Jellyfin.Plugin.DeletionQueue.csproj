@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Jellyfin.Plugin.DeletionQueue</AssemblyName>
+    <Title>$(PluginDisplayName)</Title>
+    <AssemblyTitle>$(PluginDisplayName)</AssemblyTitle>
+    <Description>$(PluginDescription)</Description>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/DependencyHealth.cs" Link="DependencyHealth.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(PluginSdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(PluginSdkVersion)" ExcludeAssets="runtime" />
+    <ProjectReference Include="../DeletionQueue.Infrastructure/DeletionQueue.Infrastructure.csproj" />
+    <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" GlobalPropertiesToRemove="Version" />
+    <EmbeddedResource Include="Web/*" />
+    <AssemblyAttribute Include="System.Runtime.InteropServices.GuidAttribute">
+      <_Parameter1>$(PluginGuid)</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

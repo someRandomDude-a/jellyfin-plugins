@@ -1,0 +1,131 @@
+using System.Text;
+using System.Text.Json;
+using AccountHub.Api;
+using Microsoft.Data.Sqlite;
+
+namespace AccountHub.Notifications;
+
+public sealed class NotificationService(NotificationStore store, INotificationHost host, NotificationOptions options)
+{
+    public static readonly string[] Operations = ["hello", "health", "notifications.publish", "notifications.publishBatch", "audit.publish"];
+
+    public async Task<string> DispatchAsync(string json, CancellationToken ct, ProducerIdentity? producer = null, string? requiredOperation = null)
+    {
+        try
+        {
+            if (Encoding.UTF8.GetByteCount(json) > Contract.BatchLimit) throw new NotificationException("invalid_request", "Request too large", 413);
+            var request = JsonSerializer.Deserialize<Request>(json, Contract.Json);
+            if (request is null || request.ApiVersion != "1" || request.RequestId == Guid.Empty || request.Payload.ValueKind != JsonValueKind.Object)
+                throw new NotificationException("invalid_request", "Invalid v1 envelope");
+            if (requiredOperation is not null && request.Operation != requiredOperation && !(requiredOperation == "notifications.publish" && request.Operation == "notifications.publishBatch"))
+                throw new NotificationException("unauthorized", "Operation not permitted", 403);
+            object data;
+            switch (request.Operation)
+            {
+                case "hello": data = new { hostVersion = "0.1.0", apiVersion = "1", operations = Operations }; break;
+                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook" } }; break;
+                case "notifications.publish": data = await PublishAsync(request.Payload, ct, producer); break;
+                case "notifications.publishBatch":
+                    if (!request.Payload.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array || events.GetArrayLength() is < 1 or > 50)
+                        throw new NotificationException("invalid_request", "Batch requires 1-50 events");
+                    var results = new List<object>();
+                    foreach (var element in events.EnumerateArray())
+                    {
+                        var eventId = element.ValueKind == JsonValueKind.Object && element.TryGetProperty("eventId", out var id) ? id.ToString() : null;
+                        try { results.Add(new { eventId, result = Contract.Success(await PublishAsync(element, ct, producer)) }); }
+                        catch (NotificationException ex) { results.Add(new { eventId, result = Contract.Failure(ex.Code, ex.Message, ex.Status >= 500) }); }
+                        catch (JsonException) { results.Add(new { eventId, result = Contract.Failure("invalid_request", "Invalid event JSON") }); }
+                        catch (SqliteException) { results.Add(new { eventId, result = Contract.Failure("unavailable", "Storage unavailable", true) }); }
+                    }
+                    data = new { results }; break;
+                case "audit.publish":
+                    if (Encoding.UTF8.GetByteCount(request.Payload.GetRawText()) > Contract.EventLimit) throw new NotificationException("rejected", "Audit too large");
+                    var audit = request.Payload.Deserialize<AuditEvent>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing audit");
+                    Validation.Audit(audit, options, producer);
+                    data = await host.AppendAuditAsync(audit, ct); break;
+                default: return Contract.Serialize(Contract.Failure("unsupported_operation", "Unknown operation"));
+            }
+            return Contract.Serialize(Contract.Success(data));
+        }
+        catch (NotificationException ex) { return Contract.Serialize(Contract.Failure(ex.Code, ex.Message, ex.Status >= 500)); }
+        catch (JsonException) { return Contract.Serialize(Contract.Failure("invalid_request", "Invalid JSON")); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { return Contract.Serialize(Contract.Failure("unavailable", "Host unavailable", true)); }
+    }
+
+    private async Task<PublishResult> PublishAsync(JsonElement payload, CancellationToken ct, ProducerIdentity? producer)
+    {
+        Validation.Require(Encoding.UTF8.GetByteCount(payload.GetRawText()) <= Contract.EventLimit, "Event too large");
+        var entry = payload.Deserialize<NotificationEvent>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing event");
+        return await PublishAsync(entry, Validation.Hash(payload.GetRawText()), ct, producer);
+    }
+
+    public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null)
+    {
+        Validation.Event(entry, options, producer);
+        // Acknowledged events do not depend on today's directory/link/preferences availability.
+        if (store.TryDuplicate(entry, hash) is { } duplicate) return duplicate;
+        var audience = (entry.AdminOnly ? await host.AdministratorsAsync(ct) : entry.Audience).Distinct().ToArray();
+        Validation.Require(audience.Length <= options.MaxAudience, "Audience exceeds host limit");
+        var routes = store.Settings(false).Routes;
+        var fanout = new List<(Guid, bool, Route[], string?)>();
+        var publicRoutes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var user in audience)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!await host.UserExistsAsync(user, ct)) { if (entry.Type.StartsWith("library.", StringComparison.Ordinal)) continue; Validation.Require(false, "Unknown recipient"); }
+            if (!await host.CanAccessNotificationAsync(user, entry, ct)) continue;
+            if (entry.AdminOnly && !await host.IsAdministratorAsync(user, ct)) continue;
+            var prefs = store.Preferences(user);
+            var mandatory = entry.AdminOnly || entry.Severity == "critical";
+            var inbox = mandatory || Enabled(prefs, entry, "in-app", true);
+            var link = await host.DiscordLinkAsync(user, ct);
+            var selected = new List<Route>();
+            foreach (var route in routes.Where(r => Matches(r.Source, entry.Source) && Matches(r.Type, entry.Type)))
+            {
+                // Failure summaries remain local: never recursively fan out another delivery failure.
+                if (entry.Type == "notifications.delivery.failed" || (route.AdminOnly && !entry.AdminOnly)) continue;
+                if (route.DirectMessage)
+                {
+                    if (link is null || (!mandatory && !Enabled(prefs, entry, "discord", false))) continue;
+                    selected.Add(route with { Destination = link });
+                }
+                // Private user events NEVER enter shared channels or webhooks.
+                else if (entry.AdminOnly && route.AdminOnly && publicRoutes.Add(route.Id)) selected.Add(route);
+            }
+            fanout.Add((user, inbox, selected.ToArray(), link));
+        }
+        return store.Accept(entry, hash, fanout);
+    }
+    internal static bool Matches(string rule, string value) => rule == "*" || rule == value;
+    internal static bool Enabled(Preference[] prefs, NotificationEvent e, string channel, bool fallback) =>
+        prefs.Where(p => p.Channel == channel && Matches(p.Source, e.Source) && Matches(p.Type, e.Type))
+            .OrderByDescending(p => (p.Source != "*" ? 1 : 0) + (p.Type != "*" ? 1 : 0)).Select(p => (bool?)p.Enabled).FirstOrDefault() ?? fallback;
+
+    public async Task SaveSettingsAsync(Settings settings, Guid actor, CancellationToken ct)
+    {
+        if (settings.Routes is null || settings.Routes.Any(r => r is null || r.Id is null || r.Source is null || r.Type is null || r.Destination is null))
+            throw new NotificationException("invalid_request", "Missing route fields");
+        Validation.Require(settings.NotificationDays is >= 7 and <= 365 && settings.Routes.Length <= 50, "Invalid settings limits");
+        Validation.Require(settings.Routes.Select(r => r.Id).Distinct().Count() == settings.Routes.Length, "Duplicate route ID");
+        var previous = store.Settings(false);
+        var routes = settings.Routes.Select(r =>
+        {
+            Validation.Require(r.Id.Length is > 0 and <= 100 && r.Channel is "discord" or "webhook" && (r.Channel != "webhook" || !r.DirectMessage), "Invalid route");
+            Validation.Require(r.AdminOnly || r.DirectMessage, "Shared routes must be admin-only");
+            var old = previous.Routes.FirstOrDefault(x => x.Id == r.Id);
+            var route = r with { Secret = r.Secret ?? old?.Secret, Destination = r.Destination == "[configured]" ? old?.Destination ?? "" : r.Destination };
+            if (route.Channel == "webhook")
+            {
+                Validation.Require(route.Secret?.Length is >= 32 and <= 1024, "Webhook secret must be at least 32 characters");
+                WebhookSender.ValidateUri(new Uri(route.Destination, UriKind.Absolute), route);
+            }
+            else Validation.Require(route.DirectMessage || (route.Destination.Length is >= 1 and <= 30 && route.Destination.All(char.IsAsciiDigit)), "Invalid Discord channel");
+            return route;
+        }).ToArray();
+        if (settings.Revision != previous.Revision) throw new NotificationException("revision_changed", "Reload settings", 409);
+        // A durable audit intent precedes mutation. Core command gate can additionally record completion.
+        await host.AppendAuditAsync(new(1, Guid.NewGuid(), "account-hub", "notifications.settings.changing", "success", DateTimeOffset.UtcNow, actor), ct);
+        store.SaveSettings(settings with { Routes = routes });
+    }
+}

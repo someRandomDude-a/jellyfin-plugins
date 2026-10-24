@@ -1,0 +1,15 @@
+/* Scoped layout only; Jellyfin's native CSS and custom themes own presentation. */
+.accountHubPage .hubContent { min-width: 0; overflow-wrap: anywhere; }
+.accountHubPage .hubTabs { display: flex; flex-wrap: wrap; gap: .5em; margin-block: 1em; }
+.accountHubPage .hubToolbar { display: flex; flex-wrap: wrap; gap: .75em; align-items: end; margin-block: 1em; }
+.accountHubPage .hubTableWrap { overflow-x: auto; }
+.accountHubPage .hubTable { width: 100%; border-collapse: collapse; }
+.accountHubPage .hubTable th, .accountHubPage .hubTable td { text-align: start; vertical-align: top; padding: .7em; }
+.accountHubPage .hubGrid, .accountHubDialog .hubGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18em), 1fr)); gap: 1em; }
+.accountHubPage .hubField, .accountHubDialog .hubField { min-width: 0; }
+.accountHubPage .hubActions { display: flex; flex-wrap: wrap; gap: .5em; }
+.accountHubDialog { max-width: min(56em, 92vw); max-height: 85vh; overflow: auto; padding: 1.5em; }
+.accountHubPage .hubSummary, .accountHubPublic .hubSummary { white-space: pre-wrap; overflow-wrap: anywhere; }
+.accountHubPublic { max-width: 42em; margin: 2em auto; padding: 1.5em; }
+.accountHubPublic .inputContainer { margin-block-end: 1em; }
+.accountHubPage [hidden], .accountHubPublic [hidden] { display: none !important; }

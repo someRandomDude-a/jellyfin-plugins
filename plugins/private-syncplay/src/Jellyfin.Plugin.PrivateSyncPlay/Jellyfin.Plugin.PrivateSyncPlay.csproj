@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.1.3.0</Version>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeWebStyles.cs" Link="NativeWebStyles.cs" />
+    <Compile Include="../../../../shared/Jellyfin.NativeUi/DependencyHealth.cs" Link="DependencyHealth.cs" />
+    <ProjectReference Include="../Jellyfin.Plugin.PrivateSyncPlay.Api/Jellyfin.Plugin.PrivateSyncPlay.Api.csproj" GlobalPropertiesToRemove="Version" />
+    <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" GlobalPropertiesToRemove="Version" />
+    <ProjectReference Include="../PrivateSyncPlay.IntegrationStore/PrivateSyncPlay.IntegrationStore.csproj" GlobalPropertiesToRemove="Version" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <EmbeddedResource Include="Web/*" />
+    <EmbeddedResource Include="../../node_modules/hls.js/dist/hls.min.js" LogicalName="PrivateSyncPlay.hls.js" />
+    <EmbeddedResource Include="../../node_modules/hls.js/LICENSE" LogicalName="PrivateSyncPlay.hls.LICENSE" />
+  </ItemGroup>
+</Project>

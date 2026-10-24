@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1",
+  "ok": false,
+  "error": {
+    "code": "unavailable",
+    "message": "Notification host is not enabled in this foundation build",
+    "retryable": true
+  }
+}

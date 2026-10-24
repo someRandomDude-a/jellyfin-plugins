@@ -1,0 +1,16 @@
+{
+  "baseline": "plan-defined-v1; canonical host acceptance pending",
+  "serviceKey": "AccountHub.Api.1",
+  "delegate": "Func<string,CancellationToken,Task<string>>",
+  "helloRequest": {"apiVersion":"1","operation":"hello","requestId":"11111111-1111-4111-8111-111111111111","payload":{}},
+  "helloResponse": {"apiVersion":"1","ok":true,"data":{"apiVersion":"1","hostVersion":"fixture","operations":["hello","health","notifications.publish","notifications.publishBatch","audit.publish"]}},
+  "healthResponse": {"apiVersion":"1","ok":true,"data":{"ready":true,"hostVersion":"fixture","schemaVersion":1,"features":[]}},
+  "accepted": {"apiVersion":"1","ok":true,"data":{"status":"accepted","notificationIds":["22222222-2222-4222-8222-222222222222"]}},
+  "duplicate": {"apiVersion":"1","ok":true,"data":{"status":"duplicate","notificationIds":["22222222-2222-4222-8222-222222222222"]}},
+  "unavailable": {"apiVersion":"1","ok":false,"error":{"code":"unavailable","message":"Host not ready","retryable":true}},
+  "rejected": {"apiVersion":"1","ok":false,"error":{"code":"rejected","message":"Invalid event","retryable":false}},
+  "pendingTwoFactor": {"status":403,"body":{"twoFactorRequired":true}},
+  "markedLegacyPending": {"status":401,"body":{"twoFactorRequired":true}},
+  "expiredSession": {"status":401,"body":{}},
+  "deniedElevation": {"status":403,"body":{}}
+}

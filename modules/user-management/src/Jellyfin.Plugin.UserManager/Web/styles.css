@@ -1,0 +1,28 @@
+/* Layout only. Jellyfin owns palette, fonts, inputs, buttons, checkboxes and dialogs. */
+.um-shell { max-width: 76rem; margin-inline: auto; padding: 1.5em; }
+.um-topbar, .um-section-title, .um-toolbar, .um-row, .um-actions, .um-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .75em; }
+.um-topbar, .um-section-title, .um-toolbar { margin-block-end: 1em; }
+.um-brand { margin-inline-end: auto; }
+.um-grid { display: grid; gap: 1em; }
+.um-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.um-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.um-field { display: flex; flex-direction: column; gap: .5em; min-width: 0; }
+.um-card, .um-note { padding: 1em; margin-block-end: 1em; }
+.um-row.end { justify-content: flex-end; }
+.um-row.between { justify-content: space-between; }
+.um-table-wrap { overflow-x: auto; }
+.um-table { width: 100%; border-collapse: collapse; }
+.um-table th, .um-table td { text-align: start; padding: .7em; vertical-align: top; }
+.um-muted, .um-sub, .um-hint { opacity: .8; }
+.um-small { font-size: .9em; }
+.um-mono { font-family: monospace; overflow-wrap: anywhere; }
+.um-dialog { max-width: min(54rem, 92vw); max-height: 85vh; overflow: auto; }
+.um-dialog-head, .um-dialog-body, .um-dialog-foot { padding: 1em; }
+.um-dialog-head, .um-dialog-foot { display: flex; justify-content: space-between; gap: .7em; }
+.um-toasts { position: fixed; inset-inline-end: 1em; inset-block-end: 1em; z-index: 3000; max-width: min(28em, 90vw); }
+.um-toast { padding: 1em; margin-block-start: .5em; }
+.um-loading { display: flex; align-items: center; gap: .5em; padding: 1em; }
+.um-spinner { inline-size: 1em; block-size: 1em; border: .15em solid currentColor; border-inline-end-color: transparent; border-radius: 50%; animation: um-spin 1s linear infinite; }
+@keyframes um-spin { to { transform: rotate(360deg); } }
+@media (max-width: 50em) { .um-grid.two, .um-grid.three { grid-template-columns: 1fr; } .um-shell { padding: 1em; } }
+@media (prefers-reduced-motion: reduce) { .um-spinner { animation: none; } }

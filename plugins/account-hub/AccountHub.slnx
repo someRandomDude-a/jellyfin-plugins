@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="../../shared/AccountHub.Api/AccountHub.Api.csproj" />
+    <Project Path="src/AccountHub.Core/AccountHub.Core.csproj" />
+    <Project Path="src/AccountHub/AccountHub.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AccountHub.Tests/AccountHub.Tests.csproj" />
+  </Folder>
+</Solution>

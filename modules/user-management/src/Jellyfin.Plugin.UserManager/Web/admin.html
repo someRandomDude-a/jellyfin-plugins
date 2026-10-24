@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>User Manager</title>
+    <script>
+        (function () {
+            var path = location.pathname || '/';
+            var index = path.toLowerCase().indexOf('/usermanager');
+            var prefix = index >= 0 ? path.substring(0, index) : '';
+            document.write('<base href="' + location.origin + prefix + '/UserManager/">');
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="um-shell">
+    <header class="um-topbar">
+        <div class="um-brand">
+            <h1>User Manager</h1>
+            <span id="status-line">Loading status…</span>
+        </div>
+        <div class="um-actions">
+            <button type="button" class="um-btn" id="refresh-all">Refresh</button>
+            <a class="um-btn" id="open-account" href="account" target="_blank" rel="noopener">My account</a>
+        </div>
+    </header>
+
+    <nav class="um-tabs" role="tablist" aria-label="User Manager sections">
+        <button type="button" role="tab" data-tab="users" class="active" aria-selected="true">Users</button>
+        <button type="button" role="tab" data-tab="presets" aria-selected="false">Permissions</button>
+        <button type="button" role="tab" data-tab="invites" aria-selected="false">Invites</button>
+        <button type="button" role="tab" data-tab="audit" aria-selected="false">Audit log</button>
+        <button type="button" role="tab" data-tab="settings" aria-selected="false">Settings</button>
+    </nav>
+
+    <main id="main">
+        <section data-panel="users">
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Users</h2>
+                    <div class="um-actions">
+                        <button type="button" class="um-btn" id="sync-all-seerr">Sync all to Seerr</button>
+                        <button type="button" class="um-btn primary" id="open-create-user">Create user</button>
+                    </div>
+                </div>
+                <p class="um-sub">Create accounts, apply permission presets, manage Discord links and reset passwords.</p>
+                <div id="seerr-warning"></div>
+                <div class="um-toolbar">
+                    <input class="um-search" type="search" id="user-search" placeholder="Search by username, Discord or preset…" autocomplete="off">
+                    <select id="user-filter" aria-label="Filter users">
+                        <option value="all">All users</option>
+                        <option value="admin">Administrators</option>
+                        <option value="disabled">Disabled</option>
+                        <option value="linked">Discord linked</option>
+                        <option value="unlinked">Discord not linked</option>
+                    </select>
+                </div>
+                <div id="users-host"><div class="um-loading"><span class="um-spinner"></span>Loading users…</div></div>
+            </div>
+        </section>
+
+        <section data-panel="presets" hidden>
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Permission presets</h2>
+                    <div class="um-actions">
+                        <select id="import-user" aria-label="User to copy permissions from"></select>
+                        <button type="button" class="um-btn" id="import-preset">Import from user</button>
+                        <button type="button" class="um-btn primary" id="open-create-preset">New preset</button>
+                    </div>
+                </div>
+                <p class="um-sub">A preset combines Jellyfin library permissions with Seerr permissions. Invites and new accounts inherit the selected preset.</p>
+                <div id="presets-host"><div class="um-loading"><span class="um-spinner"></span>Loading presets…</div></div>
+            </div>
+        </section>
+
+        <section data-panel="invites" hidden>
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Create invite link</h2>
+                </div>
+                <p class="um-sub">Invite links let people pick their own username and password. Jellyfin never sees a placeholder password, and new accounts are sent to the login page.</p>
+                <form id="create-invite-form">
+                    <div class="um-grid three">
+                        <label class="um-field">Preset
+                            <select id="invite-preset" required></select>
+                        </label>
+                        <label class="um-field">Uses
+                            <input type="number" id="invite-uses" min="1" max="10000" value="1">
+                            <span class="um-hint">1 = single-use link.</span>
+                        </label>
+                        <label class="um-field">Expires in days
+                            <input type="number" id="invite-days" min="1" max="365" value="7">
+                        </label>
+                    </div>
+                    <div class="um-grid two" style="margin-top:12px">
+                        <label class="um-field">Note for admins
+                            <input type="text" id="invite-note" maxlength="200" placeholder="Who is this invite for?">
+                        </label>
+                        <div class="um-row end" style="align-items:flex-end">
+                            <button type="submit" class="um-btn primary" id="create-invite-submit">Create invite</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="invite-result" style="margin-top:14px"></div>
+            </div>
+
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Invites</h2>
+                    <div class="um-actions">
+                        <button type="button" class="um-btn" id="refresh-invites">Refresh</button>
+                    </div>
+                </div>
+                <div id="invites-host"><div class="um-loading"><span class="um-spinner"></span>Loading invites…</div></div>
+            </div>
+        </section>
+
+        <section data-panel="audit" hidden>
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Audit log</h2>
+                    <div class="um-actions">
+                        <button type="button" class="um-btn" id="export-audit">Export CSV</button>
+                    </div>
+                </div>
+                <p class="um-sub">Every administrative action, invite and password reset is recorded here and can be exported.</p>
+                <div class="um-toolbar">
+                    <select id="audit-action" aria-label="Filter by action">
+                        <option value="">All actions</option>
+                    </select>
+                    <input type="text" id="audit-user" placeholder="Filter by user id…" autocomplete="off">
+                    <select id="audit-limit" aria-label="Number of entries">
+                        <option value="50">50 entries</option>
+                        <option value="100" selected>100 entries</option>
+                        <option value="250">250 entries</option>
+                        <option value="500">500 entries</option>
+                    </select>
+                    <button type="button" class="um-btn" id="apply-audit">Apply</button>
+                </div>
+                <div id="audit-host"><div class="um-loading"><span class="um-spinner"></span>Loading audit log…</div></div>
+            </div>
+        </section>
+
+        <section data-panel="settings" hidden>
+            <div class="um-card">
+                <div class="um-section-title">
+                    <h2>Status</h2>
+                    <div class="um-actions">
+                        <button type="button" class="um-btn" id="refresh-status">Refresh status</button>
+                    </div>
+                </div>
+                <div class="um-grid three" id="status-cards"></div>
+                <div id="status-notes" style="margin-top:14px"></div>
+            </div>
+
+            <form id="settings-form">
+                <div class="um-card">
+                    <h2>Seerr</h2>
+                    <p class="um-sub">Jellyfin is the identity provider; Seerr users are imported from Jellyfin and kept in sync by this plugin.</p>
+                    <div class="um-grid two">
+                        <label class="um-field">Seerr URL
+                            <input type="url" id="seerrUrl" placeholder="http://seerr:5055">
+                        </label>
+                        <label class="um-field">API key
+                            <input type="password" id="seerrApiKey" autocomplete="new-password">
+                            <span class="um-hint" id="seerrApiKey-hint"></span>
+                        </label>
+                    </div>
+                    <div class="um-row between" style="margin-top:12px">
+                        <label class="um-switch"><input type="checkbox" id="clear-seerrApiKey"> Clear stored API key</label>
+                        <button type="button" class="um-btn" id="test-seerr">Test connection</button>
+                    </div>
+                </div>
+
+                <div class="um-card">
+                    <h2>Discord bot</h2>
+                    <p class="um-sub">The embedded bot powers <code>/link</code>, <code>/resetpassword</code>, invite monitoring and admin notifications.</p>
+                    <div class="um-grid two">
+                        <label class="um-field">Bot token
+                            <input type="password" id="discordBotToken" autocomplete="new-password">
+                            <span class="um-hint" id="discordBotToken-hint"></span>
+                        </label>
+                        <label class="um-field">Guild ID
+                            <input type="text" id="discordGuildId" placeholder="Discord server id">
+                            <span class="um-hint">Slash commands are registered in this guild.</span>
+                        </label>
+                        <label class="um-field">Admin webhook URL
+                            <input type="password" id="discordAdminWebhookUrl" autocomplete="new-password">
+                            <span class="um-hint" id="discordAdminWebhookUrl-hint"></span>
+                        </label>
+                        <label class="um-field">Admin role IDs
+                            <input type="text" id="discordAdminRoleIds" placeholder="123456789, 987654321">
+                            <span class="um-hint">Comma-separated roles allowed to use admin commands.</span>
+                        </label>
+                    </div>
+                    <div class="um-row between" style="margin-top:12px">
+                        <label class="um-switch"><input type="checkbox" id="clear-discordBotToken"> Clear stored bot token</label>
+                        <label class="um-switch"><input type="checkbox" id="clear-discordAdminWebhookUrl"> Clear stored webhook</label>
+                    </div>
+                    <div class="um-row end" style="margin-top:12px">
+                        <button type="button" class="um-btn" id="test-discord">Send test notification</button>
+                        <button type="button" class="um-btn" id="reconnect-discord">Reconnect bot</button>
+                    </div>
+                </div>
+
+                <div class="um-card">
+                    <h2>Links and invites</h2>
+                    <div class="um-grid three">
+                        <label class="um-field">Public base URL
+                            <input type="url" id="publicBaseUrl" placeholder="https://jellyfin.example.com">
+                            <span class="um-hint">Used in invite and reset links. Leave blank to use the request URL.</span>
+                        </label>
+                        <label class="um-field">Default invite expiry (days)
+                            <input type="number" id="inviteDefaultExpiryDays" min="1" max="365">
+                        </label>
+                        <label class="um-field">Default invite uses
+                            <input type="number" id="inviteDefaultMaxUses" min="1" max="10000">
+                        </label>
+                    </div>
+                    <div class="um-grid two" style="margin-top:12px">
+                        <label class="um-switch"><input type="checkbox" id="allowPublicInviteRequests"> Allow public invite requests</label>
+                    </div>
+                    <div class="um-row" style="margin-top:12px" id="request-link-row">
+                        <span class="um-muted um-small">Public request page:</span>
+                        <code class="um-mono um-small" id="request-link"></code>
+                        <button type="button" class="um-btn small" id="copy-request-link">Copy</button>
+                    </div>
+                </div>
+
+                <div class="um-card">
+                    <h2>Notifications and sync</h2>
+                    <div class="um-grid two">
+                        <label class="um-switch"><input type="checkbox" id="notifyAdminsOnJoin"> Notify admins when a user is created</label>
+                        <label class="um-switch"><input type="checkbox" id="notifyAdminsOnPasswordReset"> Notify admins on password changes</label>
+                        <label class="um-switch"><input type="checkbox" id="notifyAdminsOnInviteUsed"> Notify admins when an invite is used</label>
+                        <label class="um-switch"><input type="checkbox" id="syncSeerrOnCreate"> Sync new users to Seerr</label>
+                        <label class="um-switch"><input type="checkbox" id="syncSeerrOnPresetApply"> Sync Seerr when a preset is applied</label>
+                    </div>
+                </div>
+
+                <div class="um-row end">
+                    <button type="submit" class="um-btn primary" id="save-settings">Save settings</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <div class="um-footer">Jellyfin User Manager</div>
+</div>
+
+<dialog class="um-dialog" id="create-user-dialog" aria-labelledby="create-user-title">
+    <div class="um-dialog-head">
+        <h2 id="create-user-title">Create user</h2>
+        <button type="button" class="um-close" data-close="create-user-dialog" aria-label="Close">&times;</button>
+    </div>
+    <form id="create-user-form">
+        <div class="um-dialog-body">
+            <div class="um-grid two">
+                <label class="um-field">Username
+                    <input type="text" id="create-username" required minlength="1" maxlength="64" autocomplete="off">
+                </label>
+                <label class="um-field">Initial password
+                    <input type="password" id="create-password" required autocomplete="new-password">
+                    <span class="um-hint">At least 10 characters, three character classes, not containing the username.</span>
+                </label>
+                <label class="um-field">Confirm password
+                    <input type="password" id="create-password-confirm" required autocomplete="new-password">
+                </label>
+                <label class="um-field">Preset
+                    <select id="create-preset" required></select>
+                </label>
+            </div>
+            <div class="um-grid two" style="margin-top:12px">
+                <label class="um-switch"><input type="checkbox" id="create-admin"> Administrator</label>
+                <label class="um-switch"><input type="checkbox" id="create-sync-seerr" checked> Sync to Seerr</label>
+            </div>
+            <div id="create-user-error" style="margin-top:12px"></div>
+            <div class="um-note" style="margin-top:12px">
+                Prefer invites so the user picks their own password. Administrator-created passwords must be shared securely.
+            </div>
+        </div>
+        <div class="um-dialog-foot">
+            <button type="button" class="um-btn" data-close="create-user-dialog">Cancel</button>
+            <button type="submit" class="um-btn primary" id="create-user-submit">Create user</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="um-dialog" id="user-dialog" aria-labelledby="user-dialog-title">
+    <div class="um-dialog-head">
+        <h2 id="user-dialog-title">Manage user</h2>
+        <button type="button" class="um-close" data-close="user-dialog" aria-label="Close">&times;</button>
+    </div>
+    <div class="um-dialog-body">
+        <div id="user-dialog-summary"></div>
+
+        <h3 style="margin:18px 0 8px">Permissions and state</h3>
+        <div class="um-grid two">
+            <label class="um-field">Preset
+                <select id="edit-preset"></select>
+                <span class="um-hint">Applying a preset replaces Jellyfin library permissions and Seerr permissions.</span>
+            </label>
+            <div>
+                <label class="um-switch" style="margin-bottom:8px"><input type="checkbox" id="edit-admin"> Administrator</label>
+                <label class="um-switch"><input type="checkbox" id="edit-disabled"> Account disabled</label>
+            </div>
+        </div>
+        <div class="um-row end" style="margin-top:12px">
+            <button type="button" class="um-btn primary" id="save-user">Save changes</button>
+        </div>
+
+        <hr class="um-divider">
+
+        <h3 style="margin:0 0 8px">Reset password</h3>
+        <p class="um-sub">Set a new password directly, or send the user a single-use link over Discord. Reset links expire after 30 minutes.</p>
+        <div class="um-grid two">
+            <label class="um-field">New password
+                <input type="password" id="reset-new-password" autocomplete="new-password">
+            </label>
+            <div class="um-row end" style="align-items:flex-end">
+                <button type="button" class="um-btn" id="send-discord-reset">Send Discord reset link</button>
+                <button type="button" class="um-btn" id="set-password">Set password</button>
+            </div>
+        </div>
+        <div id="reset-result" style="margin-top:12px"></div>
+
+        <hr class="um-divider">
+
+        <h3 style="margin:0 0 8px">Discord account</h3>
+        <div id="user-discord-host"></div>
+
+        <hr class="um-divider">
+
+        <div class="um-row between">
+            <div>
+                <h3 style="margin:0 0 4px">Delete user</h3>
+                <p class="um-sub" style="margin:0">Removes the Jellyfin and Seerr account, Discord link and audit history for this user.</p>
+            </div>
+            <button type="button" class="um-btn danger" id="delete-user">Delete user</button>
+        </div>
+    </div>
+    <div class="um-dialog-foot">
+        <button type="button" class="um-btn" data-close="user-dialog">Close</button>
+    </div>
+</dialog>
+
+<dialog class="um-dialog" id="preset-dialog" aria-labelledby="preset-dialog-title">
+    <div class="um-dialog-head">
+        <h2 id="preset-dialog-title">Permission preset</h2>
+        <button type="button" class="um-close" data-close="preset-dialog" aria-label="Close">&times;</button>
+    </div>
+    <form id="preset-form">
+        <div class="um-dialog-body">
+            <div class="um-grid two">
+                <label class="um-field">Name
+                    <input type="text" id="preset-name" required maxlength="64">
+                </label>
+                <label class="um-field">Description
+                    <input type="text" id="preset-description" maxlength="200">
+                </label>
+            </div>
+            <label class="um-switch" style="margin-top:12px"><input type="checkbox" id="preset-default"> Default preset for new users and invites</label>
+
+            <div class="um-group-title">Seerr permissions</div>
+            <div class="um-perm-grid" id="preset-seerr-perms"></div>
+
+            <div class="um-group-title">Jellyfin permissions</div>
+            <div class="um-perm-grid" id="preset-jellyfin-perms"></div>
+
+            <details style="margin-top:14px">
+                <summary class="um-muted um-small" style="cursor:pointer">Advanced: raw Jellyfin policy JSON</summary>
+                <label class="um-field" style="margin-top:8px">Policy JSON
+                    <textarea id="preset-policy-json" spellcheck="false"></textarea>
+                    <span class="um-hint">Leave this untouched unless you need fields not shown above. Invalid JSON is replaced with a safe policy.</span>
+                </label>
+            </details>
+
+            <div id="preset-error" style="margin-top:12px"></div>
+        </div>
+        <div class="um-dialog-foot">
+            <button type="button" class="um-btn danger" id="delete-preset" hidden>Delete</button>
+            <button type="button" class="um-btn" data-close="preset-dialog">Cancel</button>
+            <button type="submit" class="um-btn primary" id="save-preset">Save preset</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="common.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

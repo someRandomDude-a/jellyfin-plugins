@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Request an invite · User Manager</title>
+    <script>
+        (function () {
+            var path = location.pathname || '/';
+            var index = path.toLowerCase().indexOf('/usermanager');
+            var prefix = index >= 0 ? path.substring(0, index) : '';
+            document.write('<base href="' + location.origin + prefix + '/UserManager/">');
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="um-shell">
+    <div class="um-auth">
+        <div class="um-card">
+            <div class="um-brand" style="margin-bottom:16px">
+                <h1>Request an invite</h1>
+                <span id="server-name">Jellyfin User Manager</span>
+            </div>
+            <div id="request-main">
+                <div class="um-loading"><span class="um-spinner"></span>Loading…</div>
+            </div>
+            <div class="um-row between" style="margin-top:18px">
+                <a class="um-link" id="login-link" href="#">Back to sign in</a>
+            </div>
+        </div>
+        <div class="um-footer">Requests are sent to the server administrators. You will be contacted with an invite link.</div>
+    </div>
+</div>
+
+<script src="common.js"></script>
+<script src="invite-request.js"></script>
+</body>
+</html>

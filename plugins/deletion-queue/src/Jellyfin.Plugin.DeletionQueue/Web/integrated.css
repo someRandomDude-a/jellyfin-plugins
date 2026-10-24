@@ -1,0 +1,17 @@
+/* Layout only: retain Jellyfin typography, surfaces, button colors and installed theme styles. */
+.dq-bell { position: relative; flex: 0 0 auto; min-width: 2.75em; min-height: 2.75em; }
+.dq-badge { position: absolute; inset-inline-end: 0; top: 0; min-width: 1.2em; padding: .1em .25em; }
+.dq-badge[hidden] { display: none; }
+.dq-panel { width: min(40em, 94vw); max-height: 88vh; padding: 0; overflow: auto; }
+.dq-panel[open] { position: fixed; inset: 0; margin: auto; height: fit-content; }
+.dq-panel .formDialogHeader { display: flex; align-items: center; gap: 1em; padding: 1em; }
+.dq-panel h2 { flex: 1; margin: 0; }
+.dq-panel-content { padding: 0 1.25em 1.25em; }
+.dq-panel label { display: block; margin: 1em 0; }
+.dq-panel input[type=number] { display: block; margin-top: .5em; }
+.dq-actions { display: flex; gap: .5em; flex-wrap: wrap; }
+.dq-notice { display: block; width: 100%; box-sizing: border-box; padding: .75em; text-align: start; }
+.dq-error { margin: 0 1.25em; }
+.dq-card-action { position: absolute; inset-inline-start: .3em; top: .3em; z-index: 2; min-width: 2.75em; min-height: 2.75em; }
+.dq-request-action { display: inline-flex; align-items: center; gap: .3em; }
+@media (max-width: 40em) { .dq-panel { width: 96vw; } .dq-actions > button { flex: 1 1 auto; } }

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:account-hub:domain-capabilities:1",
+  "title": "Common domain adapter capabilities response",
+  "type": "object",
+  "required": ["apiVersion", "ok", "data"],
+  "properties": {
+    "apiVersion": { "const": "1" },
+    "ok": { "const": true },
+    "data": {
+      "type": "object",
+      "required": ["apiVersion", "plugin", "pluginVersion", "features", "adminExclusion", "fields"],
+      "properties": {
+        "apiVersion": { "const": "1" },
+        "plugin": { "enum": ["deletion-queue", "private-syncplay"] },
+        "pluginVersion": { "type": "string", "minLength": 1 },
+        "features": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "adminExclusion": { "const": true },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "default", "nullable"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "minLength": 1 },
+              "default": {},
+              "nullable": { "type": "boolean" },
+              "enumValues": { "type": ["array", "null"], "items": { "type": "string" } },
+              "minimum": { "type": ["number", "null"] },
+              "maximum": { "type": ["number", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/artifacts/
+**/dist/
+**/.test-data/
+**/.vs/
+**/TestResults/
+*.user
+*.db
+*.db-wal
+*.db-shm
+*.key
+**/browser-session.json
+.env
+.env.*
+!.env.example

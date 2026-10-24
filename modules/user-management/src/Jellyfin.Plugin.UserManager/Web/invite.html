@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Join · User Manager</title>
+    <script>
+        (function () {
+            var path = location.pathname || '/';
+            var index = path.toLowerCase().indexOf('/usermanager');
+            var prefix = index >= 0 ? path.substring(0, index) : '';
+            document.write('<base href="' + location.origin + prefix + '/UserManager/">');
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="um-shell">
+    <div class="um-auth">
+        <div class="um-card">
+            <div class="um-brand" style="margin-bottom:16px">
+                <h1 id="invite-title">You are invited</h1>
+                <span id="invite-subtitle">Create your own Jellyfin account</span>
+            </div>
+            <div id="invite-main">
+                <div class="um-loading"><span class="um-spinner"></span>Checking your invite…</div>
+            </div>
+            <div class="um-row between" style="margin-top:18px">
+                <a class="um-link" id="login-link" href="#">Back to sign in</a>
+                <a class="um-link" id="request-link" href="#" hidden>Request an invite</a>
+            </div>
+        </div>
+        <div class="um-footer">You choose your own username and password. You will be taken to the sign-in page after registering.</div>
+    </div>
+</div>
+
+<script src="common.js"></script>
+<script src="invite.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <EmbeddedResource Include="Web/bell.js" />
+    <EmbeddedResource Include="Web/settings.js" />
+  </ItemGroup>
+</Project>
