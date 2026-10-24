@@ -176,6 +176,14 @@
     "category": "General",
     "versions": [
       {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.1.6.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.6/Notifications-0.1.6.0-linux-arm64.zip",
+        "timestamp": "2026-10-24T23:51:16.0997181Z",
+        "checksum": "373320a39a94e2775b1229039407027e"
+      },
+      {
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "timestamp": "2026-10-24T23:36:29.5391663Z",
         "targetAbi": "12.3.0.0",
