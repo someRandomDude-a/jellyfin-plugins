@@ -8,6 +8,10 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
+// The source may come from either Git checkout convention. JavaScript's dot
+// does not match CR, so /^import .*\n/ leaves imports behind on Windows CRLF.
+const workspaceScript = code => code.replace(/^import[^\r\n]*\r?\n/, 'const mountSecurityPanel = () => () => {};\n')
+    .replace('export function mountWorkspace', 'window.mountWorkspace = function');
 test('Notification settings use native fields and erase unsaved secrets on cleanup', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
@@ -24,7 +28,7 @@ test('Workspace navigation clears an open fresh-proof dialog without issuing a w
     window.HTMLDialogElement.prototype.close = function () { this.open = false; };
     window.fetch = async (url, options) => { calls.push({ url, method: options.method }); return response(url.endsWith('/users?skip=0&limit=50&search=') ? { items: [], total: 0 } : { revision: 0, auditRetentionDays: 90, notificationRetentionDays: 90, stepUpLevelMirror: 'Destructive', securityAlertMode: 'native', passwordLoginPolicy: 'auto' }); };
     let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js');
-    code = code.replace(/^import .*\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function');
+    code = workspaceScript(code);
     window.eval(code);
     const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'disposable-token' }); await turn(); await turn();
     [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Settings').click(); await turn(); await turn();
@@ -48,7 +52,7 @@ test('Missing optional Hub integrations are greyed out with remediation, not hid
     const { window } = dom; const calls = [];
     const dependencies = ['security', 'discord', 'deletion-queue', 'private-syncplay'].map(id => ({ id, name: id, available: false, state: 'missing', reason: 'Optional provider is missing.', fix: 'Install and enable the compatible plugin, then restart Jellyfin.' }));
     window.fetch = async (url, options) => { calls.push(url); return response(url.endsWith('/dependencies') ? { items: dependencies } : url.includes('/users?') ? { items: [], total: 0 } : { revision: 0 }); };
-    let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = code.replace(/^import .*\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function'); window.eval(code);
+    let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = workspaceScript(code); window.eval(code);
     const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
     for (const name of ['Security', 'Discord', 'DeletionQueue', 'Private SyncPlay']) { const tab = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === name); assert(tab.disabled); assert(!tab.hidden); assert.match(tab.title, /restart Jellyfin/); }
     assert.equal([...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'People').disabled, false);
@@ -72,7 +76,7 @@ test('Library inbox controls remain native and independent when Discord is missi
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom;
     window.fetch = async url => response(url.endsWith('/dependencies') ? { items: [{ id: 'discord', available: false, reason: 'Bridge is missing.', fix: 'Install Discord Bridge and restart Jellyfin.' }] } : url.endsWith('/library/settings') ? { settings: { revision: 0, enabled: false, episodes: true, movies: true }, health: { retained: 0, pending: 0 } } : url.includes('/users?') ? { items: [], total: 0 } : { revision: 0 });
-    let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = code.replace(/^import .*\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function'); window.eval(code);
+    let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = workspaceScript(code); window.eval(code);
     const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
     const tab = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Library'); assert.equal(tab.disabled, false); tab.click(); await turn(); await turn();
     assert.equal(root.querySelectorAll('.hubContent input.emby-checkbox').length, 3);
@@ -91,7 +95,7 @@ test('Discord library controls load explicit scopes safely, without requiring pu
     assert.match(window.document.querySelector('.bridgeLibraryHealth').textContent, /uncertainDiscord/); dom.window.close();
 });
 
-async function workspaceFixture(t) {
+async function workspaceFixture(t, lineEnding) {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     t.after(() => dom.window.close());
     const { window } = dom, calls = [];
@@ -103,7 +107,7 @@ async function workspaceFixture(t) {
                     : { revision: 0, auditRetentionDays: 90, notificationRetentionDays: 90, stepUpLevelMirror: 'Off', securityAlertMode: 'native', passwordLoginPolicy: 'auto' });
     };
     const code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js');
-    window.eval(code.replace(/^import .*\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function'));
+    window.eval(workspaceScript(lineEnding ? code.replace(/\r?\n/g, lineEnding) : code));
     const root = window.document.querySelector('.accountHubPage'), content = root.querySelector('.hubContent');
     window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
     const tab = async name => { [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === name).click(); await turn(); await turn(); };
@@ -166,9 +170,9 @@ test('Navigation aborts a real pending Notifications mount and immediately erase
     assert.equal(f.calls.filter(c => c.options.method !== 'GET').length, 0);
 });
 
-for (const navigation of ['tab switch', 'viewhide', 'viewdestroy']) {
-    test('Unsaved Settings webhook secret is erased through retained reference on ' + navigation, async t => {
-        const f = await workspaceFixture(t); await f.tab('Settings');
+for (const lineEnding of ['\n', '\r\n']) for (const navigation of ['tab switch', 'viewhide', 'viewdestroy']) {
+    test('Unsaved Settings webhook secret is erased through retained reference on ' + navigation + (lineEnding === '\n' ? ' (LF)' : ' (CRLF)'), async t => {
+        const f = await workspaceFixture(t, lineEnding); await f.tab('Settings');
         const secret = f.content.querySelector('input[type=password]'); assert(secret); secret.value = 'unsaved-webhook-secret';
         if (navigation === 'tab switch') await f.tab('People'); else f.root.dispatchEvent(new f.window.Event(navigation));
         assert.equal(secret.value, ''); assert.equal(secret.isConnected, false);
