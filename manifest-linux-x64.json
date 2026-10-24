@@ -1,0 +1,28 @@
+[
+  {
+    "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
+    "name": "Account Hub",
+    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "timestamp": "2026-10-24T20:51:25.4237118Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.2/AccountHub-0.1.2.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0",
+        "version": "0.1.2.0",
+        "checksum": "928bb1e3bddaf6ab73a7fd19b8d0e6f1"
+      },
+      {
+        "version": "0.1.0.0",
+        "targetAbi": "12.2.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:05.2454893Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/AccountHub-0.1.0.0-linux-x64.zip",
+        "checksum": "6d3d64dde70bbf898aff5efbe6427b30"
+      }
+    ]
+  }
+]
