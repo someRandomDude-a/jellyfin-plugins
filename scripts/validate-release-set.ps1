@@ -1,7 +1,11 @@
-param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Tag, [string]$Repository = 'someRandomDude-a/jellyfin-plugins')
+param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Tag, [string]$Repository = 'someRandomDude-a/jellyfin-plugins',
+    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue')][string]$Plugin = 'all', [string]$ReleaseTag = '')
 $ErrorActionPreference = 'Stop'
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected immutable vX.Y.Z tag' }
 $version = $Matches[1] + '.0'
+if (!$ReleaseTag) { $ReleaseTag = $Tag }
+if ($ReleaseTag -cne $Tag -and ($Plugin -eq 'all' -or $ReleaseTag -cne "$Plugin/$Tag")) { throw 'Release tag must match the selected plugin and version' }
+$downloadTag = [Uri]::EscapeDataString($ReleaseTag)
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid repository' }
 $plugins = @{
@@ -10,12 +14,14 @@ $plugins = @{
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'
     DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'
 }
+$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue' }
+if ($Plugin -ne 'all') { $asset = $assets[$Plugin]; $plugins = @{ $asset = $plugins[$asset] } }
 $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
     $catalogName = "manifest-$runtime.json"
     [void]$expected.Add($catalogName)
     $catalog = @(Get-Content -LiteralPath (Join-Path $Directory $catalogName) -Raw | ConvertFrom-Json)
-    if ($catalog.Count -ne 4) { throw "Expected four plugins in $catalogName" }
+    if ($catalog.Count -ne $plugins.Count) { throw "Wrong plugin count in $catalogName" }
     foreach ($asset in $plugins.Keys) {
         $entries = @($catalog | Where-Object { $_.guid -eq $plugins[$asset] })
         if ($entries.Count -ne 1) { throw "Missing/duplicate stable plugin identity: $asset/$runtime" }
@@ -27,7 +33,7 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
             [void]$expected.Add($name + $suffix)
             if (!(Test-Path -LiteralPath ($zip + $suffix) -PathType Leaf)) { throw "Missing release artifact: $name$suffix" }
         }
-        if ($releases[0].sourceUrl -cne "https://github.com/$Repository/releases/download/$Tag/$name") { throw "Wrong release URL: $name" }
+        if ($releases[0].sourceUrl -cne "https://github.com/$Repository/releases/download/$downloadTag/$name") { throw "Wrong release URL: $name" }
         if ($releases[0].checksum -cne (Get-FileHash -LiteralPath $zip -Algorithm MD5).Hash.ToLowerInvariant()) { throw "Catalog checksum mismatch: $name" }
         $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         if ((Get-Content -LiteralPath "$zip.sha256" -Raw).Trim() -cne "$sha  $name") { throw "SHA256 mismatch: $name" }
@@ -55,4 +61,4 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
 foreach ($file in Get-ChildItem -LiteralPath $Directory -Force) {
     if ($file.PSIsContainer -or !$expected.Contains($file.Name)) { throw "Unexpected release artifact: $($file.Name)" }
 }
-Write-Output 'PASS complete release set: 12 ZIPs, three catalogs, stable identities, version/ABI, URLs, MD5/SHA256, SBOM/license inventories and archive safety.'
+Write-Output "PASS complete $Plugin release set: $($plugins.Count * 3) ZIPs, three catalogs, stable identities, version/ABI, URLs, MD5/SHA256, SBOM/license inventories and archive safety."

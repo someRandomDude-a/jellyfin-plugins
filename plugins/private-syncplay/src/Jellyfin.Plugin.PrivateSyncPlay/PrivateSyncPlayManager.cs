@@ -44,6 +44,9 @@ public sealed class PrivateSyncPlayManager : ISyncPlayManager, IDisposable
             if (string.IsNullOrWhiteSpace(request.GroupName) || request.GroupName.Length > 200) throw new PartyException(400, "A group name of 1–200 characters is required.");
             var max = capacity ?? config.MaxViewers;
             if (max < 1 || max > config.MaxViewers) throw new PartyException(400, "Invalid viewer limit.");
+            // Native NewGroup already joins THIS session and seeds its current
+            // playback/queue, emitting GroupJoined and state-specific updates.
+            // A second JoinGroup here would duplicate/reset the native handoff.
             var group = _inner.NewGroup(session, request, token);
             _store.RemoveSession(session.Id);
             _store.Create(group.GroupId, session.UserId, session.Id, effective, max);
@@ -99,6 +102,8 @@ public sealed class PrivateSyncPlayManager : ISyncPlayManager, IDisposable
             throw new PartyException(403, "This party is not accepting new viewers.");
         _store.CheckSeat(party, session.Id, Config);
         if (_inner.GetGroup(session, party.Id) is null) throw new PartyException(403, "You cannot access this party's media.");
+        // Invitations/codes authorize admission only. Always execute native
+        // joining for the exact actor session so it receives GroupJoined/PlayQueue.
         _inner.JoinGroup(session, new JoinGroupRequest(party.Id), token);
         if (!party.IsMember(session.Id, session.UserId))
         {

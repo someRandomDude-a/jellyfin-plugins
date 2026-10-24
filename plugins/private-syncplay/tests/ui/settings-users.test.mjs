@@ -15,20 +15,29 @@ const initial=()=>({EnablePrivateGroups:true,AllowPublicGroups:true,DefaultMode:
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const clone=x=>JSON.parse(JSON.stringify(x));
 const key=x=>x.replaceAll('-','').toLowerCase();
-async function settings({users,config}={}) {
+async function settings({users,config,failRead=false,uiFailures=0}={}) {
     const dom=new JSDOM(html,{url:'https://server.example/jellyfin/web/configurationpage?name=privateSyncPlay',runScripts:'outside-only'});
     const w=dom.window, d=w.document;
-    const fixture={server:clone(config||initial()),writes:[],reads:0,fail:false,hold:false,resolve:null};
+    const fixture={server:clone(config||initial()),writes:[],reads:0,fail:false,hold:false,resolve:null,failRead};
     w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
     w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
     w.ApiClient={getUrl:path=>'https://server.example/jellyfin/'+path,
-        getPluginConfiguration:async()=>{fixture.reads++;return clone(fixture.server);},
+        getPluginConfiguration:async()=>{fixture.reads++;if(fixture.failRead)throw {status:403,responseText:'sensitive response'};return clone(fixture.server);},
         getUsers:async()=>users||[{Id:ids.carol,Name:'Carol'},{Id:ids.bob,Name:'Bob <img src=x onerror=alert(1)>',Policy:{IsDisabled:true}},{Id:ids.alice,Name:'Alice'}],
         ajax:async()=>({PluginVersion:'0.1.3.0',ServerVersion:'12.3'}),
         updatePluginConfiguration:async(_,next)=>{fixture.writes.push(clone(next));if(fixture.fail)throw new Error('Server rejected settings');
             if(fixture.hold)await new Promise(resolve=>fixture.resolve=resolve);fixture.server=clone(next);}};
     Object.defineProperty(d,'currentScript',{value:{src:'https://server.example/jellyfin/PrivateSyncPlay/assets/ui.js'}});
-    w.eval(ui);w.eval(d.querySelector('script').textContent);await tick();await tick();
+    if(uiFailures) {
+        const append=d.head.appendChild.bind(d.head);
+        d.head.appendChild=node=>{
+            if(node.tagName==='SCRIPT'&&node.src.endsWith('/ui.js')) {
+                append(node);queueMicrotask(()=>{if(uiFailures-->0)node.onerror();else {w.eval(ui);node.onload();}});return node;
+            }
+            return append(node);
+        };
+    } else w.eval(ui);
+    w.eval(d.querySelector('script').textContent);await tick();await tick();
     const row=id=>[...d.querySelectorAll('tbody tr')].find(r=>key(r.dataset.userId)===key(id));
     const field=(id,name)=>row(id).querySelector(`select[id$="${name}"]`);
     const change=(element,value)=>{element.value=value;element.dispatchEvent(new w.Event('change',{bubbles:true}));};
@@ -48,6 +57,23 @@ test('overrides use an accessible native-style table and normalize numeric enums
         assert(p.field(ids.alice,'GuestInvites').labels[0].textContent.includes('Alice'));
         assert(p.d.querySelector('.privateSyncPlayTableScroll[tabindex="0"]'));
         assert.equal(p.d.getElementById('pspBulkToggle').disabled,true);
+    }finally{p.close();}
+});
+test('configuration failure identifies the stage without exposing the response and can retry',async()=>{
+    const p=await settings({failRead:true});try {
+        assert(p.d.querySelector('#pspForm').textContent.includes('plugin configuration (HTTP 403)'));
+        assert(!p.d.body.textContent.includes('sensitive response'));
+        p.fixture.failRead=false;p.d.getElementById('pspRetrySettings').click();await tick();await tick();
+        assert(p.d.getElementById('pspSave'));assert.equal(p.d.querySelectorAll('tbody tr').length,3);
+        assert(!p.d.getElementById('pspRetrySettings'));
+    }finally{p.close();}
+});
+test('failed UI download does not poison the cached loader and retry loads the settings editor',async()=>{
+    const p=await settings({uiFailures:1});try {
+        assert(p.d.querySelector('#pspForm').textContent.includes('web controls'));
+        assert.equal(p.w.privateSyncPlayUILoading,null);
+        p.d.getElementById('pspRetrySettings').click();await tick();await tick();
+        assert(p.d.getElementById('pspSave'));assert.equal(p.fixture.reads,1);
     }finally{p.close();}
 });
 test('select-all applies only to visible rows, reports hidden selections, and uses indeterminate checkbox state',async()=>{

@@ -6,14 +6,15 @@
 
 **Current build/test target: Jellyfin 12.3 (SDK 12.3.0).** Upstream stable-release discovery must agree with `Jellyfin.Target.props`; a newer stable version blocks CI until the SDK/server compatibility is updated. Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
 
-1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add a repository named **Jellyfin plugins**.
-2. Choose the URL matching your **Jellyfin server's** operating system and architecture:
+1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add one repository per plugin you want.
+2. Use the independent feed below for **Linux x64**. For Linux ARM64 replace `manifest-linux-x64.json` with `manifest-linux-arm64.json`; for Windows x64 use `manifest-win-x64.json`:
 
-   | Server platform | Repository URL |
+   | Plugin | Repository URL |
    |---|---|
-   | Linux x64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest.json` |
-   | Linux ARM64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest-linux-arm64.json` |
-   | Windows x64 | `https://github.com/someRandomDude-a/jellyfin-plugins/releases/latest/download/manifest-win-x64.json` |
+   | Private SyncPlay | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-private-syncplay/manifest-linux-x64.json` |
+   | Account Hub | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-account-hub/manifest-linux-x64.json` |
+   | Discord Bridge | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-discord-bridge/manifest-linux-x64.json` |
+   | Deletion Queue | `https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog-deletion-queue/manifest-linux-x64.json` |
 
 3. Open the plugin **Catalog**, select the plugins you want, and install them.
 4. **Restart Jellyfin**, then open each installed plugin's settings in the Dashboard.
@@ -59,22 +60,24 @@ pwsh -File scripts/test.ps1
 
 The root solution covers all seven .NET suites. The test script also runs JavaScript/UI suites and existing offline release-tool tests. Generated artifacts, databases and test credentials are ignored.
 
+To test only one plugin and its common/dependency contracts, use `pwsh -File scripts/test-plugin.ps1 -Plugin private-syncplay` (also accepts `account-hub`, `discord-bridge`, `deletion-queue`). Install `plugins/discord-bridge/activity` npm dependencies for Discord tests; Hub UI tests use the jsdom dependency in `plugins/private-syncplay`. See [independent release gates](docs/independent-plugin-releases.md).
+
 ## Releases and Jellyfin repository
 
 Root workflows:
 
-- `tests.yml`: Windows/Linux tests on pushes and pull requests, locked Activity frontend build/tests, workflow lint and disposable installed-browser checks. No Discord credentials or public tunnels are used by default.
-- `integration.yml`: reusable release gate plus scheduled/manual four-package/BaseUrl and SyncPlay fixtures; 32 plugin combinations, not full product certification.
-- `release.yml`: `vX.Y.Z` tags or manual dispatch of an existing tag; tests first, then packages for Linux x64/ARM64 and Windows x64, exact ZIP checksums and catalogs, then a draft upload followed by publication. Existing releases are never overwritten. Configure required reviewers on the **plugin-release** environment before enabling production publishing.
+- `tests.yml` / `plugin-checks.yml`: independent Windows/Linux plugin tests plus their common/dependency checks and standalone installed tests, with fail-fast disabled. Installed all-plugin browser checks are separate interoperability evidence. No Discord credentials or public tunnels are used by default.
+- `integration.yml`: scheduled/manual interoperability and 32-combination testing, not an unrelated-plugin release gate or full product certification.
+- `release.yml`: existing **plugin-prefixed** tags such as `private-syncplay/v0.2.0`, automatically or by manual dispatch. Only that plugin's checks gate its three-platform packages and independent catalog feeds. Existing releases are never overwritten. Configure required reviewers on the **plugin-release** environment before enabling production publishing.
 
-The release workflow also requires the reusable installed/plugin-combination matrix at the verified tag and validates the merged three-platform artifact set before release writes. See [GitHub release checklist and remaining limits](docs/github-release-checklist.md). Ordinary source uploads/pushes run tests; they do not create a release.
+Each release validates only its selected plugin's merged three-platform artifact set before release writes; another optional plugin's failed tests or combination checks do not block it. Shared contracts and actual compile-time dependencies still apply. See [independent release gates](docs/independent-plugin-releases.md). Ordinary source uploads/pushes run tests; they do not create a release.
 
 Installation URLs and steps are at the top of this README. Every release catalog preserves previous published versions and links directly to immutable ZIPs in this repository. The checked-in `manifest.json` starts empty: it does not advertise packages that have not been published. The generated release catalog is authoritative; the workflow does not push generated files into `main`.
 
 Local packaging (does not publish):
 
 ```powershell
-pwsh -File scripts/package.ps1 -Tag v0.2.0 -Runtime linux-x64
+pwsh -File scripts/package.ps1 -Tag v0.2.0 -Plugin private-syncplay -ReleaseTag private-syncplay/v0.2.0 -Runtime linux-x64
 ```
 
 Packages are **integration previews**. See the explicit remaining gates in [review status](docs/review-status.md); a green build is not full product certification. Source changes here have not been committed or pushed.

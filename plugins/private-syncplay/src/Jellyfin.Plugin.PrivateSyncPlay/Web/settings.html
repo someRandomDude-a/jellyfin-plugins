@@ -15,7 +15,7 @@
     var page = document.querySelector('#privateSyncPlaySettings'), form = page.querySelector('#pspForm');
     // Reveal filtered invalid rows before asking the browser to focus their validation message.
     form.noValidate = true;
-    var config, rows = [], feedback, UI, loading, editor, saving = false, dirty = false;
+    var config, rows = [], feedback, UI, loading, editor, saving = false, dirty = false, loadStage;
     var search, selectAll, selectionStatus, bulkToggle, bulkPanel, bulkApply, bulkReset, clearSelection, undoButton, resetAll, discardButton;
     var bulkFields = [], undo, discardUnlisted = false;
     var columns = [
@@ -187,16 +187,20 @@
         updateSelection();
     }
     function loadUI() {
-        return window.privateSyncPlayUILoading ||= new Promise(function (resolve, reject) {
-            if (window.PrivateSyncPlayUI) { resolve(window.PrivateSyncPlayUI); return; }
+        if (window.PrivateSyncPlayUI) return Promise.resolve(window.PrivateSyncPlayUI);
+        return (window.privateSyncPlayUILoading ||= new Promise(function (resolve, reject) {
             var script = document.createElement('script'); script.src = ApiClient.getUrl('PrivateSyncPlay/assets/ui.js');
-            script.onload = function () { resolve(window.PrivateSyncPlayUI); }; script.onerror = reject; document.head.appendChild(script);
-        });
+            script.onload = function () { if (window.PrivateSyncPlayUI) resolve(window.PrivateSyncPlayUI); else { script.remove(); reject(new Error('UI unavailable')); } };
+            script.onerror = function () { script.remove(); reject(new Error('UI unavailable')); }; document.head.appendChild(script);
+        })).catch(function (error) { window.privateSyncPlayUILoading = null; throw error; });
     }
     async function readSettings() {
-        UI = await loadUI();
+        loadStage = 'web controls'; UI = await loadUI();
+        loadStage = 'plugin configuration';
         var nextConfig = await ApiClient.getPluginConfiguration(id);
+        loadStage = 'user directory';
         var users = await ApiClient.getUsers();
+        loadStage = 'settings editor';
         try {
             var version = await ApiClient.ajax({ type:'GET', url:ApiClient.getUrl('PrivateSyncPlay/Version'), dataType:'json' });
             page.querySelector('#pspVersion').textContent = 'Private SyncPlay ' + (version.PluginVersion || version.pluginVersion)
@@ -239,9 +243,16 @@
         if (loading || saving) return loading;
         var previousEditor = editor;
         if (previousEditor) previousEditor.disabled = true;
-        loading = readSettings().catch(function () {
-            var target = feedback || form.querySelector('[role=status]');
-            if (target) target.textContent = 'Could not load settings.';
+        loading = readSettings().catch(function (error) {
+            var target = feedback?.isConnected ? feedback : form.querySelector('[role=status]');
+            if (!target) { target = document.createElement('p'); target.className = 'fieldDescription'; form.prepend(target); }
+            target.setAttribute('role','alert');
+            var status = Number.isInteger(error?.status) ? ' (HTTP ' + error.status + ')' : '';
+            target.textContent = 'Could not load settings: ' + loadStage + status + '. Check that this plugin version is installed, restart Jellyfin and reload the web client. Administrator access is required.';
+            if (!form.querySelector('#pspRetrySettings')) {
+                var retry = document.createElement('button'); retry.id = 'pspRetrySettings'; retry.type = 'button'; retry.className = 'emby-button raised'; retry.textContent = 'Retry loading settings';
+                retry.onclick = function () { retry.remove(); void load(); }; form.append(retry);
+            }
         }).finally(function () {
             if (previousEditor?.isConnected) previousEditor.disabled = false;
             loading = null;

@@ -64,6 +64,24 @@ async function request(path, { method = 'GET', body, auth, guest = false, origin
 }
 
 let started = false;
+const sockets = [];
+async function realtime(auth) {
+    const url = new URL(base + '/socket'); url.protocol = 'ws:';
+    url.searchParams.set('ApiKey', auth.token); url.searchParams.set('deviceId', auth.device);
+    const socket = new WebSocket(url); sockets.push(socket);
+    const messages = [];
+    socket.addEventListener('message', event => { try { messages.push(normalize(JSON.parse(event.data))); } catch { } });
+    await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, {once:true}); socket.addEventListener('error', () => reject(new Error('Disposable native socket failed')), {once:true}); });
+    for (let i=0;i<50;i++) { if ((await request('PrivateSyncPlay/Me',{auth})).data.realtimeReady) return messages; await wait(100); }
+    throw new Error('Native session controller did not become ready');
+}
+async function nativeUpdate(messages, type, groupId) {
+    for (let i=0;i<100;i++) {
+        const update=messages.find(message=>message.messageType==='SyncPlayGroupUpdate' && message.data?.type===type && sameId(message.data.groupId,groupId));
+        if(update)return update.data; await wait(50);
+    }
+    assert.fail(`Native ${type} update did not reach the requesting session`);
+}
 let repositoryStarted = false, networkStarted = false;
 const network = name + '-network', repository = name + '-repository';
 try {
@@ -74,7 +92,7 @@ try {
     await mkdir(join(root, 'cache'), { recursive: true });
     if (!catalogInstall) {
         await copyFile('src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.dll', join(root, 'config', 'plugins', 'PrivateSyncPlay', 'Jellyfin.Plugin.PrivateSyncPlay.dll'));
-        await copyFile('src/Jellyfin.Plugin.PrivateSyncPlay.Api/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.Api.dll', join(root, 'config', 'plugins', 'PrivateSyncPlay', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll'));
+        await copyFile('src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.Api.dll', join(root, 'config', 'plugins', 'PrivateSyncPlay', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll'));
         for(const dll of ['AccountHub.Api','PrivateSyncPlay.IntegrationStore'])await copyFile(`src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/${dll}.dll`,join(root,'config','plugins','PrivateSyncPlay',`${dll}.dll`));
     } else {
         const catalog=JSON.parse(await readFile(join(packagesDirectory,'manifest.json'),'utf8'));
@@ -279,13 +297,20 @@ try {
     const account=(await request('PrivateSyncPlay/Account')).data;
     assert(account.includes('assets/account.js') && !account.includes('privateSyncPlayInvite='));
     console.log('PASS plugin loaded, configuration and bundled web assets');
+    const hostUpdates=await realtime(admin), friendUpdates=await realtime(friend);
+    const otherHost=await login('party-admin','host-other-device');
+    const otherHostUpdates=await realtime(otherHost);
     const group = (await request('PrivateSyncPlay/Groups', { method:'POST', auth:admin, body:{Name:'Private Test',Mode:1,MaxViewers:3} })).data;
+    await nativeUpdate(hostUpdates,'GroupJoined',group.groupId);
+    assert.equal((await request('PrivateSyncPlay/Me',{auth:otherHost})).data.party ?? null,null,'Creation must not join another device of the owner');
+    assert(!otherHostUpdates.some(m=>m.data?.type==='GroupJoined'),'Do not target another owner session');
     const me = (await request('PrivateSyncPlay/Me',{auth:admin})).data;
     assert.equal(me.party.id,group.groupId);
     assert.equal((await request('SyncPlay/List',{auth:friend})).data.length,0);
     await request(`SyncPlay/${group.groupId}`,{auth:friend,expected:404});
     await request('SyncPlay/Join',{method:'POST',auth:friend,body:{GroupId:group.groupId},expected:404});
     await request('PrivateSyncPlay/JoinCode',{method:'POST',auth:friend,body:{Code:me.party.code.toLowerCase()},expected:204});
+    await nativeUpdate(friendUpdates,'GroupJoined',group.groupId);
     console.log('PASS private list/detail/direct-join guards and join code');
     const accountOnly = (await request('PrivateSyncPlay/Invites',{method:'POST',auth:admin,body:{AllowGuests:false,MaxUses:1}})).data;
     const invite = (await request('PrivateSyncPlay/Invites',{method:'POST',auth:admin,body:{AllowGuests:true,MaxUses:2}})).data;
@@ -322,6 +347,13 @@ try {
     await request('SyncPlay/SetNewQueue',{method:'POST',auth:admin,body:{PlayingQueue:[item.id],PlayingItemPosition:0,StartPositionTicks:0},expected:204});
     await request('Sessions/Playing',{method:'POST',auth:admin,body:{ItemId:item.id,PositionTicks:0,IsPaused:false,CanSeek:true,PlayMethod:'DirectPlay',SubtitleStreamIndex:-1},expected:204});
     await request('SyncPlay/Unpause',{method:'POST',auth:admin,expected:204});
+    await request('SyncPlay/Leave',{method:'POST',auth:friend,expected:204});
+    friendUpdates.length=0;
+    await request('PrivateSyncPlay/JoinInvite',{method:'POST',auth:friend,body:{Token:accountOnly.token},expected:204});
+    await nativeUpdate(friendUpdates,'GroupJoined',group.groupId);
+    const joinedQueue=await nativeUpdate(friendUpdates,'PlayQueue',group.groupId);
+    assert(JSON.stringify(joinedQueue).replaceAll('-','').toLowerCase().includes(item.id.replaceAll('-','').toLowerCase()),'Invite joining must receive the native current media queue');
+    console.log('PASS native sockets: exact creator session joins, private code/invite joins emit GroupJoined, active invite join receives PlayQueue');
     let state;
     for(let i=0;i<30;i++) { state=(await request('PrivateSyncPlay/Guest/State',{guest:true})).data; if(state.ready)break; await wait(1000); }
     assert(state.ready,'Guest HLS did not start');
@@ -692,6 +724,7 @@ try {
     }
     throw error;
 } finally {
+    for(const socket of sockets)socket.close();
     if(started && !keep) docker('rm','-f',name);
     if(repositoryStarted && !keep) docker('rm','-f',repository);
     if(networkStarted && !keep) docker('network','rm',network);

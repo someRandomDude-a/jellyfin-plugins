@@ -1,0 +1,94 @@
+name: Plugin checks
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        required: true
+        type: string
+      ref:
+        type: string
+        required: false
+      package_tag:
+        type: string
+        default: v0.2.0
+permissions:
+  contents: read
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - if: inputs.plugin == 'private-syncplay' || inputs.plugin == 'account-hub' || inputs.plugin == 'discord-bridge'
+        run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - if: inputs.plugin == 'discord-bridge'
+        run: npm ci --ignore-scripts
+        working-directory: plugins/discord-bridge/activity
+      - name: Selected plugin and common/dependency tests only
+        shell: pwsh
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/test-plugin.ps1 -Plugin $env:PLUGIN
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-${{ inputs.plugin }}-${{ matrix.os }}
+          path: '**/TestResults/*.trx'
+  installed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - if: inputs.plugin == 'private-syncplay'
+        run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - name: Package only the selected plugin
+        shell: pwsh
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          PACKAGE_TAG: ${{ inputs.package_tag }}
+        run: ./scripts/package.ps1 -Tag $env:PACKAGE_TAG -Plugin $env:PLUGIN -OutputDirectory artifacts/plugin-packages
+      - name: Standalone installed plugin with and without native Security
+        shell: pwsh
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          $keys = @{ 'account-hub'='hub'; 'discord-bridge'='discord'; 'private-syncplay'='syncplay'; 'deletion-queue'='deletion' }
+          curl --fail --location --output "$env:RUNNER_TEMP/security-jf12.zip" https://github.com/ZL154/JellyfinSecurity/releases/download/v2.6.4/Jellyfin.Plugin.TwoFactorAuthv2.6.4.0-jf12.zip
+          if ($LASTEXITCODE) { throw 'Pinned Security download failed' }
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])"
+          if ($LASTEXITCODE) { throw 'Standalone installed test failed' }
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" "--security=$env:RUNNER_TEMP/security-jf12.zip"
+          if ($LASTEXITCODE) { throw 'Standalone Security compatibility failed' }
+      - name: Full native SyncPlay, guest media and SDK consumer integration
+        if: inputs.plugin == 'private-syncplay'
+        shell: pwsh
+        working-directory: plugins/private-syncplay
+        run: |
+          dotnet build examples/WatchPartyConsumer -c Release
+          if ($LASTEXITCODE) { throw 'Consumer build failed' }
+          ./scripts/package.ps1
+          node scripts/integration.mjs --with-consumer --install-from-catalog
+          if ($LASTEXITCODE) { throw 'Native SyncPlay integration failed' }

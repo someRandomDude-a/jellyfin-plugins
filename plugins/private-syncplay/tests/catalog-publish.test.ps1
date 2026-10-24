@@ -1,4 +1,5 @@
 # Offline publication protocol regression: gh is mocked; no GitHub writes occur.
+param([switch]$ProtocolOnly)
 $ErrorActionPreference = 'Stop'
 $calls = [Collections.Generic.List[object]]::new()
 function gh {
@@ -13,14 +14,22 @@ function gh {
 }
 $root = Split-Path $PSScriptRoot -Parent
 $manifest = Join-Path $root 'artifacts/manifest.json'
+if ($ProtocolOnly) {
+    $fixture = Join-Path $root ('artifacts/catalog-protocol/' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory $fixture -Force | Out-Null
+    $manifest = Join-Path $fixture 'manifest.json'
+    '[{"guid":"09514a9e-f7a0-4c5a-91bc-3a46338298ca","versions":[{"version":"1.2.3.0"}]}]' | Set-Content $manifest
+}
 $catalog = @(Get-Content $manifest -Raw | ConvertFrom-Json | ForEach-Object { $_ })
 $version = $catalog[0].versions[0].version -replace '\.0$', ''
 $zip = Join-Path $root "artifacts/PrivateSyncPlay-$version.zip"
+if (!$ProtocolOnly) {
 $before = (Get-FileHash $zip).Hash
 $rejected = $false
 try { & (Join-Path $root 'scripts/package.ps1') -Version $version -PreviousManifest $manifest -Dotnet 'must-not-be-invoked' }
 catch { if ($_.Exception.Message -notlike '*already in the published catalog*') { throw }; $rejected = $true }
 if (-not $rejected -or (Get-FileHash $zip).Hash -ne $before) { throw 'Duplicate release must be rejected before rebuilding or replacing its ZIP' }
+}
 & (Join-Path $root 'scripts/publish-catalog.ps1') -Repository 'test/repository' -Manifest $manifest
 $create = $calls | Where-Object { $_.Arguments -contains 'repos/test/repository/git/refs' }
 if ($create.Body.ref -ne 'refs/heads/catalog') { throw 'First publication must create the catalog branch' }
@@ -33,4 +42,9 @@ $commit = $calls | Where-Object { $_.Arguments -contains 'repos/test/repository/
 if ($commit.Body.parents.Count -ne 1 -or $commit.Body.parents[0] -ne $parent) { throw 'Catalog commit must preserve its parent' }
 $tree = $calls | Where-Object { $_.Arguments -contains 'repos/test/repository/git/trees' }
 if ($tree.Body.base_tree -ne 'previous-tree' -or $tree.Body.tree[0].path -ne 'manifest.json') { throw 'Only update manifest.json, preserving other catalog files' }
+$calls.Clear()
+& (Join-Path $root 'scripts/publish-catalog.ps1') -Repository 'test/repository' -Manifest $manifest -ParentCommit $parent -CatalogBranch catalog-private-syncplay -CatalogPath manifest-linux-x64.json
+$update = $calls | Where-Object { $_.Arguments -contains 'repos/test/repository/git/refs/heads/catalog-private-syncplay' }
+$tree = $calls | Where-Object { $_.Arguments -contains 'repos/test/repository/git/trees' }
+if ($update.Body.force -ne $false -or $tree.Body.tree[0].path -ne 'manifest-linux-x64.json' -or $tree.Body.base_tree -ne 'previous-tree') { throw 'Independent platform feeds must preserve their branch and tree' }
 Write-Output 'PASS duplicate-version rejection, offline catalog branch creation, parent history, non-forced update and preserved tree'

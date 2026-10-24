@@ -1,4 +1,4 @@
-name: All tests
+name: Independent plugin checks and interoperability
 on:
   workflow_call:
     inputs:
@@ -23,42 +23,15 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - name: Validate workflow syntax, expressions and shell snippets
         run: docker run --rm --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" --workdir /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -color
-  test:
+  plugin:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: plugins/private-syncplay/package-lock.json
-      - run: npm ci --ignore-scripts
-        working-directory: plugins/private-syncplay
-      - run: npm ci --ignore-scripts
-        working-directory: plugins/discord-bridge/activity
-      - name: All .NET, browser-unit and release-tool tests
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          node plugins/private-syncplay/scripts/jellyfin-versions.mjs
-          if ($LASTEXITCODE) { throw 'Latest stable Jellyfin target check failed' }
-          ./scripts/test.ps1
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-${{ matrix.os }}
-          path: '**/TestResults/*.trx'
+        plugin: [account-hub, discord-bridge, private-syncplay, deletion-queue]
+    uses: ./.github/workflows/plugin-checks.yml
+    with:
+      plugin: ${{ matrix.plugin }}
+      ref: ${{ inputs.ref || github.sha }}
   installed-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -49,4 +49,17 @@ try {
     'must never upload' | Set-Content (Join-Path $release 'unexpected.txt'); Reject { Validate }; Remove-Item (Join-Path $release 'unexpected.txt')
     Validate
     Write-Output 'PASS offline merged-release validation: complete three-platform fixture, checksum tamper, missing catalog, ABI/URL mismatch and unexpected-file rejection.'
+    $single = Join-Path $root 'single'
+    New-Item -ItemType Directory $single | Out-Null
+    foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
+        Get-ChildItem $release -Filter "PrivateSyncPlay-*-$runtime.zip*" | Copy-Item -Destination $single
+        $entry = @(Get-Content (Join-Path $release "manifest-$runtime.json") -Raw | ConvertFrom-Json | Where-Object guid -eq $plugins.PrivateSyncPlay)
+        $entry[0].versions[0].sourceUrl = $entry[0].versions[0].sourceUrl.Replace('/download/v1.2.3/', '/download/private-syncplay%2Fv1.2.3/')
+        ConvertTo-Json -InputObject @($entry) -Depth 8 | Set-Content (Join-Path $single "manifest-$runtime.json")
+    }
+    & $validator -Directory $single -Tag v1.2.3 -ReleaseTag private-syncplay/v1.2.3 -Plugin private-syncplay | Out-Null
+    Reject { & $validator -Directory $single -Tag v1.2.3 -ReleaseTag discord-bridge/v1.2.3 -Plugin private-syncplay }
+    Reject { & $validator -Directory $single -Tag v1.2.3 -ReleaseTag private-syncplay/v1.2.3 -Plugin discord-bridge }
+    Reject { & $validator -Directory $single -Tag v1.2.3 }
+    Write-Output 'PASS independent three-platform release, plugin-prefixed URLs and cross-plugin/tag rejection without unrelated assets.'
 } finally { if (Test-Path $root) { Remove-Item -LiteralPath $root -Recurse -Force } }

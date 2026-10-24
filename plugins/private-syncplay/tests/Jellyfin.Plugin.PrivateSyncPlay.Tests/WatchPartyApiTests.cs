@@ -58,6 +58,29 @@ public sealed class WatchPartyApiTests : IDisposable
     private Task<WatchPartyInfo> Create() => _client.CreatePartyAsync(_owner.Id, "owner-session", new("Movie night", WatchPartyVisibility.Private, 3));
     private static CreateInviteOptions Invite(bool guests = false) => new(new Uri("https://media.example/jellyfin"), guests, 2);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreationAndPrivateAdmissionUseTheExactNativeActorSession(bool byInvite)
+    {
+        var ownerSession = _sessions.Single(s => s.Id == "owner-session");
+        var friendSession = _sessions.Single(s => s.Id == "friend-session");
+        _sessions.Add(new SessionInfo(Mock.Of<ISessionManager>(), NullLogger.Instance) { Id = "owner-other-device", UserId = _owner.Id });
+        var party = await Create();
+        _core.Verify(c => c.NewGroup(ownerSession, It.IsAny<NewGroupRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        _core.Verify(c => c.JoinGroup(It.IsAny<SessionInfo>(), It.IsAny<JoinGroupRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(await _client.GetCurrentPartyAsync(_owner.Id, "owner-other-device"));
+        if (byInvite)
+        {
+            var invitation = await _client.CreateInviteAsync(_owner.Id, ownerSession.Id, party.PartyId, Invite());
+            await _client.JoinByInviteAsync(_friend.Id, friendSession.Id, invitation.InviteUrl.Fragment[1..]);
+        }
+        else await _client.JoinByCodeAsync(_friend.Id, friendSession.Id, party.JoinCode!);
+        _core.Verify(c => c.JoinGroup(friendSession, It.Is<JoinGroupRequest>(r => r.GroupId == party.PartyId), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(party.PartyId, (await _client.GetCurrentPartyAsync(_friend.Id, friendSession.Id))!.PartyId);
+        Assert.Null(await _client.GetCurrentPartyAsync(_owner.Id, "owner-other-device"));
+    }
+
     [Fact] public async Task TypedClientUsesVersionedBridgeAndPreservesBaseUrl()
     {
         Assert.True(_client.IsAvailable); Assert.IsType<WatchPartyClient>(_client);

@@ -1,4 +1,6 @@
-param([Parameter(Mandatory)][string]$Repository, [string]$Manifest = 'artifacts/manifest.json', [string]$ParentCommit = '')
+param([Parameter(Mandatory)][string]$Repository, [string]$Manifest = 'artifacts/manifest.json', [string]$ParentCommit = '',
+    [ValidatePattern('^(catalog|catalog-(account-hub|discord-bridge|private-syncplay|deletion-queue))$')][string]$CatalogBranch = 'catalog',
+    [ValidatePattern('^manifest(?:-(?:linux-x64|linux-arm64|win-x64))?\.json$')][string]$CatalogPath = 'manifest.json')
 $ErrorActionPreference = 'Stop'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or ($ParentCommit -and $ParentCommit -notmatch '^[a-f0-9]{40}$')) { throw 'Invalid repository or parent commit' }
 $catalog = @(Get-Content $Manifest -Raw | ConvertFrom-Json | ForEach-Object { $_ })
@@ -10,7 +12,7 @@ function Invoke-GitHub($Endpoint, $Body, $Method = 'POST') {
     return $result | ConvertFrom-Json
 }
 $blob = Invoke-GitHub 'git/blobs' @{ content = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path $Manifest))); encoding = 'base64' }
-$treeBody = @{ tree = @(@{ path = 'manifest.json'; mode = '100644'; type = 'blob'; sha = $blob.sha }) }
+$treeBody = @{ tree = @(@{ path = $CatalogPath; mode = '100644'; type = 'blob'; sha = $blob.sha }) }
 if ($ParentCommit) {
     $oldCommitJson = gh api "repos/$Repository/git/commits/$ParentCommit"
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read catalog parent tree' }
@@ -22,8 +24,8 @@ $commit = Invoke-GitHub 'git/commits' @{ message = 'Update Jellyfin plugin catal
     author = @{ name = 'github-actions[bot]'; email = '41898282+github-actions[bot]@users.noreply.github.com' } }
 if ($ParentCommit) {
     # A concurrent branch change fails rather than overwriting someone else's catalog.
-    $null = Invoke-GitHub 'git/refs/heads/catalog' @{ sha = $commit.sha; force = $false } 'PATCH'
+    $null = Invoke-GitHub "git/refs/heads/$CatalogBranch" @{ sha = $commit.sha; force = $false } 'PATCH'
 } else {
-    $null = Invoke-GitHub 'git/refs' @{ ref = 'refs/heads/catalog'; sha = $commit.sha }
+    $null = Invoke-GitHub 'git/refs' @{ ref = "refs/heads/$CatalogBranch"; sha = $commit.sha }
 }
-Write-Output "Repository URL: https://raw.githubusercontent.com/$Repository/catalog/manifest.json"
+Write-Output "Repository URL: https://raw.githubusercontent.com/$Repository/$CatalogBranch/$CatalogPath"

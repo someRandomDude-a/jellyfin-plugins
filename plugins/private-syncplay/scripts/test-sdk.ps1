@@ -16,6 +16,7 @@ try {
     if ($actual.Count -ne $expected.Count -or @($actual | Where-Object { $_ -notin $expected }).Count -gt 0 -or @($expected | Where-Object { $_ -notin $actual }).Count -gt 0) { throw 'Unexpected SDK files, missing example, or accidentally packaged build outputs.' }
 } finally { $archive.Dispose() }
 [IO.Compression.ZipFile]::ExtractToDirectory($zip, $Directory)
+if ([Reflection.AssemblyName]::GetAssemblyName((Join-Path $Directory 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll')).Version.ToString() -ne "$version.0") { throw 'Packaged SDK assembly must retain its own declared version, not the plugin release version.' }
 $xml = Get-Content (Join-Path $Directory 'Jellyfin.Plugin.PrivateSyncPlay.Api.xml') -Raw
 foreach ($api in @('IWatchPartyService', 'GetManagementAsync', 'KickGuestAndRevokeInviteAsync', 'AddPrivateSyncPlayGuestControl')) {
     if (-not $xml.Contains($api)) { throw "Missing IntelliSense documentation for $api" }

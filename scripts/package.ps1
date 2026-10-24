@@ -3,13 +3,18 @@ param(
     [ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$Repository = 'someRandomDude-a/jellyfin-plugins',
     [ValidateSet('linux-x64','linux-arm64','win-x64')][string]$Runtime = 'linux-x64',
     [string]$OutputDirectory = '',
-    [string]$PreviousManifest = ''
+    [string]$PreviousManifest = '',
+    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue')][string]$Plugin = 'all',
+    [string]$ReleaseTag = ''
 )
 $ErrorActionPreference = 'Stop'
 $jsonOptions = @{}
 if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $jsonOptions.DateKind = 'String' }
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Use an immutable vX.Y.Z release tag.' }
 $version = $Matches[1] + '.0'
+if (!$ReleaseTag) { $ReleaseTag = $Tag }
+if ($ReleaseTag -cne $Tag -and ($Plugin -eq 'all' -or $ReleaseTag -cne "$Plugin/$Tag")) { throw 'Release tag must match the selected plugin and version' }
+$downloadTag = [Uri]::EscapeDataString($ReleaseTag)
 $root = Split-Path $PSScriptRoot -Parent
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $root 'Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $root "artifacts/release/$Tag/$Runtime" }
@@ -21,34 +26,36 @@ $plugins = @(
     @{ name='Private SyncPlay'; id='09514a9e-f7a0-4c5a-91bc-3a46338298ca'; project='plugins/private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay/Jellyfin.Plugin.PrivateSyncPlay.csproj'; asset='PrivateSyncPlay'; files=@('Jellyfin.Plugin.PrivateSyncPlay.dll','Jellyfin.Plugin.PrivateSyncPlay.deps.json','Jellyfin.Plugin.PrivateSyncPlay.Api.dll','PrivateSyncPlay.IntegrationStore.dll','AccountHub.Api.dll'); description='Private watch parties and isolated guest playback.' },
     @{ name='Deletion Queue'; id='3de88ba1-6d5c-49f5-854b-65a72f473f21'; project='plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Jellyfin.Plugin.DeletionQueue.csproj'; asset='DeletionQueue'; files=@('Jellyfin.Plugin.DeletionQueue.dll','Jellyfin.Plugin.DeletionQueue.deps.json','DeletionQueue.Core.dll','DeletionQueue.Infrastructure.dll','AccountHub.Api.dll','Microsoft.Data.Sqlite.dll','SQLitePCLRaw.core.dll','SQLitePCLRaw.provider.e_sqlite3.dll','SQLitePCLRaw.batteries_v2.dll',$(if ($Runtime -eq 'win-x64') {'e_sqlite3.dll'} else {'libe_sqlite3.so'})); description='Standalone consent-driven deletion workflow with authenticated evidence.' }
 )
+$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue' }
+if ($Plugin -ne 'all') { $plugins = @($plugins | Where-Object asset -eq $assets[$Plugin]) }
 $history = if ($PreviousManifest) { @(Get-Content -LiteralPath $PreviousManifest -Raw | ConvertFrom-Json @jsonOptions) } else { @() }
 $manifest = @()
-foreach ($plugin in $plugins) {
-    $zip = Join-Path $output "$($plugin.asset)-$version-$Runtime.zip"
+foreach ($item in $plugins) {
+    $zip = Join-Path $output "$($item.asset)-$version-$Runtime.zip"
     if (Test-Path -LiteralPath $zip) { throw "Refusing to replace immutable package $zip" }
     $work = Join-Path $output ([Guid]::NewGuid().ToString('N'))
     $publish = Join-Path $work 'publish'; $stage = Join-Path $work 'stage'
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
-    & dotnet publish (Join-Path $root $plugin.project) -c Release -r $Runtime --self-contained false -o $publish "-p:Version=$version" "-p:PluginVersion=$version" "-p:AssemblyVersion=$version" "-p:FileVersion=$version"
-    if ($LASTEXITCODE -ne 0) { throw "Publish failed: $($plugin.name)" }
-    foreach ($file in $plugin.files) { Copy-Item -LiteralPath (Join-Path $publish $file) -Destination $stage }
+    & dotnet publish (Join-Path $root $item.project) -c Release -r $Runtime --self-contained false -o $publish "-p:Version=$version" "-p:PluginVersion=$version" "-p:AssemblyVersion=$version" "-p:FileVersion=$version"
+    if ($LASTEXITCODE -ne 0) { throw "Publish failed: $($item.name)" }
+    foreach ($file in $item.files) { Copy-Item -LiteralPath (Join-Path $publish $file) -Destination $stage }
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination $stage
-    if ($plugin.asset -eq 'PrivateSyncPlay') { Copy-Item -LiteralPath (Join-Path $root 'plugins/private-syncplay/node_modules/hls.js/LICENSE') -Destination (Join-Path $stage 'hls.js.LICENSE') }
-    if ($plugin.asset -eq 'AccountHub') { Copy-Item -LiteralPath (Join-Path $root 'plugins/account-hub/THIRD-PARTY-NOTICES.md') -Destination $stage }
-    if ($plugin.asset -eq 'DiscordBridge') { Copy-Item -LiteralPath (Join-Path $root 'plugins/discord-bridge/THIRD-PARTY-NOTICES.md') -Destination $stage }
-    if ($plugin.asset -eq 'DiscordBridge') {
+    if ($item.asset -eq 'PrivateSyncPlay') { Copy-Item -LiteralPath (Join-Path $root 'plugins/private-syncplay/node_modules/hls.js/LICENSE') -Destination (Join-Path $stage 'hls.js.LICENSE') }
+    if ($item.asset -eq 'AccountHub') { Copy-Item -LiteralPath (Join-Path $root 'plugins/account-hub/THIRD-PARTY-NOTICES.md') -Destination $stage }
+    if ($item.asset -eq 'DiscordBridge') { Copy-Item -LiteralPath (Join-Path $root 'plugins/discord-bridge/THIRD-PARTY-NOTICES.md') -Destination $stage }
+    if ($item.asset -eq 'DiscordBridge') {
         Copy-Item -LiteralPath (Join-Path $root 'plugins/discord-bridge/activity/dist/embedded-app-sdk.LICENSE') -Destination (Join-Path $stage 'Activity-THIRD-PARTY-NOTICES.txt')
         Copy-Item -LiteralPath (Join-Path $root 'plugins/discord-bridge/activity/dist/activity-inventory.json') -Destination $stage
     }
-    $assembly = Join-Path $stage $plugin.files[0]
+    $assembly = Join-Path $stage $item.files[0]
     if ([Reflection.AssemblyName]::GetAssemblyName($assembly).Version.ToString() -ne $version) { throw 'Assembly/catalog version mismatch' }
-    $meta = [ordered]@{ guid=$plugin.id; name=$plugin.name; version=$version; targetAbi=$targetAbi; description=$plugin.description; overview=$plugin.description; owner=$Repository.Split('/')[0]; category='General' }
+    $meta = [ordered]@{ guid=$item.id; name=$item.name; version=$version; targetAbi=$targetAbi; description=$item.description; overview=$item.description; owner=$Repository.Split('/')[0]; category='General' }
     $meta | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage 'meta.json') -Encoding utf8NoBOM
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
     $archive = [IO.Compression.ZipFile]::OpenRead($zip)
     try {
         $names = @($archive.Entries | ForEach-Object FullName)
-        foreach ($file in @($plugin.files) + @('LICENSE','meta.json')) {
+        foreach ($file in @($item.files) + @('LICENSE','meta.json')) {
             if ($file -notin $names) { throw "Missing ZIP root entry: $file" }
         }
         if (@($names | Where-Object { $_ -match '[/\\]|^(Jellyfin.Controller|Jellyfin.Model|MediaBrowser\.|Microsoft.EntityFrameworkCore).*\.dll$' }).Count) { throw 'Unsafe ZIP contents' }
@@ -56,10 +63,10 @@ foreach ($plugin in $plugins) {
     $md5 = (Get-FileHash -LiteralPath $zip -Algorithm MD5).Hash.ToLowerInvariant()
     $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$sha  $([IO.Path]::GetFileName($zip))" | Set-Content -LiteralPath "$zip.sha256" -Encoding ascii
-    $old = @($history | Where-Object guid -eq $plugin.id | ForEach-Object { $_.versions })
+    $old = @($history | Where-Object guid -eq $item.id | ForEach-Object { $_.versions })
     if (@($old | Where-Object { [Version]$_.version -ge [Version]$version }).Count) { throw 'Catalog versions must increase; existing releases are immutable.' }
-    $entry = @{ version=$version; targetAbi=$targetAbi; changelog='Preview monorepo release; see release notes and documented acceptance limits.'; sourceUrl="https://github.com/$Repository/releases/download/$Tag/$([IO.Path]::GetFileName($zip))"; checksum=$md5; timestamp=[DateTime]::UtcNow.ToString('o') }
-    $manifest += [ordered]@{ guid=$plugin.id; name=$plugin.name; description=$plugin.description; overview=$plugin.description; owner=$Repository.Split('/')[0]; category='General'; versions=@($entry)+$old }
+    $entry = @{ version=$version; targetAbi=$targetAbi; changelog='Preview monorepo release; see release notes and documented acceptance limits.'; sourceUrl="https://github.com/$Repository/releases/download/$downloadTag/$([IO.Path]::GetFileName($zip))"; checksum=$md5; timestamp=[DateTime]::UtcNow.ToString('o') }
+    $manifest += [ordered]@{ guid=$item.id; name=$item.name; description=$item.description; overview=$item.description; owner=$Repository.Split('/')[0]; category='General'; versions=@($entry)+$old }
 }
 ConvertTo-Json -InputObject @($manifest) -Depth 15 | Set-Content -LiteralPath (Join-Path $output 'manifest.json') -Encoding utf8NoBOM
 & (Join-Path $PSScriptRoot 'inventory-distribution.ps1') -PackagesDirectory $output

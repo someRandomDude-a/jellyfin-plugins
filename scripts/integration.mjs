@@ -300,7 +300,10 @@ try {
     rootCreated = true;
     await mkdir(join(root, 'config', 'config'), { recursive: true }); await mkdir(join(root, 'cache')); if (libraryFixture) await mkdir(join(root, 'media'));
     const manifest = JSON.parse(await readFile(join(packages, 'manifest.json'), 'utf8'));
-    assert.equal(manifest.length, 4, 'Expected four independent plugin packages');
+    assert(Array.isArray(manifest) && manifest.length >= 1 && manifest.length <= 4, 'Expected selected-plugin or aggregate package catalog');
+    assert.equal(new Set(manifest.map(plugin=>plugin.name)).size,manifest.length,'Duplicate plugin package');
+    assert(manifest.every(plugin=>Object.values(pluginNames).includes(plugin.name)),'Unknown plugin package');
+    for(const key of selected)assert(manifest.some(plugin=>plugin.name===pluginNames[key]),'Selected plugin package missing: '+key);
     const packageRuntime = platform === 'linux/arm64' ? 'linux-arm64' : 'linux-x64';
     assert(manifest.every(plugin => new URL(plugin.versions[0].sourceUrl).pathname.endsWith('-' + packageRuntime + '.zip')), 'Packages must match the actual server architecture');
     for (const plugin of manifest.filter(item => selected.some(key => pluginNames[key] === item.name))) {
@@ -355,7 +358,10 @@ try {
         assert.equal(bridge.features.find(item => item.id === 'watchparty').available, has('hub') && has('syncplay'));
         assert.equal(bridge.features.find(item => item.id === 'transport').available, true);
         await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { revision: bridge.revision, settings: bridge.settings, confirmation: 'CONFIRM ACCOUNT HUB CHANGE' } });
-        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { revision: bridge.revision + 1, settings: bridge.settings, confirmation: 'wrong' }, expected: 400 });
+        // Transport configuration is operational, not a fresh-factor or typed-confirmation action.
+        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { revision: bridge.revision + 1, settings: bridge.settings } });
+        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { revision: bridge.revision + 2, settings: { ...bridge.settings, publicServerUrl: 'http://insecure.invalid' } }, expected: 400 });
+        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { revision: bridge.revision, settings: bridge.settings }, expected: 409 });
         await request('DiscordBridge/admin/v1/settings', { method: 'PUT', raw: '{"revision":1,"revision":1}', expected: 400 });
         await request('DiscordBridge/admin/v1/settings', { headers: { Origin: 'https://attacker.invalid' }, expected: 403 });
     }
@@ -389,7 +395,9 @@ try {
     const revision = (await request('AccountHub/api/v1/workspace')).data.data.revision;
     const changed = await request('AccountHub/api/v1/commands/policy.apply', { method: 'POST', body: { commandId: randomUUID(), revision, confirmation: 'CONFIRM ACCOUNT HUB CHANGE', payload: { userIds: [guid(person.id), guid(login.data.user.id)], managedFields: { EnableContentDownloading: false, MaxActiveSessions: 3 } } } });
     assert(changed.data.data.outcomes.some(item => item.status === 'administrator_skipped'));
-    const snapshot = changed.data.data.outcomes.find(item => item.status === 'applied').snapshotId; assert(snapshot);
+    const applied = changed.data.data.outcomes.find(item => item.status === 'applied');
+    assert(applied, 'Policy apply failed: ' + JSON.stringify(changed.data.data.outcomes.map(({ status, code }) => ({ status, code }))));
+    const snapshot = applied.snapshotId; assert(snapshot);
     assert.equal((await request(`Users/${person.id}`)).data.policy.maxActiveSessions, 3);
     const nextRevision = (await request('AccountHub/api/v1/workspace')).data.data.revision;
     await request('AccountHub/api/v1/commands/policy.rollback', { method: 'POST', body: { commandId: randomUUID(), revision: nextRevision, confirmation: 'CONFIRM ACCOUNT HUB CHANGE', payload: { userIds: [guid(person.id)], snapshotId: snapshot } } });
@@ -592,7 +600,7 @@ try {
         const line = output.split(/\r?\n/).find(line => line.startsWith('{"checks":'));
         assert(line, 'Browser check result missing');
         const result = JSON.parse(line);
-        assert(result.checks.length === 36 && result.checks.every(item => item.passed) && result.activity?.length === 3, 'Browser coverage incomplete');
+        assert(result.checks.length === 36 && result.checks.every(item => item.passed) && result.activity?.length === 3 && result.syncplaySettings === true, 'Browser coverage incomplete');
         await writeFile(join(root, 'theme-results.json'), JSON.stringify(result, null, 2));
         console.log('PASS 36 account-focused native-theme/workspace checks, keyboard/custom-theme override and Activity fail-closed layouts at three widths.');
     }

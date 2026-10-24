@@ -39,7 +39,9 @@ public sealed class InviteNativeProvisioner(IUserManager users, MediaBrowser.Con
     }
     public static void RequireSupportedDatabase(Version? version, string? provider)
     {
-        if (version != new Version(12, 2, 0, 0) || provider != "Microsoft.EntityFrameworkCore.Sqlite")
+        // 12.3 database/user sources are blob-identical to the reviewed 12.2
+        // contract; see docs/native-database-12.3-review.md. No version ranges.
+        if ((version != new Version(12, 2, 0, 0) && version != new Version(12, 3, 0, 0)) || provider != "Microsoft.EntityFrameworkCore.Sqlite")
             throw new HubException("native_database_unsupported", "Disabled-first onboarding requires the reviewed Jellyfin 12.2 SQLite schema", true);
     }
     private User Disabled(Guid id)

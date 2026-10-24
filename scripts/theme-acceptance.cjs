@@ -71,6 +71,9 @@ const http = require('node:http');
         await page.waitForFunction(() => getComputedStyle([...document.querySelectorAll('[role="tab"]')].find(e => e.textContent === 'People')).color === 'rgb(18, 98, 136)');
         const color = await page.getByRole('tab', { name: 'People', exact: true }).evaluate(e => getComputedStyle(e).color);
         assert.equal(color, 'rgb(18, 98, 136)', 'Custom theme must own native button presentation');
+        await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=privateSyncPlay');
+        await page.waitForFunction(() => document.querySelector('#pspSave') || document.querySelector('#pspForm')?.textContent.includes('Could not load settings'));
+        assert.equal(await page.locator('#pspSave').count(), 1, 'Private SyncPlay settings must load: ' + await page.locator('#pspForm').textContent());
         await page.goto(base.href.replace(/\/$/, '') + '/DiscordBridge/activity/');
         await page.getByRole('heading', { name: 'Jellyfin watch-party companion', exact: true }).waitFor();
         await page.waitForFunction(() => document.querySelector('[data-status]')?.textContent.includes('Activity unavailable'));
@@ -84,6 +87,6 @@ const http = require('node:http');
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2), `Activity/${width}: page overflows`);
             activity.push({ width, unavailableFailsClosed: true, nativeLabels: true });
         }
-        console.log(JSON.stringify({ checks: results, customThemeOverride: true, keyboardTabNavigation: true, activity }));
+        console.log(JSON.stringify({ checks: results, customThemeOverride: true, keyboardTabNavigation: true, syncplaySettings: true, activity }));
     } finally { await browser.close(); relay.closeAllConnections(); await new Promise(resolve => relay.close(resolve)); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
