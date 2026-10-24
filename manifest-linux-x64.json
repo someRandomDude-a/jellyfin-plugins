@@ -1,0 +1,28 @@
+[
+  {
+    "guid": "09514a9e-f7a0-4c5a-91bc-3a46338298ca",
+    "name": "Private SyncPlay",
+    "description": "Private watch parties and isolated guest playback.",
+    "overview": "Private watch parties and isolated guest playback.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "timestamp": "2026-10-24T20:50:54.9598714Z",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "c751f5650ac867d1aa5350763884b1d4",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/private-syncplay%2Fv0.1.2/PrivateSyncPlay-0.1.2.0-linux-x64.zip",
+        "version": "0.1.2.0"
+      },
+      {
+        "version": "0.1.0.0",
+        "targetAbi": "12.2.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:14.4843429Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/PrivateSyncPlay-0.1.0.0-linux-x64.zip",
+        "checksum": "bfef809f32dce4b0d80de86ab141d9bf"
+      }
+    ]
+  }
+]
