@@ -1,0 +1,28 @@
+[
+  {
+    "guid": "3de88ba1-6d5c-49f5-854b-65a72f473f21",
+    "name": "Deletion Queue",
+    "description": "Standalone consent-driven deletion workflow with authenticated evidence.",
+    "overview": "Standalone consent-driven deletion workflow with authenticated evidence.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "checksum": "26dd53d09e896ea099f7e39a27cffd58",
+        "targetAbi": "12.3.0.0",
+        "timestamp": "2026-10-24T20:52:28.1420283Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.2/DeletionQueue-0.1.2.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.1.2.0"
+      },
+      {
+        "version": "0.1.0.0",
+        "targetAbi": "12.2.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:17.3857764Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DeletionQueue-0.1.0.0-linux-x64.zip",
+        "checksum": "62ae43a1c462791cc13e41e7a57e7ea9"
+      }
+    ]
+  }
+]
