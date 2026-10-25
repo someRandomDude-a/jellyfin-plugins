@@ -27,6 +27,7 @@ public sealed record NotificationEvent(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Details = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NotificationLayout? Layout = null)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public NotificationCommand[]? Commands { get; init; }
     // Retain the original ABI for independently packaged producer DLLs.
     public NotificationEvent(int schemaVersion, Guid eventId, string source, string type, string severity, string title, string body,
         Guid[] audience, bool adminOnly, DateTimeOffset occurredAt, string? link, string? dedupeKey, Guid? correlationId, Dictionary<string, string>? metadata)
@@ -42,6 +43,11 @@ public sealed record NotificationEvent(
     }
 }
 public sealed record NotificationAction(string Label, string Link, string Size = "compact");
+public sealed record NotificationCommand(string Id, string Label, long Revision, string Snapshot, bool Enabled = true)
+{
+    public bool Selected { get; init; }
+}
+public sealed record NotificationCommandRequest(string Id, Guid CommandId, long Revision, string Snapshot);
 public sealed record AuditEvent(
     int SchemaVersion, Guid EventId, string Source, string EventType, string Outcome,
     DateTimeOffset OccurredAt, Guid? ActorUserId = null, string? SubjectType = null,

@@ -73,7 +73,7 @@ public static class Endpoints
             var catalogs = service.Catalog();
             var rows = new List<InboxRow>();
             foreach (var row in stored) if (await h.CanAccessNotificationAsync(id, row.Event, c.RequestAborted)) {
-                var presented = NotificationService.Present(row.Event, catalogs);
+                var presented = await service.PresentAsync(id, row.Event, catalogs, c.RequestAborted);
                 // Fanout identities are server-owned, not notification content.
                 rows.Add(row with { Event = presented with { Audience = presented.AdminOnly ? [] : [id] } });
             }
@@ -82,6 +82,15 @@ public static class Endpoints
             c.Response.Headers.ETag = tag;
             c.Response.Headers.CacheControl = "private, no-cache";
             return c.Request.Headers.IfNoneMatch == tag ? Results.StatusCode(304) : Json(Contract.Success(data));
+        }));
+        user.MapPost("/{id:guid}/actions", (Guid id, HttpContext c, NotificationStore s, INotificationHost h, NotificationService service) => Guard(async () =>
+        {
+            var userId = await User(c, h);
+            var entry = s.InboxEvent(userId, id, await h.IsAdministratorAsync(userId, c.RequestAborted));
+            if (entry is null || !await h.CanAccessNotificationAsync(userId, entry, c.RequestAborted)) throw new NotificationException("not_found", "Notification not found", 404);
+            var command = JsonSerializer.Deserialize<NotificationCommandRequest>(await Body(c, 4096), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing action");
+            await service.InvokeCommandAsync(userId, entry, command, c.RequestAborted);
+            return Json(Contract.Success(new { status = "updated" }));
         }));
         user.MapGet("/unread-count", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
         {

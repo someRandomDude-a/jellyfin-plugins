@@ -4,7 +4,7 @@ namespace DeletionQueue.Core;
 
 public enum ProposalAuthority { Denied, OwnRequests, AnyAccessibleItem }
 public enum MediaKind { Movie, Series }
-public enum ProposalStatus { Blocked, Waiting, Ready, Claimed, Uncertain, FilesDeleted, Completed, Cancelled }
+public enum ProposalStatus { Blocked, Waiting, Ready, Claimed, Uncertain, FilesDeleted, Completed, Cancelled, Expired }
 public enum Answer { Yes, No }
 
 public sealed class QueueException(string code) : Exception(code)
@@ -42,7 +42,12 @@ public sealed record VerifiedTarget(
     string Key, string ActivityKey, string Fingerprint, Guid JellyfinItemId,
     string Title, MediaKind Kind, int SeerrMediaId, bool Is4K,
     bool MappingVerified, bool OwnRequestVerified, bool FilesPinned, long ConfigurationRevision = 0,
-    string? DestructiveScopeKey = null);
+    string? DestructiveScopeKey = null)
+{
+    public int? RequestId { get; init; }
+    public Guid? RequestOwnerId { get; init; }
+    public bool RequestOnly { get; init; }
+}
 
 public sealed class Activity
 {
@@ -66,6 +71,8 @@ public sealed class Proposal
     public ProposalStatus Status { get; set; } = ProposalStatus.Blocked;
     public string Reason { get; set; } = "VerificationRequired";
     public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastPlaybackResetAt { get; set; }
+    public DateTimeOffset? LastPlaybackNoticeAt { get; set; }
     public DateTimeOffset? EligibleSince { get; set; }
     public DateTimeOffset? NotBefore { get; set; }
     public int DelayFloorHours { get; set; } = 48;
@@ -75,7 +82,7 @@ public sealed class Proposal
     public DateTimeOffset? FilesDeletedAt { get; set; }
     public string? DeletionEvidence { get; set; }
     public string? CleanupOutcome { get; set; }
-    public bool Terminal => Status is ProposalStatus.Completed or ProposalStatus.Cancelled;
+    public bool Terminal => Status is ProposalStatus.Completed or ProposalStatus.Cancelled or ProposalStatus.Expired;
 }
 
 public sealed class QueueState
@@ -118,7 +125,12 @@ public sealed record EvaluationEvidence(
 public sealed record UserProposal(
     Guid Id, string Title, string Ownership, string Status, string Reason,
     long Revision, DateTimeOffset? NotBefore, bool CanUndo,
-    string OwnSnapshot, Answer? OwnAnswer, DateTimeOffset? OwnActivityAt, string RequiredAction);
+    string OwnSnapshot, Answer? OwnAnswer, DateTimeOffset? OwnActivityAt, string RequiredAction)
+{
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+    public string Stage { get; init; } = "Consent";
+}
 
 public interface IStateStore
 {

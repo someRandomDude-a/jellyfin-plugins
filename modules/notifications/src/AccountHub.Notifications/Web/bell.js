@@ -8,7 +8,8 @@
     const client = () => window.ApiClient;
     const apiPrefix = document.querySelector('[data-notifications-bootstrap]')?.dataset.notificationsApi || 'AccountHub/api/v1/';
     const expanded = new Set(); let moreObserver, moreSentinel, loadMoreRequested = false;
-    let localRows = [], localSequence = 0, settingsElement;
+    let localRows = [], localSequence = 0, settingsElement, toast, toastTimer;
+    const toasted = new Set();
     const url = path => client().getUrl(apiPrefix + path);
     const element = (tag, text) => { const e = document.createElement(tag); if (tag === 'button') { e.className = 'emby-button raised'; e.setAttribute('is', 'emby-button'); e.type = 'button'; } if (text) e.textContent = text; return e; };
     function clear(clearLocal = false) {
@@ -17,6 +18,7 @@
         generation++; skip = 0; hasMore = false; unreadCount = 0; settingsView = false;
         expanded.clear(); moreObserver?.disconnect(); loadMoreRequested = false;
         settingsElement = null;
+        toast?.remove(); toast = null; clearTimeout(toastTimer); if (clearLocal) toasted.clear();
         button?.remove(); panel?.remove(); button = panel = null;
     }
     async function request(path, method = 'GET', body, headers = {}) {
@@ -45,6 +47,27 @@
     }
     function close(restoreFocus = true) { if (panel) panel.hidden = true; settingsView = false; button?.setAttribute('aria-expanded', 'false'); if (restoreFocus) button?.focus(); }
     const resolveLink = link => link.startsWith('web/index.html#/') ? client().getUrl(link) : link;
+    function showToast() {
+        const recent = rows.filter(row => !row.read && !toasted.has(row.id) && row.event.layout?.toastSeconds > 0 && Date.now() - new Date(row.event.occurredAt).getTime() < 120000);
+        for (const row of recent) toasted.add(row.id);
+        const row = recent[0]; if (!row || !panel?.hidden) return;
+        toast?.remove(); clearTimeout(toastTimer);
+        toast = element('aside'); toast.className = 'dialog paperList notificationToast'; toast.setAttribute('aria-label', 'Notification');
+        const text = element('p', row.event.body); text.setAttribute('role', 'status'); toast.append(text);
+        const view = element('a', 'View request'); view.href = resolveLink(row.event.link || '#/home'); view.className = 'emby-button button-flat'; toast.append(view);
+        for (const command of row.event.commands || []) if (command.enabled) {
+            const cancel = element('button', command.label); cancel.className = 'emby-button button-flat';
+            cancel.onclick = async () => {
+                cancel.disabled = true;
+                try { await request('notifications/' + row.id + '/actions', 'POST', { id: command.id, commandId: crypto.randomUUID(), revision: command.revision, snapshot: command.snapshot }); toast?.remove(); etag = undefined; void poll(); }
+                catch { text.textContent = 'Request changed. Open Notifications to review it.'; }
+            }; toast.append(cancel);
+        }
+        document.body.append(toast);
+        const dismiss = () => { clearTimeout(toastTimer); toastTimer = setTimeout(() => toast?.remove(), Math.min(10, row.event.layout.toastSeconds) * 1000); };
+        toast.addEventListener('pointerenter', () => clearTimeout(toastTimer)); toast.addEventListener('focusin', () => clearTimeout(toastTimer));
+        toast.addEventListener('pointerleave', dismiss); toast.addEventListener('focusout', dismiss); dismiss();
+    }
     function timestamp(value) {
         const date = new Date(value);
         if (!Number.isFinite(date.getTime())) return { relative: 'Time unavailable', exact: 'Time unavailable', age: 0 };
@@ -82,6 +105,7 @@
             item.dataset.density = row.event.layout?.density === 'standard' ? 'standard' : 'compact';
             const mainLink = row.event.link || row.event.actions?.[0]?.link;
             const main = element(mainLink ? 'a' : 'div'); main.className = 'notificationMain';
+            main.title = row.event.title + '\n' + row.event.body;
             if (mainLink) { main.href = resolveLink(mainLink); main.onclick = () => { if (!row.read && !row.local) void request('notifications/' + row.id + '/read', 'POST').catch(() => {}); }; }
             main.append(element('h3', row.event.title));
             const summaryLength = Math.max(60, Math.min(300, row.event.layout?.summaryLength || 140));
@@ -91,11 +115,29 @@
             details.open = expanded.has(row.id); details.addEventListener('toggle', () => { if (details.open) expanded.add(row.id); else expanded.delete(row.id); });
             details.append(summary, element('p', row.event.body));
             if (row.event.details) details.append(element('p', row.event.details));
-            if ((row.event.details || row.event.body.length > summaryLength) && (row.event.layout?.expandable !== false || !mainLink)) item.append(details);
-            for (const action of row.event.actions || []) {
+            item.dataset.expandable = String(row.event.layout?.expandable !== false);
+            if ((row.event.details || row.event.body) && (row.event.layout?.expandable !== false || !mainLink)) item.append(details);
+        for (const action of row.event.actions || []) {
                 const link = element('a', action.label); link.className = 'emby-button button-flat notificationAction'; link.dataset.size = action.size === 'normal' ? 'normal' : 'compact';
                 link.href = resolveLink(action.link); item.append(link);
             }
+            const commands = element('div'); commands.className = 'notificationQuickActions';
+            for (const command of row.event.commands || []) {
+                const control = element('button', command.label); control.className = 'emby-button button-flat notificationCommand'; control.dataset.action = command.id;
+                control.setAttribute('aria-pressed', String(command.selected === true)); control.disabled = !command.enabled;
+                control.onclick = async () => {
+                    for (const button of commands.querySelectorAll('button')) button.disabled = true;
+                    const status = item.querySelector('.notificationActionStatus') || element('p'); status.className = 'notificationActionStatus'; status.setAttribute('role', 'status'); status.textContent = ''; item.append(status);
+                    try {
+                        await request('notifications/' + row.id + '/actions', 'POST', { id: command.id, commandId: crypto.randomUUID(), revision: command.revision, snapshot: command.snapshot });
+                        etag = undefined; status.textContent = 'Saved'; await poll();
+                        window.dispatchEvent(new Event('suite-removal-changed'));
+                    } catch { status.textContent = 'Request changed or action unavailable. Refresh and try again.'; etag = undefined; void poll(); }
+                    finally { if (commands.isConnected) for (const button of commands.querySelectorAll('button')) button.disabled = false; }
+                };
+                commands.append(control);
+            }
+            if (row.event.commands?.length) item.append(commands);
             const options = element('details'), trigger = element('summary'), menu = element('div'); options.className = 'notificationOptions'; trigger.setAttribute('aria-label', 'Notification options');
             const icon = element('span', 'more_vert'); icon.className = 'material-icons'; icon.setAttribute('aria-hidden', 'true'); trigger.append(icon); menu.className = 'dialog paperList notificationOptionsMenu'; menu.setAttribute('role', 'menu'); options.append(trigger, menu); item.append(options);
             options.addEventListener('toggle', () => { if (options.open) for (const other of panel.querySelectorAll?.('.notificationOptions[open]') || []) if (other !== options) other.open = false; });
@@ -196,8 +238,8 @@
         const nextIdentity = url('notifications') + ':' + client().getCurrentUserId();
         if (identity !== nextIdentity) { clear(true); paused = false; identity = nextIdentity; }
         const anchor = [...document.querySelectorAll('.headerUserButton, [aria-controls="app-user-menu"]')].find(node => node.getClientRects().length && !node.closest('.videoOsdBottom'));
-        if (button?.isConnected && anchor?.parentElement) {
-            if (button.parentElement !== anchor.parentElement) anchor.parentElement.insertBefore(button, anchor);
+        if (button?.isConnected) {
+            if (anchor?.parentElement && button.parentElement !== anchor.parentElement) anchor.parentElement.insertBefore(button, anchor);
             return true;
         }
         if (!anchor?.parentElement || document.querySelector('[data-account-hub-bell]')) return false;
@@ -218,12 +260,14 @@
             panel.hidden = !panel.hidden; settingsView = false;
             button.setAttribute('aria-expanded', String(!panel.hidden));
             if (!panel.hidden) {
+                toast?.remove(); clearTimeout(toastTimer);
                 const rect = button.getBoundingClientRect();
                 panel.style.top = Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) + 'px';
-                panel.style.right = innerWidth <= 600 ? '0' : Math.max(8, innerWidth - rect.right) + 'px';
+                panel.style.right = '.75rem';
                 panel.style.width = innerWidth <= 600 ? 'calc(100vw - 1rem)' : 'min(26rem, calc(100vw - 2rem))';
-                panel.style.right = innerWidth <= 600 ? '.5rem' : Math.max(8, innerWidth - rect.right) + 'px';
-                panel.style.maxHeight = Math.max(100, innerHeight - Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) - 8) + 'px';
+                panel.style.right = innerWidth <= 600 ? '.5rem' : '.75rem';
+                const available = innerHeight - Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) - 8;
+                panel.style.maxHeight = Math.max(100, Math.min(available, innerWidth <= 600 ? available : innerHeight / 2)) + 'px';
                 skip = 0; loadMoreRequested = false; etag = undefined; render(); panel.focus(); void poll();
             }
         };
@@ -260,7 +304,7 @@
             if (identity !== activeIdentity || generation !== activeGeneration || forbidden()) return;
             if (!response.unchanged) {
                 rows = append ? [...new Map([...rows, ...response.notifications].map(row => [row.id, row])).values()] : response.notifications;
-                hasMore = response.hasMore ?? response.notifications.length === 100; etag = append ? undefined : response.etag; render();
+                hasMore = response.hasMore ?? response.notifications.length === 100; etag = append ? undefined : response.etag; render(); showToast();
             }
             const count = await request('notifications/unread-count');
             unreadCount = count.count; paintCount(unreadCount);
@@ -281,6 +325,7 @@
     }, true);
     window.addEventListener('focus', resume);
     window.addEventListener('suite-notification-dismiss', () => close(false));
+    window.addEventListener('suite-removal-changed', () => { etag = undefined; void poll(); });
     window.addEventListener('suite-notification-message', event => {
         // Transient UI feedback only. Never accepted as a server publication,
         // never persisted, and never shown across account/auth boundaries.

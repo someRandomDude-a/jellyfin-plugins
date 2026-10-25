@@ -23,7 +23,7 @@ public static class NoticeRules
             if (!unread.Add((user, id))) continue;
             if (state.Notices.Count >= 10000) { state.NoticeDeliveryIncomplete = true; return; }
             state.Notices.Add(new Notice(Guid.NewGuid(), user, id,
-                "A deletion proposal relevant to you changed. Review your private status."));
+                "Removal request updated."));
         }
     }
 

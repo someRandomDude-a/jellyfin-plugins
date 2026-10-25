@@ -11,10 +11,10 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
     {
         observedGeneration = fence.Generation;
         var owner = identity.Account(proposal.OwnerId);
-        var resolved = await targets.ResolveAsync(owner, new TargetSelection(proposal.Target.JellyfinItemId, null, proposal.Target.Is4K), ct);
+        var resolved = await targets.ResolveAsync(owner, proposal.Target.RequestId is { } requestId ? new TargetSelection(null, requestId, proposal.Target.Is4K) : new TargetSelection(proposal.Target.JellyfinItemId, null, proposal.Target.Is4K), ct);
         var state = runtime.Read();
         var authority = QueueRules.Authority(state, owner.Id);
-        var authorized = owner.Enabled && targets.Accessible(owner.Id, resolved.JellyfinItemId) &&
+        var authorized = owner.Enabled && targets.Accessible(owner.Id, resolved) &&
             (authority == ProposalAuthority.AnyAccessibleItem || authority == ProposalAuthority.OwnRequests && resolved.OwnRequestVerified);
         var scan = fence.Quiet && inventory.Scan(resolved) && fence.Quiet && observedGeneration == fence.Generation && runtime.CollectorHealthy;
         var latest = runtime.Read();
@@ -48,7 +48,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var state = runtime.Read(); var p = QueueRules.Find(state, proposal.Id);
         var owner = identity.Account(p.OwnerId);
         var authority = QueueRules.Authority(state, owner.Id);
-        if (!owner.Enabled || !targets.Accessible(owner.Id, p.Target.JellyfinItemId) || authority == ProposalAuthority.Denied ||
+        if (!owner.Enabled || !targets.Accessible(owner.Id, p.Target) || authority == ProposalAuthority.Denied ||
             authority == ProposalAuthority.OwnRequests && !p.Target.OwnRequestVerified) throw new QueueException("OwnerNotAuthorized");
         if (p.Claim?.Id != proposal.Claim?.Id || p.Status != ProposalStatus.Claimed || !state.Policy.AutomaticDeletion ||
             !state.Policy.SeerrManagedDeletionAcknowledged || state.Policy.Suspended ||
@@ -56,14 +56,15 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         using var seerr = seerrClients.Create(state.Seerr);
         if (state.Policy.RequireAdministratorApproval && !AdministratorAuthorized(state, p)) throw new QueueException("AdministratorApprovalRequired");
         if (!fence.Quiet || observedGeneration != fence.Generation || !runtime.CollectorHealthy) throw new QueueException("ActivityChangedBeforeDispatch");
-        await seerr.DeleteFilesOnceAsync(p.Target.SeerrMediaId, p.Target.Is4K, ct);
+        if (p.Target.RequestOnly && p.Target.RequestId is { } requestId) await seerr.DeclineRequestOnceAsync(requestId, ct);
+        else await seerr.DeleteFilesOnceAsync(p.Target.SeerrMediaId, p.Target.Is4K, ct);
     }
 
     private bool AdministratorAuthorized(QueueState state, Proposal proposal)
     {
         if (!QueueRules.AdministratorApprovalCurrent(state, proposal) || proposal.AdministratorApproval is not { } approval) return false;
         var account = identity.Account(approval.UserId);
-        return account.Enabled && account.Administrator && targets.Accessible(account.Id, proposal.Target.JellyfinItemId);
+        return account.Enabled && account.Administrator && (targets.Accessible(account.Id, proposal.Target) || proposal.Target.RequestId > 0);
     }
 
     public async Task<DeletionProof?> InspectOutcomeAsync(Proposal proposal, CancellationToken ct)
@@ -71,6 +72,12 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var state = runtime.Read();
         if (state.Seerr.Revision != proposal.Target.ConfigurationRevision || proposal.Claim is null) return null;
         using var seerr = seerrClients.Create(state.Seerr);
+        if (proposal.Target.RequestOnly && proposal.Target.RequestId is { } requestId) {
+            var request = await seerr.RequestAsync(requestId, ct);
+            if (request.TryGetProperty("id", out var requestIdentity) && requestIdentity.GetInt32() == requestId && request.TryGetProperty("status", out var requestStatus) && requestStatus.GetInt32() == 3)
+                return new(proposal.Target.Fingerprint, "Seerr reports the pending request declined; request history retained.");
+            return null;
+        }
         var media = await seerr.MediaRecordAsync(proposal.Target.SeerrMediaId, ct);
         if (!media.TryGetProperty("id", out var id) || !id.TryGetInt32(out var mediaId) || mediaId != proposal.Target.SeerrMediaId ||
             !media.TryGetProperty("tmdbId", out var tmdb) || !tmdb.TryGetInt32(out var tmdbId) ||

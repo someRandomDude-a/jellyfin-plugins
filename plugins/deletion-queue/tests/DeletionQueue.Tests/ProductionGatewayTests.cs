@@ -39,6 +39,7 @@ public sealed class ProductionGatewayTests : IDisposable
     private readonly Movie movie = new() { Id = Guid.NewGuid(), Name = "Fixture movie", ProviderIds = new() { ["Tmdb"] = "1" } };
     private readonly QueueRuntime runtime;
     private readonly TargetResolver targets;
+    private readonly LiveIdentity identity;
     private readonly SeerrExecutionGateway gateway;
     private readonly ActivityFence fence = new();
     private DateTime? historical;
@@ -46,6 +47,11 @@ public sealed class ProductionGatewayTests : IDisposable
     private bool deleted;
     private bool administrator;
     private int deletes;
+    private bool unfulfilled;
+    private bool pendingOnly;
+    private bool otherRequestOwner;
+    private int declines;
+    private bool nativeGone;
 
     public ProductionGatewayTests()
     {
@@ -62,7 +68,7 @@ public sealed class ProductionGatewayTests : IDisposable
             _ => throw new NotSupportedException(m.Name)
         });
         var library = Fake<ILibraryManager>((m, _) => m.Name switch
-        { "GetItemById" => movie, "GetItemList" => new BaseItem[] { movie }, _ => throw new NotSupportedException(m.Name) });
+        { "GetItemById" => nativeGone ? null : movie, "GetItemList" => new BaseItem[] { movie }, _ => throw new NotSupportedException(m.Name) });
         var data = Fake<IUserDataManager>((m, args) =>
         {
             if (m.Name != "GetUserData") throw new NotSupportedException(m.Name);
@@ -74,7 +80,7 @@ public sealed class ProductionGatewayTests : IDisposable
         var host = Fake<IServerApplicationHost>((m, _) => m.Name == "get_SystemId" ? "fixture-server" : throw new NotSupportedException(m.Name));
         var clients = new Factory(Send);
         targets = new TargetResolver(library, users, runtime, host, clients);
-        var identity = new LiveIdentity(users);
+        identity = new LiveIdentity(users);
         var inventory = new ActivityInventory(library, users, data, sessions, runtime, targets, clock);
         gateway = new SeerrExecutionGateway(runtime, targets, identity, inventory, fence, clock, clients);
         runtime.Write(Guid.NewGuid(), "fixture", "Configure", state =>
@@ -87,6 +93,10 @@ public sealed class ProductionGatewayTests : IDisposable
     }
     private HttpResponseMessage Send(HttpRequestMessage request)
     {
+        if (request.Method == HttpMethod.Post) {
+            Assert.Equal("/api/v1/request/9/decline", request.RequestUri!.AbsolutePath); declines++;
+            return new(HttpStatusCode.OK) { Content = new StringContent("{}") };
+        }
         if (request.Method == HttpMethod.Delete)
         {
             Assert.Equal("/api/v1/media/42/file?is4k=false", request.RequestUri!.PathAndQuery);
@@ -102,6 +112,11 @@ public sealed class ProductionGatewayTests : IDisposable
         {
             "/api/v1/settings/jellyfin" => """{"serverId":"fixture-server"}""",
             "/api/v1/user/1" => $$$"""{"jellyfinUserId":"{{{owner.Id}}}"}""",
+            "/api/v1/user/2" => $$$"""{"jellyfinUserId":"{{{restricted.Id}}}"}""",
+            "/api/v1/request/9" => JsonSerializer.Serialize(new { id = 9, status = declines > 0 ? 3 : pendingOnly ? 1 : 2, is4k = false, requestedBy = new { id = otherRequestOwner ? 2 : 1 }, media = new { id = 42, tmdbId = 1, mediaType = "movie" } }),
+            "/api/v1/movie/1" when unfulfilled => JsonSerializer.Serialize(new { id = 1, title = "Pending movie", mediaInfo = new { id = 42, tmdbId = 1, mediaType = "movie", status = 3,
+                serviceId = pendingOnly ? (int?)null : 0, externalServiceId = pendingOnly ? (int?)null : 123,
+                requests = new[] { new { id = 9, is4k = false, status = pendingOnly ? 1 : 2, requestedBy = new { id = otherRequestOwner ? 2 : 1 } } } } }),
             "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
             "/api/v1/media/42" => $$$"""{"id":42,"tmdbId":1,"status":{{{(deleted ? 7 : 5)}}}}""",
             _ => throw new NotSupportedException(request.RequestUri.AbsolutePath)
@@ -128,6 +143,54 @@ public sealed class ProductionGatewayTests : IDisposable
         await new ExecutionCoordinator(runtime, gateway, clock).ExecuteAsync(id, default);
         Assert.Equal(1, deletes); Assert.Equal(ProposalStatus.Completed, QueueRules.Find(runtime.Read(), id).Status);
         Assert.NotNull(QueueRules.Find(runtime.Read(), id).FilesDeletedAt);
+        nativeGone = true;
+        var completed = QueueRules.Find(runtime.Read(), id);
+        Assert.True(targets.Accessible(owner.Id, completed)); Assert.False(targets.Accessible(restricted.Id, completed));
+    }
+    [Theory] [InlineData(true)] [InlineData(false)]
+    public async Task UnfulfilledOwnRequestsUseVerifiedOwnershipWithoutNeedingANativeItem(bool pending)
+    {
+        unfulfilled = true; pendingOnly = pending;
+        var target = await targets.ResolveAsync(new Account(owner.Id, true), new(null, 9, false), default);
+        Assert.Equal(Guid.Empty, target.JellyfinItemId); Assert.Equal(9, target.RequestId); Assert.Equal(pending, target.RequestOnly);
+        Assert.True(targets.Accessible(owner.Id, target)); Assert.False(targets.Accessible(restricted.Id, target));
+        var id = runtime.Write(Guid.NewGuid(), "fixture", "Propose", state => {
+            var p = QueueRules.Propose(state, new(owner.Id, true), target, true, QueueRules.Snapshot(state, target, owner.Id), clock.Now);
+            QueueRules.Evaluate(state, p, QueueRulesTests.Good, clock.Now); return p.Id;
+        });
+        Due(); await new ExecutionCoordinator(runtime, gateway, clock).ExecuteAsync(id, default);
+        Assert.Equal(pending ? 1 : 0, declines); Assert.Equal(pending ? 0 : 1, deletes);
+        Assert.Equal(ProposalStatus.Completed, QueueRules.Find(runtime.Read(), id).Status);
+    }
+    [Fact] public async Task AnotherUsersUnfulfilledRequestIsNeverAuthorizedByTheApiKey()
+    {
+        unfulfilled = true; pendingOnly = true; otherRequestOwner = true;
+        await Assert.ThrowsAsync<QueueException>(() => targets.ResolveAsync(new Account(owner.Id, true), new(null, 9, false), default));
+        Assert.Equal(0, declines); Assert.Equal(0, deletes);
+    }
+    [Fact] public async Task NotificationControlsProjectCallerConsentAndUseRevisionCheckedCommands()
+    {
+        var id = await Seed(); var adapter = new NotificationCommands(runtime, targets, identity, clock);
+        var entry = new AccountHub.Api.NotificationEvent(1, Guid.NewGuid(), "deletion-queue", "proposal.updated", "info", "Movie", "Updated", [owner.Id], false, clock.Now, Metadata: new() { ["proposalId"] = id.ToString() });
+        var json = AccountHub.Api.Contract.Serialize(entry);
+        var commands = JsonSerializer.Deserialize<AccountHub.Api.NotificationCommand[]>(await adapter.DispatchAsync(owner.Id, json, null, default), AccountHub.Api.Contract.Json)!;
+        Assert.Equal(3, commands.Length); Assert.True(commands.Single(command => command.Id == "allow").Selected);
+        var keep = commands.Single(command => command.Id == "keep");
+        var request = AccountHub.Api.Contract.Serialize(new AccountHub.Api.NotificationCommandRequest("keep", Guid.NewGuid(), keep.Revision, keep.Snapshot));
+        var changed = await adapter.DispatchAsync(owner.Id, json, request, default);
+        Assert.True(JsonSerializer.Deserialize<AccountHub.Api.NotificationCommand[]>(changed, AccountHub.Api.Contract.Json)!.Single(command => command.Id == "keep").Selected);
+        await Assert.ThrowsAsync<QueueException>(() => adapter.DispatchAsync(owner.Id, json, AccountHub.Api.Contract.Serialize(new AccountHub.Api.NotificationCommandRequest("allow", Guid.NewGuid(), keep.Revision, keep.Snapshot)), default));
+        await Assert.ThrowsAsync<QueueException>(() => adapter.DispatchAsync(restricted.Id, json, null, default));
+    }
+    [Fact] public async Task PlaybackProgressKeepsConsentProtectionWithoutSpammingReadNotices()
+    {
+        var id = await Seed(); var notice = Assert.Single(runtime.Read().Notices);
+        runtime.Write(Guid.NewGuid(), "fixture", "NoticeMarkedRead", state => { NoticeRules.MarkRead(state, notice.Id, owner.Id, clock.Now); return true; });
+        runtime.Write(Guid.NewGuid(), "activity", "PlaybackProgressCaptured", state => {
+            QueueRules.RecordActivity(state, owner.Id, QueueRules.Find(state, id).Target.ActivityKey, "play", false, clock.Now); return true;
+        });
+        var current = runtime.Read(); Assert.Single(current.Notices); Assert.Equal(ProposalStatus.Blocked, QueueRules.Find(current, id).Status);
+        Assert.Null(QueueRules.Project(current, QueueRules.Find(current, id), owner.Id, clock.Now).OwnAnswer);
     }
     [Fact] public async Task RealGatewayDoesNotResendAfterTimeoutAndReconcilesOnlyByReading()
     {

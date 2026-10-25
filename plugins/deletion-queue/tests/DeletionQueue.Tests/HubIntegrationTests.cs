@@ -98,7 +98,9 @@ public sealed class HubIntegrationTests
         {
             var json = e.PayloadJson;
             Assert.DoesNotContain("Consents", json); Assert.DoesNotContain("Fingerprint", json); Assert.DoesNotContain("ApiKey", json);
-            Assert.DoesNotContain(s.Proposals[0].Target.Title, json); Assert.DoesNotContain("OwnSnapshot", json);
+            if (e.Kind == "audit") Assert.DoesNotContain(s.Proposals[0].Target.Title, json);
+            else Assert.Equal(s.Proposals[0].Target.Title, JsonDocument.Parse(json).RootElement.GetProperty("title").GetString());
+            Assert.DoesNotContain("OwnSnapshot", json);
             Assert.Equal(e.EventId, JsonDocument.Parse(json).RootElement.GetProperty("eventId").GetGuid());
         }
     }

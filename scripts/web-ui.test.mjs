@@ -249,14 +249,17 @@ test('Native creation override uses explicit fresh confirmation and exposes five
     assert([...f.content.querySelectorAll('button')].some(b => b.textContent === 'End native override and resume Hub'));
 });
 
-test('Deletion Queue integrated CSS leaves presentation to native and custom themes', async t => {
+test('Deletion Queue retains native surfaces and scoped semantic selection tints', async t => {
     const css = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/integrated.css');
-    assert.doesNotMatch(css, /#[\da-f]{3,8}\b|rgba?\(|hsla?\(|(?:^|[;{])\s*(?:color|background(?:-[\w-]+)?|border(?:-[\w-]+)?|box-shadow|font(?:-[\w-]+)?|line-height|backdrop-filter)\s*:|::backdrop|prefers-color-scheme/mi);
+    assert.doesNotMatch(css, /(?:^|[;{])\s*(?:color|font-family|backdrop-filter)\s*:|::backdrop|prefers-color-scheme/mi);
+    assert.match(css, /\[data-answer=allow\]\[aria-pressed=true\]/);
+    assert.match(css, /\[data-answer=keep\]\[aria-pressed=true\]/);
+    assert.doesNotMatch(css, /background(?:-color)?\s*:\s*#[\da-f]+/i);
     const dom = new JSDOM('<style>.dialog { background: rgb(10, 20, 30); color: rgb(230, 220, 210); border-radius: 9px; } .emby-button { background: rgb(40, 50, 60); color: rgb(210, 200, 190); border-radius: 7px; }</style><dialog class="dialog dq-panel" open></dialog><button class="emby-button dq-card-action">Remove</button>', { url: 'https://example.test/web/' });
     t.after(() => dom.window.close());
     const style = dom.window.document.createElement('style'); style.textContent = css; dom.window.document.head.append(style);
     const panel = dom.window.getComputedStyle(dom.window.document.querySelector('dialog')), card = dom.window.getComputedStyle(dom.window.document.querySelector('button'));
-    assert.equal(panel.backgroundColor, 'rgb(10, 20, 30)'); assert.equal(panel.color, 'rgb(230, 220, 210)'); assert.equal(panel.borderRadius, '9px');
+    assert.equal(panel.backgroundColor, 'rgb(10, 20, 30)'); assert.equal(panel.color, 'rgb(230, 220, 210)'); assert.equal(panel.borderRadius, '1rem');
     assert.equal(card.backgroundColor, 'rgb(40, 50, 60)'); assert.equal(card.color, 'rgb(210, 200, 190)'); assert.equal(card.borderRadius, '7px');
     assert.equal(panel.position, 'fixed'); assert.equal(card.position, 'absolute');
 });

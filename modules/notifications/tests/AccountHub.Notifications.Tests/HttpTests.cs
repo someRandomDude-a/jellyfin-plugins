@@ -32,6 +32,27 @@ public sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptio
 }
 public sealed class HttpTests
 {
+    [Fact] public async Task InlineCommandsAreRecipientScopedAndRejectStaleSnapshotsAndUndeclaredActions()
+    {
+        var f = new Fixture(); var calls = 0;
+        f.Service.Register(new("deletion-queue", "1", [new("proposal.updated", "Removal", "Changes", "explicit-users", new(), []) { Commands = ["allow"] }]));
+        f.Host.Commands = (user, _, request) => {
+            Assert.Equal(f.Host.Alice, user); if (request is not null) calls++;
+            return [new("allow", "Allow", 3, "snapshot")];
+        };
+        await f.Publish(f.Event()); var id = f.Store.Inbox(f.Host.Alice, 0, 25, null, false).Single().Id;
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob);
+        HttpContent Body(string action, long revision = 3) => new StringContent(Contract.Serialize(new NotificationCommandRequest(action, Guid.NewGuid(), revision, "snapshot")), Encoding.UTF8, "application/json");
+        Assert.Contains("\"commands\"", await alice.GetStringAsync(Base + "/notifications"));
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsync(Base + $"/notifications/{id}/actions", Body("allow"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await alice.PostAsync(Base + $"/notifications/{id}/actions", Body("allow", 2))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await alice.PostAsync(Base + $"/notifications/{id}/actions", Body("delete"))).StatusCode);
+        Assert.Equal(0, calls);
+        Assert.Equal(HttpStatusCode.OK, (await alice.PostAsync(Base + $"/notifications/{id}/actions", Body("allow"))).StatusCode);
+        Assert.Equal(1, calls);
+        f.Store.Mark(f.Host.Alice, id, true);
+        Assert.Equal(HttpStatusCode.NotFound, (await alice.PostAsync(Base + $"/notifications/{id}/actions", Body("allow"))).StatusCode);
+    }
     [Fact]
     public async Task InboxDoesNotExposeOtherRecipientsOfTheSameEvent()
     {

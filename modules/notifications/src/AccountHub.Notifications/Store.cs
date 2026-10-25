@@ -166,6 +166,10 @@ public sealed partial class NotificationStore
         while (r.Read()) rows.Add(new(Guid.Parse(r.GetString(0)), JsonSerializer.Deserialize<NotificationEvent>(r.GetString(1), Contract.Json)! with { Audience = [] }, r.GetBoolean(2), r.GetBoolean(3)));
         return rows;
     });
+    public NotificationEvent? InboxEvent(Guid user, Guid id, bool includeAdmin) => Run(c => {
+        var json = Scalar(c, "SELECT event FROM nh_inbox WHERE id=$0 AND user_id=$1 AND dismissed=0 AND ($2=1 OR json_extract(event,'$.adminOnly')=0)", id, user, includeAdmin);
+        return json is null ? null : JsonSerializer.Deserialize<NotificationEvent>(json, Contract.Json);
+    });
     public long Unread(Guid user, bool includeAdmin = true) => Run(c => long.Parse(Scalar(c, "SELECT count(*) FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 AND ($1=1 OR json_extract(event,'$.adminOnly')=0)", user, includeAdmin)!));
     public bool Mark(Guid user, Guid id, bool dismiss) => Run(c => Execute(c, dismiss
         ? "UPDATE nh_inbox SET dismissed=1 WHERE id=$0 AND user_id=$1"

@@ -28,6 +28,16 @@ Media embeds and audio/toast interaction remain follow-ups. This work does not c
 
 ## Internal plugin interface
 
+### Inline domain commands and short notices
+
+`NotificationTypeDefinition.Commands` declares an allowlist of command IDs. `RegisterNotificationCommands(source, factory)` registers a framework-only delegate receiving `(nativeUserId, immutableEventJson, commandRequestJsonOrNull, cancellationToken)`. A null request projects current, per-user `NotificationCommand` controls (label, selected state, revision and snapshot); a request invokes a declared command after Notifications verifies inbox ownership, current access and the projected revision/snapshot. The producer must recheck live domain permissions and snapshot/revision atomically during mutation. Commands are not executable HTML, producer-supplied URLs or administrator-authored scripts. A failed projector leaves the notice readable and exposes no mutating controls.
+
+Deletion Queue uses this for inline **Allow / Keep / Undo**, with Undo offered only to the owner. Selections use green/red tints and accessible pressed state; no request modal is opened by these controls. `KeepNavigationActions` allows a type to retain navigation alongside commands, as used by playback-reset notices with **View request / Cancel request**. Published events cannot contain precomputed per-recipient commands.
+
+Layout overrides include an optional bounded plain-text `MessageTemplate` (`{media}` and `{days}` substitutions) and `ToastSeconds` (0–10; 0 disables). Only fresh unread opted-in notices create a short, non-modal toast; historical rows stay in the inbox. Toast timers pause during hover/focus. The desktop menu is capped at half the viewport height and aligned to the right edge; compact single-line titles/excerpts expand through Details when needed.
+
+The original navigation/layout registration contract below remains supported. Arbitrary executable commands or rich media remain out of scope.
+
 The portable SDK currently lives in `AccountHub.Api` for binary compatibility; it does **not** require the Account Hub plugin. `NotificationsClient` publishes through `Notifications.Api.1`. Plugins can register types during service registration:
 
 ```csharp

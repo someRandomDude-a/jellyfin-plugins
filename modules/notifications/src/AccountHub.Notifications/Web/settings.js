@@ -96,9 +96,11 @@
                     const density = control('Layout', type.layout.density, ['compact', 'standard']);
                     const length = control('Summary length', type.layout.summaryLength, null, '60–300 characters. Full details remain available when expansion is enabled.'); length.input.min = 60; length.input.max = 300;
                     const expand = control('Expandable details', type.layout.expandable);
-                    section.append(density.root, length.root, expand.root, button('Save layout', async () => {
-                        if (!length.input.reportValidity()) throw Error('Choose a summary length from 60 to 300.');
-                        await request('settings/notifications/types/layout', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, layout: { density: density.value(), summaryLength: length.value(), expandable: expand.value() } }); catalog.revision++;
+                    const message = control('Message template', type.layout.messageTemplate || '', null, 'Optional plain text. Use {media} for the title and {days} for a removal delay. Blank keeps the plugin message.'); message.input.maxLength = 400;
+                    const toast = control('Toast seconds', type.layout.toastSeconds || 0, null, '0 disables short popups. Up to 10 seconds; the notification stays in the inbox.'); toast.input.min = 0; toast.input.max = 10;
+                    section.append(density.root, length.root, expand.root, message.root, toast.root, button('Save layout', async () => {
+                        if (!length.input.reportValidity() || !toast.input.reportValidity()) throw Error('Check summary length and toast duration.');
+                        await request('settings/notifications/types/layout', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, layout: { density: density.value(), summaryLength: length.value(), expandable: expand.value(), messageTemplate: message.value() || null, toastSeconds: toast.value() } }); catalog.revision++;
                     })); catalogList.append(section);
                 }
                 if (!catalogList.children.length) catalogList.append(make('p', 'No plugin notification types registered yet.'));

@@ -17,6 +17,8 @@ public sealed class FakeHost : INotificationHost
     public IReadOnlyList<NotificationRegistration> NotificationRegistrations => Registrations;
     public HashSet<string> MissingAccessProviders { get; } = [];
     public bool NotificationAccessAvailable(string source) => !MissingAccessProviders.Contains(source);
+    public Func<Guid, NotificationEvent, NotificationCommandRequest?, NotificationCommand[]> Commands { get; set; } = (_, _, _) => [];
+    public Task<NotificationCommand[]> NotificationCommandsAsync(Guid user, NotificationEvent entry, NotificationCommandRequest? request, CancellationToken ct) => Task.FromResult(Commands(user, entry, request));
     public Guid Alice { get; } = Guid.NewGuid();
     public Guid Bob { get; } = Guid.NewGuid();
     public HashSet<Guid> Admins { get; } = [];

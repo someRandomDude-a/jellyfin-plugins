@@ -11,7 +11,7 @@ public static class QueueRules
     public static void RequireProposalAuthority(QueueState state, Account caller, VerifiedTarget target, bool accessible)
     {
         if (!caller.Enabled || !accessible || !target.MappingVerified || !Enum.IsDefined(target.Kind) ||
-            target.SeerrMediaId <= 0 || target.JellyfinItemId == Guid.Empty || string.IsNullOrWhiteSpace(target.Key) ||
+            target.SeerrMediaId <= 0 || target.JellyfinItemId == Guid.Empty && !(target.RequestId > 0 && target.RequestOwnerId == caller.Id && target.OwnRequestVerified) || string.IsNullOrWhiteSpace(target.Key) ||
             string.IsNullOrWhiteSpace(target.Fingerprint) || string.IsNullOrWhiteSpace(target.ActivityKey))
             throw new QueueException("TargetUnavailable");
         var authority = Authority(state, caller.Id);
@@ -24,12 +24,15 @@ public static class QueueRules
         bool accessible, string expectedSnapshot, DateTimeOffset now)
     {
         RequireProposalAuthority(state, caller, target, accessible);
+        foreach (var existing in state.Proposals) Expire(existing, now);
         var proposal = state.Proposals.SingleOrDefault(p => !p.Terminal && (p.Target.Key == target.Key ||
             (target.DestructiveScopeKey is not null && p.Target.DestructiveScopeKey == target.DestructiveScopeKey)));
         if (proposal?.Claim is not null) throw new QueueException("AlreadyClaimed");
         if (proposal is not null && proposal.Target.Fingerprint != target.Fingerprint)
             throw new QueueException("TargetChanged");
         if (Snapshot(state, target, caller.Id) != expectedSnapshot) throw new QueueException("SnapshotChanged");
+        if (proposal is not null && proposal.Consents.TryGetValue(caller.Id, out var existingConsent) && existingConsent.Answer == Answer.Yes && existingConsent.Snapshot == expectedSnapshot &&
+            (!caller.Administrator || !state.Policy.RequireAdministratorApproval || AdministratorApprovalCurrent(state, proposal))) return proposal;
         if (proposal is null)
         {
             if (state.Proposals.Count >= 1000) throw new QueueException("ProposalCapacityReached");
@@ -38,6 +41,8 @@ public static class QueueRules
         }
         if (proposal.Consents.Count >= 1000 && !proposal.Consents.ContainsKey(caller.Id)) throw new QueueException("ConsentCapacityReached");
         proposal.Consents[caller.Id] = new Consent(Answer.Yes, expectedSnapshot, now);
+        if (caller.Administrator && state.Policy.RequireAdministratorApproval)
+            proposal.AdministratorApproval = new(caller.Id, AdministratorSnapshot(state, proposal), now);
         ExtendDelay(state, proposal, caller.Id);
         ExtendDeadline(proposal);
         proposal.Revision++;
@@ -49,6 +54,7 @@ public static class QueueRules
     {
         if (!caller.Enabled || !accessible) throw new QueueException("TargetUnavailable");
         var proposal = Find(state, id);
+        Expire(proposal, now);
         RequireMutable(proposal, revision);
         if (Snapshot(state, proposal.Target, caller.Id) != snapshot) throw new QueueException("SnapshotChanged");
         if (proposal.Consents.Count >= 1000 && !proposal.Consents.ContainsKey(caller.Id)) throw new QueueException("ConsentCapacityReached");
@@ -87,11 +93,19 @@ public static class QueueRules
         if (!caller.Enabled || !caller.Administrator || !accessible) throw new QueueException("AccessDenied");
         if (!state.Policy.RequireAdministratorApproval) throw new QueueException("AdministratorApprovalNotRequired");
         var p = Find(state, id);
+        Expire(p, now);
         RequireMutable(p, revision);
         if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
         p.AdministratorApproval = approved ? new(caller.Id, snapshot, now) : null;
         Block(p, approved ? "VerificationRequired" : "AdministratorApprovalRequired");
         p.Revision++;
+    }
+    public static void Deny(QueueState state, Guid id, Account caller, long revision, string snapshot, bool accessible, DateTimeOffset now)
+    {
+        if (!caller.Enabled || !caller.Administrator || !accessible) throw new QueueException("AccessDenied");
+        var p = Find(state, id); Expire(p, now); RequireMutable(p, revision);
+        if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
+        p.AdministratorApproval = null; p.Status = ProposalStatus.Expired; p.Reason = "AdministratorDenied"; p.EligibleSince = null; p.Revision++;
     }
 
     public static void RecordActivity(QueueState state, Guid user, string key, string? session,
@@ -106,6 +120,7 @@ public static class QueueRules
         }
         activity.Revision++;
         activity.At = now;
+        var newPlayback = !string.IsNullOrEmpty(session) && !stopped && !activity.Sessions.Contains(session);
         if (!string.IsNullOrEmpty(session))
         {
             if (stopped) activity.Sessions.Remove(session);
@@ -113,7 +128,14 @@ public static class QueueRules
         }
         foreach (var p in state.Proposals.Where(p => !p.Terminal && p.Claim is null && p.Target.ActivityKey == key))
         {
+            Expire(p, now); if (p.Terminal) continue;
             Block(p, "ConsentRequired");
+            if (newPlayback && p.OwnerId == user) {
+                ExtendDelay(state, p, user);
+                p.LastPlaybackResetAt = now;
+                var deadline = now.AddHours(p.DelayFloorHours);
+                if (p.NotBefore is null || deadline > p.NotBefore) p.NotBefore = deadline;
+            }
             p.Revision++;
         }
     }
@@ -127,6 +149,7 @@ public static class QueueRules
 
     public static void Evaluate(QueueState state, Proposal proposal, EvaluationEvidence evidence, DateTimeOffset now)
     {
+        Expire(proposal, now);
         if (proposal.Terminal || proposal.Claim is not null) return;
         var reason = !state.ClockHealthy ? "ClockUnverified"
             : state.Policy.Suspended ? "Suspended"
@@ -153,6 +176,15 @@ public static class QueueRules
         if (proposal.NotBefore is null || deadline > proposal.NotBefore) proposal.NotBefore = deadline;
         proposal.Status = now >= proposal.NotBefore ? ProposalStatus.Ready : ProposalStatus.Waiting;
         proposal.Reason = proposal.Status == ProposalStatus.Ready ? "Ready" : "DelayRequired";
+    }
+    public static void Expire(Proposal proposal, DateTimeOffset now)
+    {
+        if (proposal.Status == ProposalStatus.Blocked && proposal.Claim is null && proposal.FilesDeletedAt is null && now >= (proposal.LastPlaybackResetAt ?? proposal.CreatedAt).AddDays(30)) {
+            proposal.Status = ProposalStatus.Expired;
+            proposal.Reason = "RequestExpired";
+            proposal.EligibleSince = null;
+            proposal.Revision++;
+        }
     }
 
     public static ExecutionClaim Claim(QueueState state, Guid id, long revision, EvaluationEvidence evidence, DateTimeOffset now)
@@ -195,7 +227,7 @@ public static class QueueRules
     {
         var p = Find(state, id);
         if (p.FilesDeletedAt is null || p.Status != ProposalStatus.FilesDeleted) throw new QueueException("FilesDeletedCheckpointRequired");
-        p.CleanupOutcome = "NotApplicableArrRecordRemovedBySeerr";
+        p.CleanupOutcome = p.Target.RequestOnly ? "RequestDeclinedHistoryRetained" : "NotApplicableArrRecordRemovedBySeerr";
         p.Status = ProposalStatus.Completed;
         p.Reason = "Completed";
         p.Revision++;
@@ -270,6 +302,7 @@ public static class QueueRules
 
     public static UserProposal Project(QueueState state, Proposal p, Guid caller, DateTimeOffset now)
     {
+        Expire(p, now);
         var snapshot = Snapshot(state, p.Target, caller);
         p.Consents.TryGetValue(caller, out var consent);
         var answer = consent?.Snapshot == snapshot ? consent.Answer : (Answer?)null;
@@ -278,7 +311,13 @@ public static class QueueRules
             ? "ApproveCurrentSnapshot" : "None";
         return new UserProposal(p.Id, p.Target.Title, p.OwnerId == caller ? "Yours" : "Anonymous",
             p.Status.ToString(), p.Reason, p.Revision, p.NotBefore, p.OwnerId == caller && !p.Terminal && p.Claim is null,
-            snapshot, answer, ownActivity?.At, action);
+            snapshot, answer, ownActivity?.At, action) {
+                CreatedAt = p.CreatedAt,
+                ExpiresAt = p.Status == ProposalStatus.Blocked ? (p.LastPlaybackResetAt ?? p.CreatedAt).AddDays(30) : null,
+                Stage = p.Terminal ? "History" : p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "Queued" :
+                    p.Status is ProposalStatus.Claimed or ProposalStatus.Uncertain or ProposalStatus.FilesDeleted ? "Processing" :
+                    p.Reason == "AdministratorApprovalRequired" ? "Administrator review" : "Consent"
+            };
     }
 
     public static bool CoverageComplete(QueueState state, DateTimeOffset now) => state.CoverageHealthy &&

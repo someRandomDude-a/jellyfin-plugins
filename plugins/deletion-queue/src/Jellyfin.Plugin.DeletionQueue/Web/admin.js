@@ -113,15 +113,15 @@
                 summary.textContent = value(value(proposal, 'target'), 'title') + ' — ' + value(proposal, 'status') + ' / ' + value(proposal, 'reason');
                 const pre = document.createElement('pre'); pre.className = 'dq-evidence';
                 pre.textContent = JSON.stringify(proposal, null, 2); details.append(summary, pre); el('dqBacklog').append(details);
-                if (value(policy, 'requireAdministratorApproval') && !value(proposal, 'terminal') && !value(proposal, 'claim')) {
+                if (!value(proposal, 'terminal') && !value(proposal, 'claim')) {
                     const snapshots = value(current, 'administratorApprovalSnapshots');
                     const key = Object.keys(snapshots).find(k => normalizedId(k) === normalizedId(value(proposal, 'id')));
-                    for (const [label, approved] of [['Approve removal', true], ['Revoke administrator approval', false]]) {
+                    for (const [label, approved] of [...(value(policy, 'requireAdministratorApproval') ? [['Approve removal', true]] : []), ['Deny request', false]]) {
                         const decision = document.createElement('button'); decision.type = 'button'; decision.className = 'emby-button raised';
                         decision.textContent = label;
                         decision.onclick = async () => {
                             decision.disabled = true;
-                            try { await request('admin/proposals/' + value(proposal, 'id') + '/approval', 'POST', {
+                            try { await request('admin/proposals/' + value(proposal, 'id') + (approved ? '/approval' : '/deny'), 'POST', {
                                 commandId: crypto.randomUUID(), revision: value(proposal, 'revision'), snapshot: snapshots[key], approved }); await refresh(); }
                             catch (err) { error(err); } finally { decision.disabled = false; }
                         };

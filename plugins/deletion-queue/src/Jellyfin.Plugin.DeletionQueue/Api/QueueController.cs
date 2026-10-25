@@ -25,12 +25,15 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     };
 
     [HttpGet("proposals")]
-    public IActionResult List([FromQuery] int skip = 0, [FromQuery] int take = 50)
+    public IActionResult List([FromQuery] int skip = 0, [FromQuery] int take = 50, [FromQuery] string view = "all")
     {
         var caller = identity.Caller(User);
         if (skip < 0 || take is < 1 or > 100) throw new QueueException("InvalidPagination");
         var state = runtime.Read();
-        return Ok(state.Proposals.Where(p => targets.Accessible(caller.Id, p.Target.JellyfinItemId))
+        if (view is not ("all" or "active" or "history")) throw new QueueException("InvalidPagination");
+        foreach (var proposal in state.Proposals) QueueRules.Expire(proposal, clock.GetUtcNow());
+        return Ok(state.Proposals.Where(p => targets.Accessible(caller.Id, p))
+            .Where(p => view == "all" || (view == "history" ? p.Terminal : !p.Terminal))
             .OrderByDescending(p => p.CreatedAt).Skip(skip).Take(take)
             .Select(p => QueueRules.Project(state, p, caller.Id, clock.GetUtcNow())).ToArray());
     }
@@ -50,9 +53,9 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         var caller = identity.Caller(User);
         var target = await targets.ResolveAsync(caller, selection, ct);
         var state = runtime.Read();
-        QueueRules.RequireProposalAuthority(state, identity.Caller(User), target, targets.Accessible(caller.Id, target.JellyfinItemId));
+        QueueRules.RequireProposalAuthority(state, identity.Caller(User), target, targets.Accessible(caller.Id, target));
         return Ok(new { target.Title, target.Fingerprint, Snapshot = QueueRules.Snapshot(state, target, caller.Id),
-            target.Kind, target.Is4K, ExecutionAvailable = true });
+            target.Kind, target.Is4K, Selection = selection, target.RequestOnly, ExecutionAvailable = true });
     }
 
     [HttpPost("targets/items/{id:guid}/preview")]
@@ -88,7 +91,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         {
             if (state.Seerr.Revision != target.ConfigurationRevision) throw new QueueException("RevisionChanged");
             var proposal = QueueRules.Propose(state, identity.Caller(User), target,
-                targets.Accessible(caller.Id, target.JellyfinItemId), body.Snapshot, clock.GetUtcNow());
+                targets.Accessible(caller.Id, target), body.Snapshot, clock.GetUtcNow());
             return proposal.Id;
         });
         return Detail(id);
@@ -103,7 +106,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         {
             var p = Visible(state, id, caller.Id);
             QueueRules.Consent(state, id, identity.Caller(User), body.Revision, body.Snapshot,
-                body.Answer, targets.Accessible(caller.Id, p.Target.JellyfinItemId), clock.GetUtcNow());
+                body.Answer, targets.Accessible(caller.Id, p.Target), clock.GetUtcNow());
             return true;
         });
         return Detail(id);
@@ -154,7 +157,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         var caller = identity.Caller(User);
         var state = runtime.Read();
         if (state.NoticeDeliveryIncomplete) Response.Headers["X-DeletionQueue-Notice-Delivery"] = "incomplete";
-        var accessible = state.Proposals.Where(p => targets.Accessible(caller.Id, p.Target.JellyfinItemId)).Select(p => p.Id).ToHashSet();
+        var accessible = state.Proposals.Where(p => targets.Accessible(caller.Id, p)).Select(p => p.Id).ToHashSet();
         return Ok(state.Notices.Where(n => n.UserId == caller.Id && n.Delivery == "local" && accessible.Contains(n.ProposalId))
              .OrderBy(n => n.ReadAt.HasValue).ThenByDescending(n => state.Notices.IndexOf(n)).Take(100).Select(n => new { n.Id, n.ProposalId, n.Text, IsRead = n.ReadAt.HasValue }).ToArray());
     }
@@ -165,7 +168,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         _ = identity.Caller(User);
         var state = runtime.Read();
         return Ok(new { ApiVersion = "1", HubAvailable = hub.Ready,
-            DeviceBell = state.Hub.DeviceBell, NotificationMode = state.Hub.NotificationMode.ToString() });
+            DeviceBell = state.Hub.DeviceBell, NotificationMode = state.Hub.NotificationMode.ToString(), EnhancedRequestsEnabled = enhanced.RequestsPageEnabled });
     }
 
     [HttpPost("me/notices/{id:guid}/read")]
@@ -299,7 +302,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         {
             var p = Visible(state, id, caller.Id);
             QueueRules.AdministratorDecision(state, id, identity.Caller(User, administrator: true), body.Revision,
-                body.Snapshot, body.Approved, targets.Accessible(caller.Id, p.Target.JellyfinItemId), clock.GetUtcNow());
+                body.Snapshot, body.Approved, targets.Accessible(caller.Id, p.Target), clock.GetUtcNow());
             return true;
         });
         return NoContent();
@@ -308,8 +311,20 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     private Proposal Visible(QueueState state, Guid id, Guid caller)
     {
         var p = QueueRules.Find(state, id);
-        if (!targets.Accessible(caller, p.Target.JellyfinItemId)) throw new QueueException("NotFound");
+        if (!targets.Accessible(caller, p)) throw new QueueException("NotFound");
         return p;
+    }
+    [HttpPost("admin/proposals/{id:guid}/deny")]
+    public IActionResult Deny(Guid id, AdministratorApprovalBody body)
+    {
+        var caller = identity.Caller(User, administrator: true);
+        runtime.Write(body.CommandId, caller.Id.ToString(), "AdministratorRequestDenied", state => {
+            var p = QueueRules.Find(state, id);
+            QueueRules.Deny(state, id, identity.Caller(User, administrator: true), body.Revision, body.Snapshot,
+                targets.Accessible(caller.Id, p.Target) || p.Target.RequestId > 0, clock.GetUtcNow());
+            return true;
+        });
+        return NoContent();
     }
 
     private IActionResult Resource(string name, string contentType)

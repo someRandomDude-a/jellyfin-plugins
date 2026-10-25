@@ -5,6 +5,27 @@ namespace AccountHub.Notifications.Tests;
 
 public sealed class RegistryTests
 {
+    [Fact] public async Task FailedCommandProvidersLeaveNotificationsReadableAndActionsFailClosed()
+    {
+        var f = new Fixture(); var registration = Registration();
+        f.Service.Register(registration with { Types = [registration.Types[0] with { Commands = ["allow"] }] });
+        f.Host.Commands = (_, _, _) => throw new IOException("private provider failure");
+        var entry = f.Event() with { Actions = [new("Review request", "#/home")] };
+        var shown = await f.Service.PresentAsync(f.Host.Alice, entry, f.Service.Catalog(), default);
+        Assert.Empty(shown.Commands!); Assert.Single(shown.Actions!); Assert.Equal(entry.Body, shown.Body);
+        var error = await Assert.ThrowsAsync<NotificationException>(() => f.Service.InvokeCommandAsync(f.Host.Alice, entry, new("allow", Guid.NewGuid(), 1, "snapshot"), default));
+        Assert.Equal(409, error.Status);
+    }
+    [Fact] public async Task AdministratorTemplatesAndToastDurationProjectWithoutRewritingEvents()
+    {
+        var f = new Fixture(); f.Service.Register(Registration());
+        var entry = f.Event() with { Metadata = new() { ["days"] = "3" } }; await f.Publish(entry);
+        f.Service.SaveLayout(new("deletion-queue", "proposal.updated", 1, new() { MessageTemplate = "Played {media}: delayed {days} days.", ToastSeconds = 5 }));
+        var shown = await f.Service.PresentAsync(f.Host.Alice, entry, f.Service.Catalog(), default);
+        Assert.Equal($"Played {entry.Title}: delayed 3 days.", shown.Body); Assert.Equal(5, shown.Layout!.ToastSeconds);
+        Assert.Equal(entry.Body, f.Store.Inbox(f.Host.Alice, 0, 25, null, false).Single().Event.Body);
+        Assert.Throws<NotificationException>(() => f.Service.SaveLayout(new("deletion-queue", "proposal.updated", 2, new() { ToastSeconds = 11 })));
+    }
     [Fact] public async Task RequiredPermissionProvidersFailRetryablyWithoutAcknowledgingLostFanout()
     {
         var f = new Fixture(); f.Service.Register(Registration() with { RequireAccess = true });

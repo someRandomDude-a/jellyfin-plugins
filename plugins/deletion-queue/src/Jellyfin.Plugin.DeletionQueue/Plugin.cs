@@ -41,8 +41,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("deletion-queue", "1", [
-            new("proposal.*", "Removal requests", "A removal request changes or needs consent", "explicit-users", new(), [new("Review request")]),
-            new("proposal.uncertain", "Removal outcome updates", "Compatibility updates about an uncertain removal", "event", new(), [new("Review request")]),
+            new("proposal.*", "Removal requests", "A removal request changes or needs consent", "explicit-users", new(), [new("Review request")]) { Commands = ["allow", "keep", "undo"] },
+            new("proposal.uncertain", "Removal outcome updates", "Compatibility updates about an uncertain removal", "event", new(), [new("Review request")]) { Commands = ["allow", "keep", "undo"] },
+            new("removal.playback_reset", "Playback resets removal", "The requester plays media pending removal", "explicit-users", new() { ToastSeconds = 6 }, [new("View request")]) { Commands = ["undo"], KeepNavigationActions = true },
             new("alert.removal_uncertain", "Removal needs administrator review", "The deletion outcome cannot be confirmed", "administrators", new("standard", 180), [new("Review deletion", "normal")])
         ]));
         services.AddSingleton(TimeProvider.System);
@@ -51,6 +52,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<QueueRuntime>();
         services.AddSingleton<LiveIdentity>();
         services.AddSingleton<TargetResolver>();
+        services.AddSingleton<NotificationCommands>();
+        AccountHub.Api.NotificationIntegration.RegisterNotificationCommands(services, "deletion-queue", sp => sp.GetRequiredService<NotificationCommands>().DispatchAsync);
         AccountHub.Api.NotificationIntegration.RegisterNotificationAccess(services, "deletion-queue", sp => (user, json, _) =>
         {
             try {
@@ -58,7 +61,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
                 var raw = entry?.Metadata?.GetValueOrDefault("proposalId");
                 if (!Guid.TryParse(raw, out var id)) return Task.FromResult(false);
                 var request = sp.GetRequiredService<QueueRuntime>().Read().Proposals.FirstOrDefault(p => p.Id == id);
-                return Task.FromResult(request is not null && sp.GetRequiredService<TargetResolver>().Accessible(user, request.Target.JellyfinItemId));
+                return Task.FromResult(request is not null && sp.GetRequiredService<TargetResolver>().Accessible(user, request));
             } catch { return Task.FromResult(false); }
         });
         services.AddSingleton<EnhancedConnection>();

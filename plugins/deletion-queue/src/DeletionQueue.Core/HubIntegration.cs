@@ -47,8 +47,8 @@ public static class HubIntegration
             var evt = new IntegrationEvent { Kind = "notification", NoticeId = notice.Id, CreatedAt = now, NextAttemptAt = now };
             var p = QueueRules.Find(state, notice.ProposalId);
             evt.PayloadJson = JsonSerializer.Serialize(new { schemaVersion = 1, eventId = evt.EventId, source = "deletion-queue",
-                type = p.Status == ProposalStatus.FilesDeleted ? "proposal.seerr_removal" : ProposalType(p, !revisions.ContainsKey(p.Id)), severity = "info", title = "Removal request updated",
-                body = notice.Text, link = "#/details?id=" + p.Target.JellyfinItemId.ToString("N"), audience = new[] { notice.UserId },
+                type = p.Status == ProposalStatus.FilesDeleted ? "proposal.seerr_removal" : ProposalType(p, !revisions.ContainsKey(p.Id)), severity = "info", title = p.Target.Title[..Math.Min(200, p.Target.Title.Length)],
+                body = notice.Text, link = p.Target.JellyfinItemId != Guid.Empty ? "#/details?id=" + p.Target.JellyfinItemId.ToString("N") : "#/home?deletionQueueProposal=" + p.Id.ToString("D"), audience = new[] { notice.UserId },
                 actions = new[] { new { label = "Review request", link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"), size = "compact" } },
                 adminOnly = false, dedupeKey = "deletionqueue:notice:" + notice.Id.ToString("D"), occurredAt = now,
                 correlationId = p.Id, metadata = new { proposalId = p.Id } });
@@ -57,6 +57,17 @@ public static class HubIntegration
         if (!state.Hub.HubIntegrationEnabled) return;
         foreach (var p in state.Proposals.Where(p => !revisions.TryGetValue(p.Id, out var revision) || p.Revision != revision))
         {
+            if (p.LastPlaybackResetAt is { } reset && p.LastPlaybackNoticeAt != reset && state.Hub.NotificationMode is NotificationMode.Auto or NotificationMode.Hub) {
+                var reminder = new IntegrationEvent { Kind = "notification", CreatedAt = now, NextAttemptAt = now };
+                var days = (p.DelayFloorHours / 24d).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                reminder.PayloadJson = JsonSerializer.Serialize(new { schemaVersion = 1, eventId = reminder.EventId, source = "deletion-queue", type = "removal.playback_reset", severity = "warning",
+                    title = p.Target.Title[..Math.Min(200, p.Target.Title.Length)], body = $"You played media requested for removal. The delay restarted: about {days} days, with fresh consent required.",
+                    audience = new[] { p.OwnerId }, adminOnly = false, occurredAt = reset,
+                    link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"),
+                    actions = new[] { new { label = "View request", link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"), size = "compact" } },
+                    dedupeKey = $"deletionqueue:playback:{p.Id:D}:{reset.UtcTicks}", metadata = new { proposalId = p.Id.ToString("D"), days } });
+                Add(state, reminder); p.LastPlaybackNoticeAt = reset;
+            }
             if (state.Hub.PublishAudit) Audit(state, "deletion." + ProposalType(p, !revisions.ContainsKey(p.Id)), p.Id, actor, now);
             if (p.Status == ProposalStatus.Uncertain && state.Hub.NotificationMode is NotificationMode.Auto or NotificationMode.Hub)
             {

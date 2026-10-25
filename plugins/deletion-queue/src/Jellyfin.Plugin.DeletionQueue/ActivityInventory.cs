@@ -22,7 +22,7 @@ public sealed class ActivityInventory(ILibraryManager library, IUserManager user
             IncludeItemTypes = [target.Kind == MediaKind.Series ? BaseItemKind.Series : BaseItemKind.Movie],
             HasAnyProviderIds = new() { ["Tmdb"] = [tmdb] }, Recursive = true, Limit = 201
         }).ToArray();
-        if (aliases.Length is 0 or > 200 || aliases.All(i => i.Id != target.JellyfinItemId)) return false;
+        if (aliases.Length > 200 || target.JellyfinItemId != Guid.Empty && (aliases.Length == 0 || aliases.All(i => i.Id != target.JellyfinItemId))) return false;
         var items = new Dictionary<Guid, BaseItem>();
         foreach (var alias in aliases)
         {

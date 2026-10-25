@@ -36,6 +36,14 @@ public sealed class SeerrClient : IDisposable
         await GetAsync($"{(series ? "tv" : "movie")}/{Positive(tmdb)}", ct);
 
     public async Task<JsonElement> RequestAsync(int id, CancellationToken ct) => await GetAsync($"request/{Positive(id)}", ct);
+    public async Task<JsonElement> RequestsAsync(int skip, CancellationToken ct) => await GetAsync($"request?take=100&skip={Math.Clamp(skip, 0, 10000)}&sort=added", ct);
+    // Declining a pending request preserves Seerr history. Never DELETE /request/{id}.
+    public async Task DeclineRequestOnceAsync(int id, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"request/{Positive(id)}/decline") { Content = JsonContent.Create(new { }) };
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode != HttpStatusCode.OK) throw new HttpRequestException("Seerr request outcome unverified.");
+    }
     public async Task<JsonElement> UserAsync(int id, CancellationToken ct) => await GetAsync($"user/{Positive(id)}", ct);
     public async Task<JsonElement> JellyfinSettingsAsync(CancellationToken ct) => await GetAsync("settings/jellyfin", ct);
     public async Task<JsonElement> MediaRecordAsync(int id, CancellationToken ct) => await GetAsync($"media/{Positive(id)}", ct);

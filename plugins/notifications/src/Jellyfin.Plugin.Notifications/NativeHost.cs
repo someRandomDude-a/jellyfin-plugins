@@ -28,6 +28,20 @@ public sealed class NativeHost(IServiceProvider services, Storage storage) : INo
         }
     }
     private IUserManager Users => services.GetRequiredService<IUserManager>();
+    public async Task<NotificationCommand[]> NotificationCommandsAsync(Guid user, NotificationEvent entry, NotificationCommandRequest? request, CancellationToken ct)
+    {
+        var callback = services.GetKeyedService<Func<Guid, string, string?, CancellationToken, Task<string>>>(NotificationIntegration.CommandsPrefix + entry.Source);
+        if (callback is null) {
+            if (request is not null) throw new NotificationException("unavailable", "Action provider unavailable", 503);
+            return [];
+        }
+        try {
+            var json = await callback(user, Contract.Serialize(entry), request is null ? null : Contract.Serialize(request), ct).WaitAsync(TimeSpan.FromSeconds(5), ct);
+            if (json.Length > 8192) throw new InvalidOperationException();
+            return System.Text.Json.JsonSerializer.Deserialize<NotificationCommand[]>(json, Contract.Json) ?? [];
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { throw new NotificationException("action_changed", "Request changed or action unavailable. Refresh and try again.", 409); }
+    }
     public bool NotificationAccessAvailable(string source)
     {
         try { return services.GetKeyedService<Func<Guid, string, CancellationToken, Task<bool>>>(NotificationIntegration.AccessPrefix + source) is not null; }

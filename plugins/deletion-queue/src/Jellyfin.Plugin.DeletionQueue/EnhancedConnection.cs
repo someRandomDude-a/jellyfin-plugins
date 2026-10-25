@@ -7,6 +7,14 @@ namespace Jellyfin.Plugin.DeletionQueue;
 // Read only on administrator request; never log, serialize or return the credential to the browser.
 public sealed class EnhancedConnection(IPluginManager plugins)
 {
+    public bool RequestsPageEnabled {
+        get {
+            try {
+                var plugin = plugins.Plugins.SingleOrDefault(p => p.IsEnabledAndSupported && p.Id == Guid.Parse("f69e946a-4b3c-4e9a-8f0a-8d7c1b2c4d9b"))?.Instance as IHasPluginConfiguration;
+                return plugin?.Configuration.GetType().GetProperty("DownloadsPageEnabled")?.GetValue(plugin.Configuration) is true;
+            } catch { return false; }
+        }
+    }
     public (string Url, string Key)? Discover()
     {
         try

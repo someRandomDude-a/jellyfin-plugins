@@ -23,6 +23,8 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         getClientRects() { return [{}]; }
         getBoundingClientRect() { return { bottom: 50, right: 900 }; }
         closest() { return null; }
+        querySelectorAll(selector) { return all(this).slice(1).filter(e => selector === 'button' ? e.tag === 'button' : selector.startsWith('.') && e.className?.split(' ').includes(selector.slice(1))); }
+        querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
         contains(target) { return this === target || this.children.some(c => c.contains(target)); }
     }
     const body = new Element('body'), header = new Element('header'), anchor = new Element('button');
@@ -37,10 +39,11 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
     };
     const window = {
         ApiClient: { accessToken: () => 'session-secret', getCurrentUserId: () => 'alice', getUrl: p => { if (!p) throw Error('Url name cannot be empty'); return 'https://example.test/jellyfin/' + p; } },
-        addEventListener: (name, handler) => { listeners[name] = handler; }
+        addEventListener: (name, handler) => { listeners[name] = handler; },
+        dispatchEvent: event => { listeners[event.type]?.(event); }
     };
     const context = vm.createContext({ window, document, location: { href }, innerWidth: 1024, innerHeight: 768,
-        MutationObserver: class { observe() {} }, requestAnimationFrame: fn => fn(),
+        MutationObserver: class { observe() {} }, requestAnimationFrame: fn => fn(), crypto: require('node:crypto').webcrypto, Event: class { constructor(type) { this.type = type; } },
         setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
         fetch: async (url, options) => {
             calls.push({ url, options });
@@ -56,6 +59,27 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
     return { calls, timers, all, window, listeners, rerun: () => vm.runInContext(source, context), get focused() { return focused; } };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+test('removal commands run inline with projected revision and snapshot without closing the menu', async () => {
+    const h = harness({ inbox: () => ({ hasMore: false, notifications: [{ id: 'request', event: { title: 'Movie', body: 'Awaiting consent', commands: [
+        { id: 'allow', label: 'Allow', revision: 4, snapshot: 'fresh', enabled: true, selected: true },
+        { id: 'keep', label: 'Keep', revision: 4, snapshot: 'fresh', enabled: true },
+        { id: 'undo', label: 'Undo', revision: 4, snapshot: 'fresh', enabled: true }
+    ] } }] }) }); await settle();
+    h.all().find(e => e.dataset.accountHubBell).onclick(); await settle();
+    const panel = h.all().find(e => e.id === 'account-hub-inbox');
+    assert.equal(panel.style.maxHeight, '384px'); assert.equal(panel.style.right, '.75rem');
+    const allow = h.all().find(e => e.dataset.action === 'allow'); assert.equal(allow.attrs['aria-pressed'], 'true');
+    await allow.onclick(); await settle();
+    const write = h.calls.find(call => call.url.endsWith('/request/actions'));
+    const body = JSON.parse(write.options.body); assert.equal(body.id, 'allow'); assert.equal(body.revision, 4); assert.equal(body.snapshot, 'fresh'); assert.match(body.commandId, /^[\da-f-]{36}$/);
+    assert.equal(panel.hidden, false);
+});
+test('only fresh opted-in notices create a bounded toast and old notices remain inbox-only', async () => {
+    const h = harness({ inbox: () => ({ hasMore: false, notifications: [{ id: 'reset', event: { title: 'Movie', body: 'Removal delayed by 2 days', occurredAt: new Date().toISOString(), layout: { toastSeconds: 5 }, link: '#/home?deletionQueueProposal=1' } }] }) }); await settle();
+    assert(h.all().some(e => e.className === 'dialog paperList notificationToast')); assert(h.timers.some(timer => timer.ms === 5000));
+    const old = harness({ inbox: () => ({ hasMore: false, notifications: [{ id: 'old', event: { title: 'Old', body: 'Old reset', occurredAt: new Date(Date.now() - 3600000).toISOString(), layout: { toastSeconds: 5 } } }] }) }); await settle();
+    assert(!old.all().some(e => e.className === 'dialog paperList notificationToast'));
+});
 test('routine UI feedback stays in the closed inbox and rejects another user', async () => {
     const h = harness(); await settle();
     const panel = h.all().find(e => e.id === 'account-hub-inbox');
@@ -135,6 +159,11 @@ for (const page of ['#/login', '#/challenge', '/TwoFactorAuth/Setup', '/AccountH
     });
 }
 test('hidden pages do not poll', async () => { const h = harness({ hidden: true }); await settle(); assert.equal(h.calls.length, 0); });
+test('an existing bell keeps polling when playback temporarily hides the native header', async () => {
+    const h = harness(); await settle(); const before = h.calls.length;
+    const header = h.all().find(element => element.tag === 'header'); header.children.at(-1).getClientRects = () => [];
+    h.listeners.focus(); await settle(); assert.equal(h.calls.length, before + 2);
+});
 test('episode-specific preference saves do not replace unrelated or global choices', async () => {
     const global = { source: '*', type: '*', channel: 'in-app', enabled: true };
     const h = harness({ preferences: [global] }); await settle();

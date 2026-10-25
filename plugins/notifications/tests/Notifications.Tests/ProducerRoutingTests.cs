@@ -19,7 +19,7 @@ public sealed class ProducerRoutingTests
             using var request = JsonDocument.Parse(json);
             object data = request.RootElement.GetProperty("operation").GetString() == "hello"
                 ? new { apiVersion = "1", operations = new[] { "notifications.publish" } }
-                : new { ready = true, features = scoped ? new[] { "registered-types", "scoped-access" } : [] };
+                : new { ready = true, features = scoped ? new[] { "registered-types", "scoped-access", "commands" } : [] };
             return Task.FromResult(Contract.Serialize(Contract.Success(data)));
         });
         using var provider = services.BuildServiceProvider();

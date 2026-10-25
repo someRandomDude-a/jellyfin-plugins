@@ -48,7 +48,10 @@ public sealed class QueueRuntime : IDisposable, IStateStore
             var configurationBefore = HubIntegration.ConfigurationSummary(state);
             var result = update(state);
             // Notices and proposal changes commit together, including policy/coverage/deadline changes.
-            NoticeRules.Publish(state, state.Proposals.Where(p => !revisions.TryGetValue(p.Id, out var revision) || p.Revision != revision), clock.GetUtcNow());
+            // Progress/stop events still invalidate consent and block execution,
+            // but must not generate another inbox notice every playback tick.
+            if (kind != "PlaybackProgressCaptured")
+                NoticeRules.Publish(state, state.Proposals.Where(p => !revisions.TryGetValue(p.Id, out var revision) || p.Revision != revision), clock.GetUtcNow());
             object? summary = null;
             if (kind == "AccountHubPolicyReset" && result is string json)
             {

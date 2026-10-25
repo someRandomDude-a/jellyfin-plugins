@@ -14,7 +14,7 @@ namespace Jellyfin.Plugin.DeletionQueue;
 public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver, LiveIdentity identity,
     ISessionManager sessions, IUserDataManager userData, TimeProvider clock, ILogger<ActivityWorker> logger, ActivityFence fence) : BackgroundService
 {
-    private sealed record Captured(Guid Item, Guid[] Users, string? Session, bool Stopped, DateTimeOffset At);
+    private sealed record Captured(Guid Item, Guid[] Users, string? Session, bool Stopped, DateTimeOffset At, bool Notify);
     private readonly Channel<Captured> events = Channel.CreateBounded<Captured>(new BoundedChannelOptions(256)
     { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly Dictionary<string, (long Position, DateTimeOffset At)> progress = [];
@@ -49,7 +49,7 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
                 {
                     var key = resolver.ActivityKey(captured.Item);
                     if (key is null) { runtime.MarkCollectorFailed(); continue; }
-                    runtime.Write(Guid.NewGuid(), "jellyfin-activity", "ActivityCaptured", state =>
+                    runtime.Write(Guid.NewGuid(), "jellyfin-activity", captured.Notify ? "ActivityCaptured" : "PlaybackProgressCaptured", state =>
                     {
                         foreach (var user in captured.Users) QueueRules.RecordActivity(state, user, key, captured.Session, captured.Stopped, captured.At);
                         return true;
@@ -96,7 +96,8 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
             {
                 var previous = (p.Status, p.Reason, p.NotBefore, p.EligibleSince, p.DelayFloorHours);
                 var owner = identity.Account(p.OwnerId);
-                var authorized = owner.Enabled && resolver.Accessible(owner.Id, p.Target.JellyfinItemId) &&
+                QueueRules.Expire(p, now);
+                var authorized = owner.Enabled && resolver.Accessible(owner.Id, p.Target) &&
                     QueueRules.Authority(state, owner.Id) != ProposalAuthority.Denied &&
                     (QueueRules.Authority(state, owner.Id) == ProposalAuthority.AnyAccessibleItem || p.Target.OwnRequestVerified);
                 // The execution worker supplies fresh target/inventory evidence. Do not erase its eligibility epoch here.
@@ -129,7 +130,7 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
                 else { if (progress.Count >= 1024 && !progress.ContainsKey(session)) { runtime.MarkCollectorFailed(); return; } progress[session] = (position, now); }
             }
             fence.Capturing();
-            if (!events.Writer.TryWrite(new Captured(e.Item.Id, users, session, stopped, now))) { fence.Captured(); runtime.MarkCollectorFailed(); }
+            if (!events.Writer.TryWrite(new Captured(e.Item.Id, users, session, stopped, now, force && !stopped))) { fence.Captured(); runtime.MarkCollectorFailed(); }
         }
         catch (Exception) { runtime.MarkCollectorFailed(); }
     }
@@ -140,7 +141,7 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
             if (e.SaveReason is not (UserDataSaveReason.TogglePlayed or UserDataSaveReason.UpdateUserRating or UserDataSaveReason.UpdateUserData) ||
                 e.Item is not (Movie or Series or Episode or Season)) return;
             fence.Capturing();
-            if (!events.Writer.TryWrite(new Captured(e.Item.Id, [e.UserId], null, false, clock.GetUtcNow()))) { fence.Captured(); runtime.MarkCollectorFailed(); }
+            if (!events.Writer.TryWrite(new Captured(e.Item.Id, [e.UserId], null, false, clock.GetUtcNow(), true))) { fence.Captured(); runtime.MarkCollectorFailed(); }
         }
         catch (Exception) { runtime.MarkCollectorFailed(); }
     }

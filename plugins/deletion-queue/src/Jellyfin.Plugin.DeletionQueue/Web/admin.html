@@ -19,7 +19,8 @@
     </form>
     <h2>Permissions and safety policy</h2>
     <form id="dqPolicy">
-      <div class="selectContainer" data-help="Choose which items users may propose for deletion. Per-user overrides can change this permission. Viewer consent is still required."><label for="dqAuthority">Default proposal permission</label><select is="emby-select" id="dqAuthority"><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
+      <p class="dq-hint">Enhanced integration adds a full deletion queue to Requests and a removal agenda to Calendar. The full-page shortcut appears only when Enhanced’s Requests page is enabled.</p>
+      <div class="selectContainer" data-help="Choose which items users may request to remove. Per-user overrides can change this permission. Viewer consent is still required."><label for="dqAuthority">Default removal permission</label><select is="emby-select" id="dqAuthority"><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
       <div class="inputContainer" data-help="How many days of recent viewing activity to consider. A complete continuous activity window is required."><label for="dqDays">Activity window (days)</label><input is="emby-input" id="dqDays" type="number" min="1" max="365" required /></div>
       <div class="inputContainer" data-help="Minimum 48 hours. Deletion waits for this delay and current viewer consent."><label for="dqHours">Deletion delay (hours)</label><input is="emby-input" id="dqHours" type="number" min="48" max="8760" required /></div>
       <label class="checkboxContainer"><input is="emby-checkbox" id="dqAuto" type="checkbox" /><span>Opt in to automatic Seerr-managed deletion</span></label>

@@ -27,7 +27,35 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
     private static NotificationTypeDefinition? Definition(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => catalogs.FirstOrDefault(catalog => catalog.Source == entry.Source)?.Types
         .Where(type => type.Type == entry.Type || type.Type == "*" || type.Type.EndsWith(".*", StringComparison.Ordinal) && entry.Type.StartsWith(type.Type[..^1], StringComparison.Ordinal))
         .OrderByDescending(type => type.Type == entry.Type ? int.MaxValue : type.Type.Length).FirstOrDefault();
-    public static NotificationEvent Present(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => Definition(entry, catalogs) is { } definition ? entry with { Layout = definition.Layout } : entry;
+    public static NotificationEvent Present(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => Definition(entry, catalogs) is { } definition ? entry with {
+        Layout = definition.Layout,
+        Body = string.IsNullOrWhiteSpace(definition.Layout.MessageTemplate) ? entry.Body : definition.Layout.MessageTemplate.Replace("{media}", entry.Title, StringComparison.Ordinal).Replace("{days}", entry.Metadata?.GetValueOrDefault("days") ?? "", StringComparison.Ordinal)
+    } : entry;
+    public async Task<NotificationEvent> PresentAsync(Guid user, NotificationEvent entry, NotificationCatalogEntry[] catalogs, CancellationToken ct)
+    {
+        var presented = Present(entry, catalogs);
+        var definition = Definition(entry, catalogs);
+        if (definition?.Commands.Length > 0) {
+            try {
+                var commands = await host.NotificationCommandsAsync(user, entry, null, ct);
+                Validation.Require(commands.Length <= 5 && commands.All(command => command is not null && definition.Commands.Contains(command.Id) && command.Label is { Length: > 0 and <= 60 } && command.Snapshot is { Length: <= 200 }) && commands.Select(command => command.Id).Distinct().Count() == commands.Length, "Invalid projected commands");
+                presented = presented with { Commands = commands, Actions = definition.KeepNavigationActions || commands.Length == 0 ? entry.Actions : [] };
+            } catch (Exception error) when (error is not OperationCanceledException) {
+                // An unavailable optional action provider must not hide other inbox entries.
+                presented = presented with { Commands = [] };
+            }
+        }
+        return presented;
+    }
+    public async Task InvokeCommandAsync(Guid user, NotificationEvent entry, NotificationCommandRequest request, CancellationToken ct)
+    {
+        var catalogs = Catalog();
+        Validation.Require(request.CommandId != Guid.Empty && request.Snapshot is { Length: <= 200 }, "Invalid action request");
+        var projected = await PresentAsync(user, entry, catalogs, ct);
+        if (projected.Commands?.Any(command => command.Id == request.Id && command.Enabled && command.Revision == request.Revision && command.Snapshot == request.Snapshot) != true)
+            throw new NotificationException("action_changed", "Request changed. Refresh and try again.", 409);
+        await host.NotificationCommandsAsync(user, entry, request, ct);
+    }
 
     public async Task<string> DispatchAsync(string json, CancellationToken ct, ProducerIdentity? producer = null, string? requiredOperation = null)
     {
@@ -43,7 +71,7 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             switch (request.Operation)
             {
                 case "hello": data = new { hostVersion = "0.1.0", apiVersion = "1", operations = Operations }; break;
-                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook", "registered-types", "layouts", "admin-alerts", "scoped-access" } }; break;
+                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook", "registered-types", "layouts", "admin-alerts", "scoped-access", "commands" } }; break;
                 case "notifications.register":
                     if (producer is not null) throw new NotificationException("unauthorized", "Only internal plugins can register types", 403);
                     Register(request.Payload.Deserialize<NotificationRegistration>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing registration"));

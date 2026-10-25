@@ -6,10 +6,18 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace AccountHub.Api;
 
 /// <summary>Declarative producer contract. Only framework JSON delegates cross plugin load contexts.</summary>
-public sealed record NotificationLayout(string Density = "compact", int SummaryLength = 140, bool Expandable = true);
+public sealed record NotificationLayout(string Density = "compact", int SummaryLength = 140, bool Expandable = true)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? MessageTemplate { get; init; }
+    public int ToastSeconds { get; init; }
+}
 public sealed record NotificationActionDefinition(string Label, string Size = "compact");
 public sealed record NotificationTypeDefinition(string Type, string Name, string Trigger, string Recipients,
-    NotificationLayout Layout, NotificationActionDefinition[] Actions);
+    NotificationLayout Layout, NotificationActionDefinition[] Actions)
+{
+    public string[] Commands { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool KeepNavigationActions { get; init; }
+}
 public sealed record NotificationRegistration(string Source, string Version, NotificationTypeDefinition[] Types)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool RequireAccess { get; init; }
@@ -24,6 +32,14 @@ public static class NotificationIntegration
 {
     public const string RegistrationPrefix = "Notifications.Types.1.";
     public const string AccessPrefix = "Notifications.Access.1.";
+    public const string CommandsPrefix = "Notifications.Commands.1.";
+    // Null request projects live per-recipient controls; a JSON request invokes one declared command.
+    public static IServiceCollection RegisterNotificationCommands(this IServiceCollection services, string source,
+        Func<IServiceProvider, Func<Guid, string, string?, CancellationToken, Task<string>>> factory)
+    {
+        services.AddKeyedSingleton<Func<Guid, string, string?, CancellationToken, Task<string>>>(CommandsPrefix + source, (provider, _) => factory(provider));
+        return services;
+    }
     public static IServiceCollection RegisterNotificationAccess(this IServiceCollection services, string source,
         Func<IServiceProvider, Func<Guid, string, CancellationToken, Task<bool>>> factory)
     {
@@ -60,7 +76,7 @@ public sealed class NotificationsClient(IServiceProvider services)
         if (services.GetKeyedService<Func<bool>>("Notifications.Owner.1")?.Invoke() != true || !await ReadyAsync(ct)) return false;
         var health = await client.CallAsync("health", new { }, ct);
         return health is { } envelope && envelope.TryGetProperty("data", out var data) && data.TryGetProperty("features", out var features) && features.ValueKind == JsonValueKind.Array &&
-            new[] { "registered-types", "scoped-access" }.All(required => features.EnumerateArray().Any(feature => feature.ValueKind == JsonValueKind.String && feature.GetString() == required));
+            new[] { "registered-types", "scoped-access", "commands" }.All(required => features.EnumerateArray().Any(feature => feature.ValueKind == JsonValueKind.String && feature.GetString() == required));
     }
     public async Task PublishRequiredAsync(NotificationEvent entry, CancellationToken ct = default)
     {

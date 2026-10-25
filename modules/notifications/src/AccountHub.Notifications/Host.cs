@@ -9,6 +9,7 @@ public interface INotificationHost
 {
     IReadOnlyList<NotificationRegistration> NotificationRegistrations => [];
     bool NotificationAccessAvailable(string source) => true;
+    Task<NotificationCommand[]> NotificationCommandsAsync(Guid user, NotificationEvent entry, NotificationCommandRequest? request, CancellationToken ct) => Task.FromResult<NotificationCommand[]>([]);
     Task<Guid?> CurrentUserAsync(HttpContext context, CancellationToken ct);
     Task<bool> IsAdministratorAsync(Guid userId, CancellationToken ct);
     Task<bool> UserExistsAsync(Guid userId, CancellationToken ct);

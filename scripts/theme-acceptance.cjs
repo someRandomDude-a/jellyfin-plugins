@@ -102,12 +102,19 @@ const http = require('node:http');
             await page.waitForFunction(() => document.querySelector('[aria-label="Enable non-critical in-app notifications"]')?.getAttribute('aria-pressed') === 'true');
             await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
             const inboxPattern = '**/Notifications/api/v1/notifications?*';
+            const actionPattern = '**/Notifications/api/v1/notifications/*/actions';
+            let selectedAnswer = 'allow', inlineActions = 0;
+            await page.route(actionPattern, async route => {
+                const command = route.request().postDataJSON(); assert(command.commandId && command.snapshot === 'fixture-snapshot');
+                selectedAnswer = command.id; inlineActions++; await route.fulfill({ json: { ok: true, data: { status: 'updated' } } });
+            });
             await page.route(inboxPattern, route => {
                 const skip = Number(new URL(route.request().url()).searchParams.get('skip') || 0);
                 return route.fulfill({ json: { ok: true, data: { hasMore: skip === 0, notifications: Array.from({ length: 20 }, (_, i) => ({ id: 'fixture-' + (skip + i), read: false, event: {
                     title: 'Compact notification ' + (skip + i), body: 'A short summary of the update.', details: 'Expanded details stay inside the notification menu.',
                     occurredAt: new Date(Date.now() - (i === 19 ? 8 * 86400000 : 2 * 3600000)).toISOString(), severity: i % 10 === 0 ? 'warning' : 'info',
                     actions: [{ label: 'Small action', link: '#/home', size: 'compact' }, { label: 'Normal action', link: '#/home', size: 'normal' }]
+                    ,commands: ['allow','keep','undo'].map(id => ({ id, label: id[0].toUpperCase() + id.slice(1), revision: 1, snapshot: 'fixture-snapshot', enabled: true, selected: id === selectedAnswer }))
                 } })) } } });
             });
             for (const width of [320, 1280]) {
@@ -117,8 +124,12 @@ const http = require('node:http');
                 await page.locator('#account-hub-inbox section').filter({ hasText: 'Compact notification 0' }).waitFor();
                 const inbox = page.locator('#account-hub-inbox');
                 assert(await inbox.evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight; }), 'Notification menu must fit the viewport');
+                if (width > 600) assert(await inbox.evaluate(e => { const r = e.getBoundingClientRect(); return r.height <= innerHeight / 2 + 1 && Math.abs(innerWidth - r.right - 12) <= 2; }), 'Desktop inbox must be half-height and aligned with the right edge');
                 assert(await page.locator('[data-notifications-bell]').evaluate(e => { const badge = e.querySelector('.notificationBadge'); if (!badge) return false; const b = badge.getBoundingClientRect(), p = e.getBoundingClientRect(); return b.top >= p.top && b.right <= p.right + 1; }), 'Badge must stay inside header button bounds');
                 const first = inbox.locator('section').first();
+                await first.getByRole('button', { name: 'Keep', exact: true }).click();
+                await page.waitForFunction(() => document.querySelector('#account-hub-inbox .notificationCommand[data-action=keep]')?.getAttribute('aria-pressed') === 'true');
+                assert(await inbox.isVisible(), 'Inline consent must not dismiss the inbox or open a modal');
                 assert(await first.locator('time').getAttribute('datetime'), 'Notification must expose an exact timestamp');
                 assert.match(await first.locator('time').textContent(), /hours? ago/);
                 assert.equal(await first.locator('.notificationMain').getAttribute('href'), '#/home');
@@ -142,6 +153,7 @@ const http = require('node:http');
                 await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
             }
             await page.unroute(inboxPattern);
+            await page.unroute(actionPattern); assert(inlineActions >= 2);
         }
         // Installed injection + bounded DOM/API contracts; no deletion or real media access.
         const deletionItem = '11111111111111111111111111111111';
@@ -189,6 +201,26 @@ const http = require('node:http');
         await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
         await page.locator('#dq-native-menu-fixture').evaluate(e => e.remove());
         assert.equal(deletionPreviews, 4, 'Detail, Enhanced request, removed menu and native dialog must each open a read-only preview');
+        phase = 'enhanced-deletion-views';
+        const proposalsPattern = '**/DeletionQueue/proposals?*';
+        await page.route(proposalsPattern, route => {
+            const history = new URL(route.request().url()).searchParams.get('view') === 'history';
+            return route.fulfill({ json: [{ id: '22222222-2222-2222-2222-222222222222', title: history ? 'Past removal' : 'Pending removal', status: history ? 'Expired' : 'Blocked', reason: history ? 'RequestExpired' : 'ConsentRequired', revision: 1, canUndo: !history, ownAnswer: 0, ownSnapshot: 'fixture', stage: history ? 'History' : 'Consent', createdAt: new Date().toISOString() }] });
+        });
+        await page.evaluate(() => {
+            const fixture = document.createElement('div'); fixture.id = 'dq-enhanced-page-contract';
+            fixture.className = 'dialog'; fixture.style.cssText = 'position:fixed;inset:5rem 1rem 1rem;overflow:auto;z-index:1800;padding:1rem;';
+            fixture.innerHTML = '<section class="je-requests-section"><h2>Requests</h2><div class="je-requests-tabs"><button>All</button></div><div class="je-requests-grid">Existing Seerr requests</div></section><div class="je-calendar-layout"><aside class="je-calendar-sidebar-content"></aside></div>';
+            document.body.append(fixture);
+        });
+        const enhanced = page.locator('#dq-enhanced-page-contract');
+        await enhanced.getByRole('button', { name: 'Deletion queue', exact: true }).click();
+        await enhanced.locator('.dq-enhanced-view').getByRole('heading', { name: 'Pending removal', exact: true }).waitFor();
+        assert.equal(await enhanced.locator('.dq-enhanced-view [data-answer=allow]').getAttribute('aria-pressed'), 'true');
+        await enhanced.locator('.dq-enhanced-view').getByRole('tab', { name: 'History', exact: true }).click();
+        await enhanced.locator('.dq-enhanced-view').getByRole('heading', { name: 'Past removal', exact: true }).waitFor();
+        await enhanced.locator('.dq-calendar-removals').getByRole('heading', { name: 'Pending removal', exact: true }).waitFor();
+        await enhanced.evaluate(e => e.remove()); await page.unroute(proposalsPattern);
         await page.evaluate(() => document.querySelector('#dq-installed-contract')?.remove());
         const adminPages = [];
         for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
