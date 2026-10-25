@@ -1,47 +1,5 @@
 [
   {
-    "guid": "3de88ba1-6d5c-49f5-854b-65a72f473f21",
-    "name": "Deletion Queue",
-    "description": "Standalone consent-driven deletion workflow with authenticated evidence.",
-    "overview": "Standalone consent-driven deletion workflow with authenticated evidence.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.4/DeletionQueue-0.1.4.0-linux-x64.zip",
-        "version": "0.1.4.0",
-        "timestamp": "2026-10-24T21:46:48.2812528Z",
-        "targetAbi": "12.3.0.0",
-        "checksum": "ce5d1fc7f061ec7ca49e4003648bd158"
-      },
-      {
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.3/DeletionQueue-0.1.3.0-linux-x64.zip",
-        "checksum": "ad675e21e9cd80d5816dfa1a361d4e4f",
-        "version": "0.1.3.0",
-        "timestamp": "2026-10-24T21:02:33.4212661Z",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "targetAbi": "12.3.0.0"
-      },
-      {
-        "checksum": "26dd53d09e896ea099f7e39a27cffd58",
-        "targetAbi": "12.3.0.0",
-        "timestamp": "2026-10-24T20:52:28.1420283Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.2/DeletionQueue-0.1.2.0-linux-x64.zip",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "version": "0.1.2.0"
-      },
-      {
-        "version": "0.1.0.0",
-        "targetAbi": "12.2.0.0",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T17:52:17.3857764Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DeletionQueue-0.1.0.0-linux-x64.zip",
-        "checksum": "62ae43a1c462791cc13e41e7a57e7ea9"
-      }
-    ]
-  },
-  {
     "guid": "4b047046-a550-4415-b204-4206f1f18201",
     "name": "Discord Bridge",
     "description": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
@@ -190,6 +148,56 @@
         "targetAbi": "12.3.0.0",
         "checksum": "7cfd48385cabc244105b766fb44982d7",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits."
+      }
+    ]
+  },
+  {
+    "guid": "3de88ba1-6d5c-49f5-854b-65a72f473f21",
+    "name": "Deletion Queue",
+    "description": "Standalone consent-driven deletion workflow with authenticated evidence.",
+    "overview": "Standalone consent-driven deletion workflow with authenticated evidence.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.5/DeletionQueue-0.1.5.0-linux-x64.zip",
+        "checksum": "279a5d9a95ff911eb21aa97707ef38fa",
+        "timestamp": "2026-10-24T23:59:47.2634524Z",
+        "version": "0.1.5.0"
+      },
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.4/DeletionQueue-0.1.4.0-linux-x64.zip",
+        "version": "0.1.4.0",
+        "timestamp": "2026-10-24T21:46:48.2812528Z",
+        "targetAbi": "12.3.0.0",
+        "checksum": "ce5d1fc7f061ec7ca49e4003648bd158"
+      },
+      {
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.3/DeletionQueue-0.1.3.0-linux-x64.zip",
+        "checksum": "ad675e21e9cd80d5816dfa1a361d4e4f",
+        "version": "0.1.3.0",
+        "timestamp": "2026-10-24T21:02:33.4212661Z",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0"
+      },
+      {
+        "checksum": "26dd53d09e896ea099f7e39a27cffd58",
+        "targetAbi": "12.3.0.0",
+        "timestamp": "2026-10-24T20:52:28.1420283Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/deletion-queue%2Fv0.1.2/DeletionQueue-0.1.2.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.1.2.0"
+      },
+      {
+        "version": "0.1.0.0",
+        "targetAbi": "12.2.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:52:17.3857764Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DeletionQueue-0.1.0.0-linux-x64.zip",
+        "checksum": "62ae43a1c462791cc13e41e7a57e7ea9"
       }
     ]
   }
