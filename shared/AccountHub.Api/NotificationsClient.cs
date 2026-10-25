@@ -66,6 +66,9 @@ public sealed class NotificationsClient(IServiceProvider services)
         return client.CallAsync("notifications.register", registration, ct);
     }
     public Task<JsonElement?> PublishAsync(NotificationEvent entry, CancellationToken ct = default) => client.CallAsync("notifications.publish", entry, ct);
+    /// <summary>Update one source/key notification per recipient, restoring unread state and inbox position. Use a new EventId per change; retries reuse it.</summary>
+    public Task<JsonElement?> UpsertAsync(NotificationEvent entry, CancellationToken ct = default) => client.CallAsync("notifications.upsert", entry, ct);
+    public Task<bool> ReadyForUpsertAsync(CancellationToken ct = default) => client.ReadyForAsync(ct, "notifications.upsert");
     public Task<JsonElement?> AlertAdministratorsAsync(string source, string type, string title, string body, string? link = null,
         NotificationAction[]? actions = null, string? dedupeKey = null, CancellationToken ct = default) =>
         PublishAsync(new(1, Guid.NewGuid(), source, type, "warning", title, body, [], true, DateTimeOffset.UtcNow,

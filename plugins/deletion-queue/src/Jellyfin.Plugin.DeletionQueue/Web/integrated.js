@@ -82,7 +82,7 @@
                     SnapshotChanged: 'Your activity changed. Reopen the request to review it.',
                     TargetChanged: 'The target changed. Close and reopen this action.'
                 };
-                throw new Error(messages[code] || 'Operation unavailable. Refresh and review your session or ask your administrator.');
+                const failure = new Error(messages[code] || 'Operation unavailable. Refresh and review your session or ask your administrator.'); failure.code = code; throw failure;
             }
             if (path === 'me/notices') noticeProblem = response.headers.get('X-DeletionQueue-Notice-Delivery') === 'incomplete'
                 ? 'Notification delivery is incomplete. Review the deletion queue as well.' : '';
@@ -179,60 +179,63 @@
         const checkpoints = get(p, 'timeline') || [{ key: 'requested', label: 'Requested', state: 'complete', at: get(p, 'createdAt') }];
         if (!checkpoints.length) return;
         const timeline = node('div', undefined, 'dq-timeline'); timeline.setAttribute('aria-label', 'Removal request timeline'); timeline.tabIndex = 0;
-        const dated = checkpoints.filter(point => date(get(point, 'at'))), undated = checkpoints.filter(point => !date(get(point, 'at')));
+        const dated = checkpoints.map((point, index) => ({ point, index })).filter(({ point }) => date(get(point, 'at')));
         const evaluated = date(get(p, 'evaluatedAt'));
         const ended = ['Completed', 'Cancelled', 'Expired'].includes(get(p, 'status'));
         const stopped = checkpoints.find(point => get(point, 'state') === 'cancelled');
         const end = date(get(checkpoints.find(point => get(point, 'key') === 'closed'), 'at')) || date(get(stopped, 'at'));
         const now = ended ? end : evaluated;
-        const dates = dated.map(point => date(get(point, 'at')).getTime()); if (now) dates.push(now.getTime());
+        const dates = dated.map(({ point }) => date(get(point, 'at')).getTime());
         const start = dates.length ? Math.min(...dates) : 0, finish = dates.length ? Math.max(...dates) : start;
-        const position = at => finish === start ? 50 : Math.max(0, Math.min(100, (at - start) / (finish - start) * 100));
+        const last = Math.max(1, checkpoints.length - 1);
+        const low = dated.length ? dated[0].index / last * 100 : 0, high = dated.length ? dated[dated.length - 1].index / last * 100 : 100;
+        const position = at => finish === start ? low : Math.max(low, Math.min(high, low + (at - start) / (finish - start) * (high - low)));
+        const positions = checkpoints.map(point => date(get(point, 'at')) ? position(date(get(point, 'at')).getTime()) : null);
+        // Keep stage order even when a cancelled request retains an abandoned future date.
+        let previous = 0; positions.forEach((x, i) => { if (x !== null) { positions[i] = Math.max(previous, x); previous = positions[i]; } });
+        if (positions[0] === null) positions[0] = 0;
+        if (positions[last] === null) positions[last] = 100;
+        for (let left = 0; left < positions.length - 1;) {
+            let right = left + 1; while (right < positions.length && positions[right] === null) right++;
+            for (let i = left + 1; i < right; i++) positions[i] = positions[left] + (positions[right] - positions[left]) * (i - left) / (right - left);
+            left = right;
+        }
         const track = node('div', undefined, 'dq-time-track');
         const datedNodes = node('ol', undefined, 'dq-dated-nodes'); datedNodes.setAttribute('aria-label', 'Recorded and scheduled dates'); track.append(datedNodes);
-        const pending = node('ol', undefined, 'dq-pending-checkpoints'); pending.setAttribute('aria-label', 'Undated checkpoints');
         const occupied = [];
         const icons = { requested: 'playlist_add', checks: 'fact_check', delay: 'hourglass_top', removing: 'auto_delete', confirmed: 'task_alt', closed: 'flag' };
-        for (const point of checkpoints) {
+        for (const [index, point] of checkpoints.entries()) {
             const step = node('li'); step.dataset.state = get(point, 'state'); step.dataset.checkpoint = get(point, 'key');
             if (['current', 'cancelled'].includes(get(point, 'state'))) step.setAttribute('aria-current', 'step');
             const glyph = node('span', get(point, 'state') === 'cancelled' ? 'cancel' : icons[get(point, 'key')] || 'radio_button_unchecked', 'material-icons dq-checkpoint-icon'); glyph.setAttribute('aria-hidden', 'true'); step.append(glyph);
             step.append(node('span', get(point, 'label'), 'dq-checkpoint-label'));
             const at = date(get(point, 'at'));
-            if (at) {
-                const x = position(at.getTime()); let lane = 0;
+            {
+                const x = positions[index]; let lane = 0;
                 while (occupied.some(previous => previous.lane === lane && Math.abs(previous.x - x) < 22)) lane++;
                 occupied.push({ x, lane }); step.style.setProperty('--dq-position', x + '%'); step.style.setProperty('--dq-lane', lane);
                 if (get(point, 'dateLabel')) step.append(node('span', get(point, 'dateLabel'), 'dq-checkpoint-date'));
-                const time = node('time', at.toLocaleString()); time.dateTime = at.toISOString(); time.title = at.toLocaleString(); step.append(time); datedNodes.append(step);
+                if (at) { const time = node('time', at.toLocaleDateString()); time.dateTime = at.toISOString(); step.append(time); }
+                else step.append(node('span', get(point, 'state') === 'current' ? 'In progress' : ['complete', 'cancelled'].includes(get(point, 'state')) ? 'Date not recorded' : get(point, 'state') === 'stopped' ? 'Stopped' : 'Pending', 'dq-checkpoint-date'));
+                datedNodes.append(step);
             }
-            else step.append(node('span', get(point, 'state') === 'current' && get(point, 'key') === 'checks' ? 'In progress' : ['complete', 'current'].includes(get(point, 'state')) ? 'Date not recorded' : get(point, 'state') === 'stopped' ? 'Stopped' : 'Pending', 'dq-checkpoint-date'));
-            if (!at) pending.append(step);
         }
         track.style.setProperty('--dq-lanes', Math.max(1, ...occupied.map(point => point.lane + 1)));
-        if (dated.length) {
+        {
             timeline.append(track);
             if (now) {
                 const completed = get(p, 'status') === 'Completed';
                 const marker = node('div', undefined, 'dq-media-marker'); marker.dataset.stopped = String(ended && !completed); marker.dataset.completed = String(completed); marker.style.setProperty('--dq-position', position(now.getTime()) + '%');
                 const icon = node('span', get(p, 'mediaKind') === 'Series' ? 'tv' : 'movie', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
                 marker.append(icon, node('span', completed ? 'Removed' : ended ? 'Stopped here' : 'Now', 'dq-marker-label'));
-                marker.title = (ended ? 'Request ended · ' : 'Server time · ') + now.toLocaleString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
-                if (!ended) { marker.dataset.serverTime = now.getTime(); marker.dataset.sampledAt = Date.now(); marker.dataset.start = start; marker.dataset.finish = finish; }
+                marker.title = (ended ? 'Request ended · ' : 'Current date · ') + now.toLocaleDateString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
             }
         }
-        if (undated.length) { timeline.append(node('div', 'Undated / pending checkpoints', 'dq-pending-label'), pending); }
         const closed = get(p, 'closureExplanation');
         if (closed) content.append(node('p', closed + (get(p, 'closedCheckpoint') ? ' Stopped during ' + (get(p, 'closedCheckpoint') === 'delay' ? 'the safety delay.' : 'checks & consent.') : ' The original stopping checkpoint was not recorded.'), 'dq-closure'));
-        if (evaluated) {
-            const timing = node('p', 'As of ' + evaluated.toLocaleString() + ' · Current activity-window setting: ' + get(p, 'activityWindowDays') + ' days · Request safety-delay floor: ' + (get(p, 'safetyDelayHours') / 24).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' days', 'dq-timing');
-            const until = date(get(p, 'scheduledFor'));
-            if (until) { const hours = Math.max(0, (until - evaluated) / 3600000); timing.append(document.createTextNode(hours ? ' · ' + (hours / 24).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' days remaining (earliest)' : ' · Delay elapsed; awaiting fresh checks')); }
-            content.append(timing);
-        }
         content.append(timeline);
     }
-    function renderProposal(p, content, compact = false) {
+    function renderProposal(p, content) {
         const id = get(p, 'id'), status = get(p, 'status'), revision = get(p, 'revision');
         const heading = node('div', undefined, 'dq-request-heading');
         const label = get(p, 'statusLabel') || ({ Blocked: 'Blocked', Waiting: 'Waiting', Ready: 'Ready for removal', Claimed: 'Removing', Uncertain: 'Needs review', FilesDeleted: 'Removal confirmed', Completed: 'Completed', Cancelled: 'Cancelled', Expired: 'Expired' })[status] || 'Pending checks';
@@ -241,16 +244,16 @@
         heading.append(node('h3', get(p, 'title')), badge, statusHelp(help)); content.append(heading);
         if (get(p, 'stage') && get(p, 'stage') !== 'History') content.append(node('span', get(p, 'stage'), 'dq-stage'));
         const scheduled = date(get(p, 'scheduledFor'));
-        if (scheduled) content.append(node('p', (status === 'Ready' ? 'Eligible since · ' : 'Scheduled no earlier than · ') + scheduled.toLocaleString(), 'dq-schedule'));
+        if (scheduled) content.append(node('p', (status === 'Ready' ? 'Eligible since · ' : 'Scheduled no earlier than · ') + scheduled.toLocaleDateString(), 'dq-schedule'));
         else if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) content.append(node('p', 'Not scheduled yet', 'dq-hint'));
         const answer = get(p, 'ownAnswer');
         if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) {
             const actions = node('div', undefined, 'dq-actions');
-            for (const [label, value] of [['Allow', 0], ['Keep', 1]]) {
+            if (get(p, 'canConsent') !== false) for (const [label, value] of [['Allow', 0], ['Keep', 1]]) {
                 const control = button(label, async () => {
                     await api('proposals/' + id + '/consent', 'POST', { commandId: command(), revision, snapshot: get(p, 'ownSnapshot'), answer: value });
                     window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
-                    const updated = await api('proposals/' + id); if (content.isConnected) { content.replaceChildren(); renderProposal(updated, content, compact); }
+                    const updated = await api('proposals/' + id + '/status'); if (content.isConnected) { content.replaceChildren(); renderProposal(updated, content); }
                 }, 'emby-button button-flat');
                 control.dataset.answer = value === 0 ? 'allow' : 'keep';
                 control.setAttribute('aria-pressed', String(answer === value || answer === (value === 0 ? 'Yes' : 'No'))); actions.append(control);
@@ -258,7 +261,7 @@
             if (get(p, 'canUndo')) actions.append(button('Undo request', async () => {
                 await api('proposals/' + id + '/undo', 'POST', { commandId: command(), revision });
                 window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
-                const updated = await api('proposals/' + id); if (content.isConnected) { content.replaceChildren(); renderProposal(updated, content, compact); }
+                const updated = await api('proposals/' + id + '/status'); if (content.isConnected) { content.replaceChildren(); renderProposal(updated, content); }
             }, 'emby-button button-flat'));
             content.append(actions);
         }
@@ -286,7 +289,7 @@
         let focused;
         if (focusId) {
             try {
-                focused = await api('proposals/' + focusId); if (!alive(panel)) return;
+                focused = await api('proposals/' + focusId + '/status'); if (!alive(panel)) return;
                 initialView = ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active';
             } catch (error) { if (!alive(panel)) return; showError(error, panel.d); }
         }
@@ -311,7 +314,7 @@
     async function queueView(host, initialView = 'active', valid = () => host.isConnected && syncSession(), scrollRoot = host, focused = null) {
         const tabs = node('div', undefined, 'dq-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Deletion requests');
         const rows = node('div', undefined, 'dq-queue-rows'); rows.setAttribute('role', 'tabpanel'); host.append(tabs, rows);
-        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true;
+        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true, lastSnapshot = '';
         const seen = new Set(), sameId = (a, b) => String(a).replaceAll('-', '').toLowerCase() === String(b).replaceAll('-', '').toLowerCase();
         for (const [key, label] of [['active', 'Active'], ['history', 'History']]) {
             const tab = button(label, async () => { view = key; revision++; await refresh(); }, 'emby-button button-flat');
@@ -323,6 +326,9 @@
                 const start = append ? offset : 0;
                 if (focused && !append && !first) focused = await api('proposals/' + get(focused, 'id'));
                 const proposals = await api('proposals?skip=' + start + '&take=50&view=' + view); if (!valid() || revision !== started) return;
+                const snapshot = JSON.stringify([view, proposals, focused], (key, value) => key.toLowerCase() === 'evaluatedat' ? undefined : value);
+                if (!append && snapshot === lastSnapshot) { refreshed = Date.now(); return; }
+                lastSnapshot = append ? '' : snapshot;
                 if (!append) { rows.replaceChildren(); seen.clear(); }
                 const records = [...proposals];
                 const focusedView = focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active';
@@ -330,7 +336,7 @@
                 let selected;
                 for (const p of records) {
                     const key = String(get(p, 'id')).replaceAll('-', '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
-                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row, true);
+                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row);
                     row.dataset.requestId = get(p, 'id');
                     if (focused && sameId(get(p, 'id'), get(focused, 'id'))) { row.classList.add('dq-highlight'); row.tabIndex = -1; row.setAttribute('aria-label', 'Selected removal request'); selected = row; }
                     rows.append(row);
@@ -416,7 +422,7 @@
             const queued = get(itemStates.get(id)?.data, 'proposals')?.[0];
             return queued ? proposal(get(queued, 'id')) : propose(id);
         }, cls + ' dq-media-action dq-web-owned');
-        b.dataset.dqItem = id; b.setAttribute('aria-label', 'Request removal'); b.title = 'Request removal';
+        b.dataset.dqItem = id; b.hidden = true; b.setAttribute('aria-label', 'Request removal'); b.title = 'Request removal';
         b.replaceChildren(node('span', 'delete_outline', 'material-icons')); b.firstChild.setAttribute('aria-hidden', 'true');
         void updateMediaState(b, id);
         return b;
@@ -425,6 +431,11 @@
         const status = get(p, 'status');
         const icon = ({ Blocked: get(p, 'reason') === 'ConsentRequired' ? 'how_to_vote' : 'pending_actions', Waiting: 'hourglass_top', Ready: 'event_available', Claimed: 'auto_delete', Uncertain: 'warning_amber', FilesDeleted: 'task_alt', Completed: 'task_alt', Cancelled: 'undo', Expired: 'event_busy' })[status] || 'delete_outline';
         return { icon, label: get(p, 'statusLabel') || 'Pending checks', status };
+    }
+    function unavailableReason(code) {
+        return ({ NotYourRequest: 'Not your request', ProposalNotPermitted: 'Permission required', TargetUnavailable: 'Item unavailable',
+            SeerrNotConfigured: 'Service not configured', NotificationsRequired: 'Notifications required', UpstreamUnavailable: 'Service unavailable',
+            TargetEditionUnverified: 'Edition not verified', SeerrTargetNotManaged: 'Item not managed', IntegrityUnavailable: 'Storage unavailable' })[code] || 'Verification unavailable';
     }
     function paintStage(control, p) {
         const stage = stageAppearance(p); control.dataset.removalStatus = stage.status;
@@ -443,18 +454,21 @@
                 cached.data = await cached.promise;
             } else if (!cached.data) cached.data = await cached.promise;
             if (!control.isConnected || control.dataset.dqItem !== id) return;
+            control.hidden = get(cached.data, 'reason') === 'TargetUnavailable';
             const p = get(cached.data, 'proposals')?.[0];
-            const signature = p ? JSON.stringify([get(p, 'id'), get(p, 'revision'), get(p, 'status'), get(p, 'statusLabel')]) : 'none';
+            control.disabled = !p && get(cached.data, 'canPropose') === false;
+            const signature = p ? JSON.stringify([get(p, 'id'), get(p, 'revision'), get(p, 'status'), get(p, 'statusLabel')]) : JSON.stringify([get(cached.data, 'canPropose'), get(cached.data, 'reason')]);
             if (control.dataset.removalSignature === signature) return;
             control.dataset.removalSignature = signature;
             if (p) paintStage(control, p);
             else { control.removeAttribute('data-removal-status'); control.setAttribute('aria-label', 'Request removal'); control.title = 'Request removal'; control.replaceChildren(node('span', 'delete_outline', 'material-icons'), node('span', 'Request removal', 'dq-action-label')); }
+            if (control.disabled) { const reason = unavailableReason(get(cached.data, 'reason')); control.setAttribute('aria-label', reason); control.title = reason; control.querySelector('.dq-action-label').textContent = reason; }
             const host = control.closest('.je-request-card') || control.closest('.mainDetailButtons')?.parentElement;
             if (host) {
                 host.querySelector(':scope > .dq-item-progress')?.remove();
                 if (p) { const progress = node('div', undefined, 'dq-item-progress dq-web-owned'); renderTimeline(p, progress); host.append(progress); }
             }
-        } catch { /* Preview remains authoritative; do not invent a queued state. */ }
+        } catch (error) { if (control.isConnected) { control.hidden = error.code === 'TargetUnavailable'; control.disabled = true; const reason = unavailableReason(error.code); control.title = reason; control.setAttribute('aria-label', reason); control.replaceChildren(node('span', 'info_outline', 'material-icons'), node('span', reason, 'dq-action-label')); } }
     }
     function routeId() {
         const route = location.hash.slice(1) || location.pathname + location.search;
@@ -552,7 +566,7 @@
                 const id = event.dataset.eventId.slice('dq-removal:'.length), p = calendarData.find(p => String(get(p, 'id')) === id); if (!p) continue;
                 event.dataset.dqDecorated = 'true'; event.classList.add('dq-calendar-event', 'dq-web-owned'); event.tabIndex = 0; event.setAttribute('role', 'button');
                 event.setAttribute('aria-label', get(p, 'title') + ' · Deletion Date (earliest)');
-                event.replaceChildren(node('span', 'event_busy', 'material-icons'), node('span', get(p, 'title'), 'je-calendar-event-title'), node('span', 'Deletion Date · no earlier than ' + date(get(p, 'scheduledFor')).toLocaleString(), 'dq-calendar-date'));
+                event.replaceChildren(node('span', 'event_busy', 'material-icons'), node('span', get(p, 'title'), 'je-calendar-event-title'), node('span', 'Deletion Date · no earlier than ' + date(get(p, 'scheduledFor')).toLocaleDateString(), 'dq-calendar-date'));
                 event.title = 'Earliest possible removal. Fresh safety checks still apply.';
                 const open = e => { e.preventDefault(); e.stopImmediatePropagation(); void openRequests(id); };
                 event.addEventListener('click', open, true);
@@ -627,10 +641,22 @@
             const existing = card.querySelector('.dq-request-action');
             if (existing?.dataset.dqItem === requestKey) { if (id) void updateMediaState(existing, id); continue; }
             existing?.remove();
+            if (!requestKey) continue;
+            if (!id) {
+                const tmdb = Number(metadata?.dataset.tmdbId), type = metadata?.dataset.mediaType;
+                if (!Number.isSafeInteger(tmdb) || tmdb <= 0 || !['movie', 'tv'].includes(type)) continue;
+                if (!capabilities.has(requestKey)) {
+                    capabilities.set(requestKey, false); const generation = epoch;
+                    api('requests?skip=0&tmdbId=' + tmdb + '&mediaType=' + type).then(result => {
+                        if (generation === epoch) { capabilities.set(requestKey, (get(result, 'requests') || []).some(request => Number.isSafeInteger(get(request, 'requestId')) && get(request, 'requestId') > 0)); schedule(); }
+                    }).catch(() => {});
+                }
+                if (!capabilities.get(requestKey)) continue;
+            }
             const b = id ? mediaButton(id, 'emby-button button-flat dq-request-action') : button('Request removal', () => requestRemoval(card), 'emby-button button-flat dq-request-action dq-web-owned');
             b.dataset.dqItem = requestKey;
-            if (!requestKey) { b.disabled = true; b.title = 'No verified media identifier is exposed by this request card.'; }
-            else if (id) b.append(node('span', 'Request removal'));
+            if (id) b.append(node('span', 'Request removal', 'dq-action-label'));
+            else { const icon = node('span', 'delete_outline', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); b.replaceChildren(icon, node('span', 'Request removal', 'dq-action-label')); }
             (card.querySelector('.je-request-actions') || card.querySelector('.je-request-info') || card).append(b);
         }
         if (context && Date.now() - context.at < 15000) {
@@ -644,6 +670,7 @@
     }
     async function mountContextSection(menu, scroller, captured) {
         const section = node('section', undefined, 'dq-context-section dq-web-owned');
+        section.hidden = true;
         section.setAttribute('aria-label', 'Deletion Queue');
         const heading = node('div', 'Deletion Queue', 'dq-context-heading');
         const content = node('div'); content.append(node('div', 'Checking removal status…', 'dq-context-message'));
@@ -676,21 +703,22 @@
             content.replaceChildren();
             const proposals = get(result, 'proposals') || [];
             if (!proposals.length) {
-                if (get(result, 'canPropose')) action('Request removal', 'delete_outline', () => propose(captured.id));
-                else content.append(node('div', 'Removal requests are not permitted.', 'dq-context-message'));
+                if (get(result, 'canPropose')) { action('Request removal', 'delete_outline', () => propose(captured.id)); section.hidden = false; }
+                else section.remove();
                 return;
             }
             for (const p of proposals) {
+                if (!get(p, 'canUndo') && get(p, 'canConsent') === false) continue;
                 const id = get(p, 'id'), status = get(p, 'status'), answer = get(p, 'ownAnswer');
                 const progress = node('div', undefined, 'dq-context-progress');
                 progress.append(node('div', get(p, 'statusLabel') || 'Pending checks', 'dq-context-status'));
                 const scheduled = date(get(p, 'scheduledFor'));
-                if (scheduled) progress.append(node('div', 'No earlier than · ' + scheduled.toLocaleString(), 'dq-hint'));
+                if (scheduled) progress.append(node('div', 'No earlier than · ' + scheduled.toLocaleDateString(), 'dq-hint'));
                 renderTimeline(p, progress); content.append(progress);
                 const stage = stageAppearance(p);
                 action('Removal · ' + stage.label, stage.icon, () => proposal(id));
                 const stateAction = content.lastElementChild; stateAction.dataset.removalStatus = stage.status;
-                if (!['Claimed', 'Uncertain', 'FilesDeleted'].includes(status)) {
+                if (get(p, 'canConsent') !== false && !['Claimed', 'Uncertain', 'FilesDeleted'].includes(status)) {
                     for (const [label, value, icon] of [['Allow removal', 0, 'check_circle_outline'], ['Keep item (reject removal)', 1, 'block']]) {
                         action(label, icon, async () => {
                             await api('proposals/' + id + '/consent', 'POST', { commandId: command(), revision: get(p, 'revision'), snapshot: get(p, 'ownSnapshot'), answer: value });
@@ -704,7 +732,9 @@
                     window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
                 });
             }
-        } catch { if (valid()) content.replaceChildren(node('div', 'Removal status unavailable. Reopen this menu to retry.', 'dq-context-message')); }
+            if (!content.querySelector('button')) section.remove();
+            else section.hidden = false;
+        } catch { section.remove(); }
     }
     function schedule() { if (!frame) frame = requestAnimationFrame(() => { try { mount(); } catch { /* Isolate unsupported Web markup. */ } }); }
     function captureContext(e) {
@@ -745,13 +775,6 @@
         const changed = session()?.key !== sessionKey;
         if (!syncSession()) return;
         if (changed) schedule();
-        if (!document.hidden) for (const marker of document.querySelectorAll('.dq-media-marker[data-server-time]')) {
-            const at = Number(marker.dataset.serverTime) + Math.max(0, Date.now() - Number(marker.dataset.sampledAt));
-            const start = Number(marker.dataset.start), finish = Number(marker.dataset.finish);
-            marker.style.setProperty('--dq-position', (finish === start ? 50 : Math.max(0, Math.min(100, (at - start) / (finish - start) * 100))) + '%');
-            const title = 'Server time · ' + new Date(at).toLocaleString();
-            if (marker.title !== title) { marker.title = title; marker.setAttribute('aria-label', title); }
-        }
         if (!document.hidden && Date.now() - lastPoll >= 30000) { lastPoll = Date.now(); loadNotices(); }
     }, 1000);
     schedule(); loadNotices();

@@ -134,10 +134,10 @@ public sealed class ProductionGatewayTests : IDisposable
                 HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = principal }
             }
         };
-        var result = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.ItemRemoval(movie.Id));
+        var result = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.ItemRemoval(movie.Id));
         var json = JsonSerializer.SerializeToElement(result.Value, HubWire.Json);
         Assert.Equal(id, Assert.Single(json.GetProperty("proposals").EnumerateArray()).GetProperty("id").GetGuid());
-        var unrelated = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.ItemRemoval(Guid.NewGuid()));
+        var unrelated = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.ItemRemoval(Guid.NewGuid()));
         Assert.Empty(JsonSerializer.SerializeToElement(unrelated.Value, HubWire.Json).GetProperty("proposals").EnumerateArray());
         var revision = runtime.Read().Policy.Revision;
         Assert.Throws<QueueException>(() => controller.ResetAllUserPermissions(new(Guid.NewGuid(), revision)));
@@ -149,7 +149,7 @@ public sealed class ProductionGatewayTests : IDisposable
         Assert.Empty(runtime.Read().Policy.Accounts);
         Assert.Contains(runtime.History(), e => e.Kind == "AllUserPermissionsReset");
         nativeGone = true;
-        Assert.Throws<QueueException>(() => controller.ItemRemoval(movie.Id));
+        await Assert.ThrowsAsync<QueueException>(() => controller.ItemRemoval(movie.Id));
     }
 
     private async Task<Guid> Seed()
@@ -175,6 +175,20 @@ public sealed class ProductionGatewayTests : IDisposable
         nativeGone = true;
         var completed = QueueRules.Find(runtime.Read(), id);
         Assert.True(targets.Accessible(owner.Id, completed)); Assert.False(targets.Accessible(restricted.Id, completed));
+    }
+    [Fact] public async Task FreshNativeInventoryCanVerifyRestartWarmupButNeverAnUnhealthyCollector()
+    {
+        var id = await Seed();
+        runtime.Write(Guid.NewGuid(), "fixture", "Restart", s => {
+            QueueRules.BreakCoverage(s, "RestartWarmup", clock.Now); s.CoverageHealthy = true; s.LastHeartbeat = clock.Now; return true;
+        });
+        var p = QueueRules.Find(runtime.Read(), id);
+        var check = await gateway.PreflightAsync(p, default);
+        Assert.True(check.Evidence.NativeHistoryVerified);
+        runtime.Write(Guid.NewGuid(), "fixture", "Evaluate", s => { QueueRules.Evaluate(s, QueueRules.Find(s, id), check.Evidence, clock.Now); return true; });
+        Assert.Equal(ProposalStatus.Waiting, QueueRules.Find(runtime.Read(), id).Status);
+        runtime.MarkCollectorFailed();
+        Assert.False((await gateway.PreflightAsync(QueueRules.Find(runtime.Read(), id), default)).Evidence.NativeHistoryVerified);
     }
     [Theory] [InlineData(true)] [InlineData(false)]
     public async Task UnfulfilledOwnRequestsUseVerifiedOwnershipWithoutNeedingANativeItem(bool pending)

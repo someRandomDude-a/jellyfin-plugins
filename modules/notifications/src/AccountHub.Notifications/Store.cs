@@ -80,7 +80,7 @@ public sealed partial class NotificationStore
     private string Encrypt(object value) => protector.Protect(Contract.Serialize(value));
     private T Decrypt<T>(string value) => JsonSerializer.Deserialize<T>(protector.Unprotect(value), Contract.Json)!;
 
-    public PublishResult? TryDuplicate(NotificationEvent entry, string hash) => Run(c =>
+    public PublishResult? TryDuplicate(NotificationEvent entry, string hash, bool upsert = false) => Run(c =>
     {
         using var tx = c.BeginTransaction(deferred: false);
         var oldHash = Scalar(c, "SELECT hash FROM nh_events WHERE source=$0 AND event_id=$1", entry.Source, entry.EventId);
@@ -90,6 +90,7 @@ public sealed partial class NotificationStore
             return JsonSerializer.Deserialize<PublishResult>(Scalar(c, "SELECT result FROM nh_events WHERE source=$0 AND event_id=$1", entry.Source, entry.EventId)!, Contract.Json)! with { Status = "duplicate" };
         }
         var key = entry.DedupeKey ?? entry.EventId.ToString();
+        if (upsert) return null;
         var prior = Scalar(c, "SELECT result FROM nh_logical WHERE source=$0 AND logical_key=$1", entry.Source, key);
         if (prior is null) return null;
         var result = JsonSerializer.Deserialize<PublishResult>(prior, Contract.Json)! with { Status = "duplicate" };
@@ -98,7 +99,7 @@ public sealed partial class NotificationStore
         tx.Commit(); return result;
     });
 
-    public PublishResult Accept(NotificationEvent entry, string hash, IReadOnlyList<(Guid User, bool Inbox, Route[] Routes, string? Link)> fanout)
+    public PublishResult Accept(NotificationEvent entry, string hash, IReadOnlyList<(Guid User, bool Inbox, Route[] Routes, string? Link)> fanout, bool upsert = false)
         => Run(c =>
         {
             using var transaction = c.BeginTransaction(deferred: false);
@@ -112,7 +113,7 @@ public sealed partial class NotificationStore
             var key = entry.DedupeKey ?? entry.EventId.ToString();
             var prior = Scalar(c, "SELECT result FROM nh_logical WHERE source=$0 AND logical_key=$1", entry.Source, key);
             PublishResult result;
-            if (prior is not null) result = JsonSerializer.Deserialize<PublishResult>(prior, Contract.Json)! with { Status = "duplicate" };
+            if (prior is not null && !upsert) result = JsonSerializer.Deserialize<PublishResult>(prior, Contract.Json)! with { Status = "duplicate" };
             else
             {
                 var ids = new List<Guid>();
@@ -120,10 +121,15 @@ public sealed partial class NotificationStore
                 {
                     if (recipient.Inbox)
                     {
-                        var id = Guid.NewGuid(); ids.Add(id);
-                        Execute(c, "INSERT INTO nh_inbox(id,user_id,event,created) VALUES($0,$1,$2,$3)", id, recipient.User, Contract.Serialize(entry), Now);
+                        var existing = upsert ? Scalar(c, "SELECT id FROM nh_inbox WHERE user_id=$0 AND json_extract(event,'$.source')=$1 AND json_extract(event,'$.dedupeKey')=$2 AND json_extract(event,'$.adminOnly')=$3 ORDER BY created DESC LIMIT 1", recipient.User, entry.Source, key, entry.AdminOnly) : null;
+                        var id = existing is null ? Guid.NewGuid() : Guid.Parse(existing); ids.Add(id);
+                        if (existing is null) Execute(c, "INSERT INTO nh_inbox(id,user_id,event,created) VALUES($0,$1,$2,$3)", id, recipient.User, Contract.Serialize(entry), Now);
+                        else {
+                            var previous = JsonSerializer.Deserialize<NotificationEvent>(Scalar(c, "SELECT event FROM nh_inbox WHERE id=$0", id)!, Contract.Json)!;
+                            if (entry.OccurredAt >= previous.OccurredAt) Execute(c, "UPDATE nh_inbox SET rowid=(SELECT COALESCE(MAX(rowid),0)+1 FROM nh_inbox),event=$1,created=$2,is_read=0,dismissed=0 WHERE id=$0", id, Contract.Serialize(entry), Now);
+                        }
                     }
-                    foreach (var route in recipient.Routes)
+                    foreach (var route in prior is not null && upsert ? Array.Empty<Route>() : recipient.Routes)
                     {
                         var id = Guid.NewGuid();
                         // The immutable body is reused for ambiguous retries. Destinations/secrets are protected.
@@ -146,7 +152,7 @@ public sealed partial class NotificationStore
                     }
                 }
                 result = new("accepted", ids.ToArray());
-                Execute(c, "INSERT INTO nh_logical VALUES($0,$1,$2,$3)", entry.Source, key, Contract.Serialize(result), Now);
+                Execute(c, "INSERT OR REPLACE INTO nh_logical VALUES($0,$1,$2,$3)", entry.Source, key, Contract.Serialize(result), Now);
             }
             Execute(c, "INSERT INTO nh_events VALUES($0,$1,$2,$3,$4,$5)", entry.Source, entry.EventId, hash, key, Contract.Serialize(result), Now);
             Execute(c, "INSERT INTO nh_event_content VALUES($0,$1,$2,$3)", entry.Source, entry.EventId, Contract.Serialize(entry), Now);
@@ -160,7 +166,7 @@ public sealed partial class NotificationStore
             SELECT id,event,is_read,dismissed FROM nh_inbox WHERE user_id=$0 AND dismissed=0
             AND ($1=0 OR is_read=0) AND ($2 IS NULL OR json_extract(event,'$.source')=$2)
             AND ($5=1 OR json_extract(event,'$.adminOnly')=0)
-            ORDER BY created DESC,id LIMIT $3 OFFSET $4
+            ORDER BY created DESC,rowid DESC LIMIT $3 OFFSET $4
             """, user, unread, source, Math.Clamp(limit, 1, 100), Math.Clamp(skip, 0, 100000), includeAdmin);
         using var r = cmd.ExecuteReader(); var rows = new List<InboxRow>();
         while (r.Read()) rows.Add(new(Guid.Parse(r.GetString(0)), JsonSerializer.Deserialize<NotificationEvent>(r.GetString(1), Contract.Json)! with { Audience = [] }, r.GetBoolean(2), r.GetBoolean(3)));

@@ -35,6 +35,16 @@ test('right-click supports itemAction metadata and menu removal without a close 
         assert(!f.calls.some(c => c.path.endsWith('/proposals')));
     } finally { f.dom.window.close(); }
 });
+test('menus omit non-actionable removal sections and unidentified Requests cards have no removal button', async () => {
+    const f = await fixture(false, { removal: { canPropose: false, reason: 'NotYourRequest', proposals: [] } });
+    try {
+        const card = f.d.createElement('div'); card.className = 'je-request-card'; card.innerHTML = '<div class="je-request-actions"></div>'; f.d.body.append(card); await tick();
+        assert.equal(card.querySelector('.dq-request-action'), null);
+        f.d.querySelector('.itemAction').dispatchEvent(new f.w.MouseEvent('contextmenu', { bubbles: true }));
+        const menu = f.d.createElement('div'); menu.className = 'actionSheet'; menu.getClientRects = () => [{}]; menu.innerHTML = '<div class="actionSheetScroller"></div>'; f.d.body.append(menu); await tick();
+        assert.equal(menu.querySelector('.dq-context-section'), null);
+    } finally { f.dom.window.close(); }
+});
 test('thumbnails stay untouched and queued context menus show timeline and revisioned consent/Undo actions', async () => {
     const f = await fixture(false, { removal: { canPropose: true, proposals: [{ id: 'request', status: 'Waiting', statusLabel: 'Scheduled', revision: 9,
         ownSnapshot: 'current-snapshot', ownAnswer: 1, canUndo: true,
@@ -77,11 +87,11 @@ test('timeline scales dated nodes and the media marker without inventing pending
     try {
         f.d.querySelector('.dq-local-shortcut').click(); await tick();
         assert.equal(f.d.querySelector('[data-checkpoint=requested]').style.getPropertyValue('--dq-position'), '0%');
-        assert.equal(f.d.querySelector('[data-checkpoint=checks]').style.getPropertyValue('--dq-position'), '25%');
-        assert.equal(f.d.querySelector('[data-checkpoint=delay]').style.getPropertyValue('--dq-position'), '100%');
-        const marker = f.d.querySelector('.dq-media-marker'); assert.equal(marker.style.getPropertyValue('--dq-position'), '50%'); assert.equal(marker.querySelector('.material-icons').textContent, 'tv');
-        assert(f.d.querySelector('.dq-pending-checkpoints [data-checkpoint=removing]')); assert.equal(f.d.querySelector('[data-checkpoint=removing] time'), null);
-        assert.match(f.d.querySelector('.dq-timing').textContent, /2 days remaining/);
+        const x = key => parseFloat(f.d.querySelector('[data-checkpoint=' + key + ']').style.getPropertyValue('--dq-position'));
+        assert(Math.abs(x('checks') - 100 / 6) < .001); assert(Math.abs(x('delay') - 200 / 3) < .001);
+        const marker = f.d.querySelector('.dq-media-marker'); assert(Math.abs(parseFloat(marker.style.getPropertyValue('--dq-position')) - 100 / 3) < .001); assert.equal(marker.querySelector('.material-icons').textContent, 'tv');
+        assert.equal(x('removing'), 100); assert.equal(f.d.querySelector('[data-checkpoint=removing] time'), null);
+        assert.equal(f.d.querySelector('.dq-timing'), null); assert(!f.d.querySelector('.dq-timeline time').textContent.includes(':'));
     } finally { f.dom.window.close(); }
 });
 test('History marks the real cancellation time relative to the abandoned deletion date', async () => {

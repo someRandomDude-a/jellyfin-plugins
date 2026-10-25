@@ -9,6 +9,30 @@ namespace AccountHub.Notifications.Tests;
 
 public sealed class IntakeTests
 {
+    [Fact] public async Task Upsert_moves_to_top_even_when_updates_arrive_in_the_same_second()
+    {
+        var f = new Fixture(); var entry = f.Event() with { DedupeKey = "thread" };
+        var first = await f.Service.PublishAsync(entry, Fixture.Hash(entry), default, upsert: true);
+        await f.Publish(f.Event());
+        var update = entry with { EventId = Guid.NewGuid(), Body = "Fresh status", OccurredAt = entry.OccurredAt.AddSeconds(1) };
+        await f.Service.PublishAsync(update, Fixture.Hash(update), default, upsert: true);
+        Assert.Equal(Assert.Single(first.NotificationIds), f.Store.Inbox(f.Host.Alice, 0, 100, null, false)[0].Id);
+    }
+    [Fact] public async Task Upsert_retains_identity_resets_read_and_rejects_stale_content_without_new_rows()
+    {
+        var f = new Fixture(); var entry = f.Event() with { DedupeKey = "request:stable" };
+        var first = await f.Service.PublishAsync(entry, Fixture.Hash(entry), default, upsert: true);
+        var id = Assert.Single(first.NotificationIds); f.Store.Mark(f.Host.Alice, id, false);
+        var updated = entry with { EventId = Guid.NewGuid(), Body = "Updated request", OccurredAt = entry.OccurredAt.AddMinutes(1) };
+        var second = await f.Service.PublishAsync(updated, Fixture.Hash(updated), default, upsert: true);
+        Assert.Equal(id, Assert.Single(second.NotificationIds));
+        var row = Assert.Single(f.Store.Inbox(f.Host.Alice, 0, 100, null, false)); Assert.Equal("Updated request", row.Event.Body);
+        Assert.Equal(1, f.Store.Unread(f.Host.Alice));
+        Assert.Equal("duplicate", (await f.Service.PublishAsync(updated, Fixture.Hash(updated), default, upsert: true)).Status);
+        var stale = entry with { EventId = Guid.NewGuid(), Body = "Old delivery" };
+        await f.Service.PublishAsync(stale, Fixture.Hash(stale), default, upsert: true);
+        Assert.Equal("Updated request", Assert.Single(f.Store.Inbox(f.Host.Alice, 0, 100, null, false)).Event.Body);
+    }
     [Fact]
     public async Task Library_audience_skips_deleted_or_inaccessible_users_and_respects_kind_preferences()
     {

@@ -50,7 +50,7 @@ public static class HubIntegration
                 type = p.Status == ProposalStatus.FilesDeleted ? "proposal.seerr_removal" : ProposalType(p, !revisions.ContainsKey(p.Id)), severity = "info", title = p.Target.Title[..Math.Min(200, p.Target.Title.Length)],
                 body = notice.Text, link = p.Target.JellyfinItemId != Guid.Empty ? "#/details?id=" + p.Target.JellyfinItemId.ToString("N") : "#/home?deletionQueueProposal=" + p.Id.ToString("D"), audience = new[] { notice.UserId },
                 actions = new[] { new { label = "Review request", link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"), size = "compact" } },
-                adminOnly = false, dedupeKey = "deletionqueue:notice:" + notice.Id.ToString("D"), occurredAt = now,
+                adminOnly = false, dedupeKey = "deletionqueue:proposal:" + notice.ProposalId.ToString("D"), occurredAt = now,
                 correlationId = p.Id, metadata = new { proposalId = p.Id } });
             Add(state, evt); SetDelivery(state, notice.Id, "pending");
         }

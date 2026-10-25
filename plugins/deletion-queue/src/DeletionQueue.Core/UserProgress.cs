@@ -8,7 +8,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
     public static string PublicReason(string reason) => reason switch {
         "ActivityCoverageIncomplete" or "ConsentRequired" or "AdministratorApprovalRequired" or "PlaybackActive" or "Suspended" or "PolicyChanged" or
         "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
-        "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
+        "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
         _ => "VerificationRequired"
     };
     public static UserProgress For(QueueState state, Proposal p)
@@ -38,7 +38,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
         var delayPassed = p.Status is ProposalStatus.Ready or ProposalStatus.Claimed or ProposalStatus.Uncertain or ProposalStatus.FilesDeleted or ProposalStatus.Completed;
         var steps = new RemovalCheckpoint[] {
             new("requested", "Requested", "complete", p.CreatedAt),
-            new("checks", "Checks & consent", closedWithoutRemoval ? "stopped" : checksPassed ? "complete" : "current", checksPassed ? p.EligibleSince : null),
+            new("checks", !checksPassed && !p.Terminal ? p.Reason == "ConsentRequired" ? "Awaiting consent" : p.Reason == "AdministratorApprovalRequired" ? "Administrator review" : "Safety checks" : "Checks & consent", closedWithoutRemoval ? "stopped" : checksPassed ? "complete" : "current", checksPassed ? p.EligibleSince : null),
             new("delay", "Safety delay", closedWithoutRemoval ? "stopped" : delayPassed ? "complete" : queued ? "current" : "pending", queued || started || removed ? p.NotBefore : null),
             new("removing", "Removal started", started ? removed ? "complete" : "current" : closedWithoutRemoval ? "stopped" : "pending", p.Claim?.At),
             new("confirmed", "Removal confirmed", removed ? "complete" : closedWithoutRemoval ? "stopped" : "pending", p.FilesDeletedAt),
@@ -54,7 +54,8 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
         return new(label, help, scheduled, steps);
     }
     private static string Reason(string reason) => reason switch {
-        "ActivityCoverageIncomplete" => "Viewing-activity checks are not complete yet. Removal stays blocked until the required observation window is verified.",
+        "ActivityCoverageIncomplete" => "Jellyfin playback history could not be fully verified yet. Removal stays blocked until a complete media-history check and healthy activity collector are available.",
+        "VerificationUnavailable" => "Fresh verification could not be completed. The queue will retry automatically; no removal is scheduled until checks succeed.",
         "ConsentRequired" => "Required consent is missing or no longer current. Removal stays blocked until consent and safety checks are satisfied.",
         "AdministratorApprovalRequired" => "Administrator approval is required before this request can proceed.",
         "PlaybackActive" => "The media is currently in use. Removal will wait until safety checks can pass.",

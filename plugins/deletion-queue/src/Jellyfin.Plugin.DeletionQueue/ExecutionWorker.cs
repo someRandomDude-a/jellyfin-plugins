@@ -10,6 +10,7 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Yield(); var offset = 0;
+        var checkedAt = new Dictionary<Guid, (long Revision, DateTimeOffset Due)>();
         try
         {
             var coordinator = new ExecutionCoordinator(runtime, gateway, clock);
@@ -17,7 +18,11 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
             coordinator.RecoverClaims();
             while (!stoppingToken.IsCancellationRequested && runtime.Available)
             {
-                var all = runtime.Read().Proposals.Where(p => !p.Terminal && p.Claim is null).ToArray();
+                var now = clock.GetUtcNow();
+                var proposals = runtime.Read().Proposals;
+                foreach (var id in checkedAt.Keys.Where(id => !proposals.Any(p => p.Id == id && !p.Terminal)).ToArray()) checkedAt.Remove(id);
+                var all = proposals.Where(p => !p.Terminal && p.Claim is null &&
+                    (!checkedAt.TryGetValue(p.Id, out var check) || check.Revision != p.Revision || now >= check.Due)).ToArray();
                 if (offset >= all.Length) offset = 0;
                 foreach (var proposal in all.Skip(offset).Take(10))
                 {
@@ -35,10 +40,17 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
                             return true;
                         });
                         var state = runtime.Read(); var current = QueueRules.Find(state, proposal.Id);
+                        var due = clock.GetUtcNow().AddDays(1);
+                        if (current.Reason is "ActivityCoverageIncomplete" or "VerificationUnavailable") due = clock.GetUtcNow().AddMinutes(5);
+                        if (current.NotBefore is { } deadline && deadline > clock.GetUtcNow() && deadline < due) due = deadline;
+                        checkedAt[current.Id] = (current.Revision, due);
                         if (state.Policy.AutomaticDeletion && state.Policy.SeerrManagedDeletionAcknowledged && current.Status == ProposalStatus.Ready)
                             await coordinator.ExecuteAsync(current.Id, stoppingToken);
                     }
                     catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                    // Another consent/activity write won the race. Retry fresh evidence
+                    // next pass; a concurrency conflict is not an authorization failure.
+                    catch (QueueException e) when (e.Code == "RevisionChanged") { }
                     catch (Exception)
                     {
                         if (!runtime.Available) return;
@@ -48,11 +60,13 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
                             if (p.Claim is null && !p.Terminal)
                             {
                                 var before = (p.Status, p.Reason, p.NotBefore, p.EligibleSince, p.DelayFloorHours);
-                                QueueRules.Evaluate(state, p, new(false, false, false, true, true), clock.GetUtcNow());
+                                QueueRules.VerificationUnavailable(state, p, clock.GetUtcNow());
                                 if (before != (p.Status, p.Reason, p.NotBefore, p.EligibleSince, p.DelayFloorHours)) p.Revision++;
                             }
                             return true;
                         });
+                        var failed = QueueRules.Find(runtime.Read(), proposal.Id);
+                        checkedAt[failed.Id] = (failed.Revision, clock.GetUtcNow().AddMinutes(5));
                     }
                 }
                 offset += 10;

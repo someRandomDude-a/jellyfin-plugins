@@ -20,6 +20,12 @@ Interrupted staging, cutover and source-retirement phases resume to the same sta
 
 ## Compact inbox and producer presentation
 
+### Updating an existing notification
+
+Use `NotificationsClient.UpsertAsync(entry)` or operation `notifications.upsert` in the v1 JSON envelope (including `/Notifications/api/v1/producer/notifications` with the usual producer credential). Supply a stable, source-scoped `DedupeKey` for the logical thread, and a new `EventId` for each change. Retries reuse their event ID and identical payload. `ReadyForUpsertAsync` checks operation support.
+
+Upsert preserves each recipient's inbox row ID, replaces its content, moves it to the top and restores unread/undismissed state. Recipient existence, preferences, registered types/actions, access callbacks and producer scopes are rechecked on new changes. Older occurred-at values cannot replace newer content. Replayed events remain idempotent. Separate security events should continue using normal Publish; its existing deduplication behavior is unchanged. Updates do not edit or resend already-issued Discord/webhook messages. Deletion Queue uses one logical update thread per removal request; existing historical rows are not destructively migrated or deleted.
+
 The inbox uses compact expandable rows and loads older pages as you scroll (with a keyboard-accessible load-more fallback). Expanded text is plain text, not HTML. Producers can optionally supply `details` (up to 8,000 characters) and up to five `actions`, each with `label`, a validated `link`, and a `size` of `compact` (default) or `normal`. No executable action, arbitrary CSS or client-side permission grant is supported. A link still requires native authorization at its destination. Omitted presentation fields are not serialized, preserving legacy event hashes.
 
 Routine UI feedback does not automatically open the menu. Transient client feedback is account-bound, never persisted and cleared at authentication/account boundaries. Consent, destructive operations and security confirmation remain explicit. Administrator events require the administrator producer scope, resolve recipients through the host, and are filtered again on reads/counts/delivery after demotion. Deletion Queue request notices additionally recheck live native media access through the owning plugin; missing ownership adapters fail closed.

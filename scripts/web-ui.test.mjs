@@ -317,5 +317,5 @@ test('Deletion Queue retains native surfaces and scoped semantic selection tints
     const panel = dom.window.getComputedStyle(dom.window.document.querySelector('dialog')), card = dom.window.getComputedStyle(dom.window.document.querySelector('button'));
     assert.equal(panel.backgroundColor, 'rgb(10, 20, 30)'); assert.equal(panel.color, 'rgb(230, 220, 210)'); assert.equal(panel.borderRadius, '1rem');
     assert.equal(card.backgroundColor, 'rgb(40, 50, 60)'); assert.equal(card.color, 'rgb(210, 200, 190)'); assert.equal(card.borderRadius, '7px');
-    assert.equal(panel.position, 'fixed'); assert.equal(card.position, 'absolute');
+    assert.equal(panel.position, 'fixed'); assert.equal(card.position, '');
 });

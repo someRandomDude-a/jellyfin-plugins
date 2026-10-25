@@ -247,7 +247,7 @@ const http = require('node:http');
         await enhanced.evaluate(e => e.remove());
         phase = 'queue-review-timeline';
         const selectedRequest = '55555555-5555-5555-5555-555555555555';
-        const detailPattern = '**/DeletionQueue/proposals/' + selectedRequest;
+        const detailPattern = '**/DeletionQueue/proposals/' + selectedRequest + '**';
         await page.route(detailPattern, route => route.fulfill({ json: {
             id: selectedRequest, title: 'Selected removal request fixture', status: 'Waiting', reason: 'DelayRequired', statusLabel: 'Scheduled',
             statusHelp: 'Removal can happen no earlier than the displayed date, after fresh safety checks.', revision: 1, canUndo: true, ownAnswer: 0, ownSnapshot: 'fixture', stage: 'Queued',

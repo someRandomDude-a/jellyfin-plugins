@@ -31,22 +31,19 @@
 .dq-queue-row.dq-highlight { border-radius: .65rem; box-shadow: inset 0 0 0 2px var(--theme-primary-color, currentColor); background: color-mix(in srgb, var(--theme-primary-color, currentColor) 8%, transparent); padding-inline: .65rem; scroll-margin-block: .75rem; }
 .dq-timeline { overflow-x: auto; padding: .5rem 0; margin: .75rem 0 0; font-size: .74em; }
 .dq-time-track { position: relative; min-width: 26rem; margin: 3em 4em 0; height: calc(2em + var(--dq-lanes, 1) * 6em); border-block-start: 2px solid color-mix(in srgb, currentColor 30%, transparent); }
-.dq-dated-nodes, .dq-pending-checkpoints { list-style: none; padding: 0; margin: 0; }
+.dq-dated-nodes { list-style: none; padding: 0; margin: 0; }
 .dq-dated-nodes > li { position: absolute; inset-inline-start: var(--dq-position); top: calc(var(--dq-lane, 0) * 6em); width: 7.5em; transform: translateX(-50%); text-align: center; }
 .dq-dated-nodes > li::before { content: ''; position: absolute; bottom: 100%; height: calc(var(--dq-lane, 0) * 6em); inset-inline-start: 50%; border-inline-start: 1px dashed currentColor; opacity: .4; }
-.dq-checkpoint-icon { display: inline-grid; place-items: center; width: 1.65em; height: 1.65em; border-radius: 50%; border: 2px solid var(--dq-state-color, currentColor); background: color-mix(in srgb, var(--dq-state-color, currentColor) 22%, transparent); margin: -.85em 0 .4em; font-size: 1.5em; }
+.dq-checkpoint-icon { display: inline-grid; place-items: center; width: 1.65em; height: 1.65em; border-radius: 50%; border: 2px solid var(--dq-state-color, currentColor); background: transparent; margin: -.85em 0 .4em; font-size: 1.5em; }
 .dq-timeline [data-state=complete] { --dq-state-color: #3baf75; }
 .dq-timeline [data-state=current] { --dq-state-color: #e8b75c; font-weight: 600; }
 .dq-timeline [data-state=cancelled] { --dq-state-color: #df6570; font-weight: 600; }
 .dq-timeline [data-state=pending], .dq-timeline [data-state=stopped] { opacity: .6; }
 .dq-timeline [aria-current=step] .dq-checkpoint-icon { box-shadow: 0 0 0 2px var(--dq-state-color, currentColor); }
-.dq-media-marker { position: absolute; inset-inline-start: var(--dq-position); top: -3.1em; transform: translateX(-50%); text-align: center; border-radius: .6em; padding: .2em .45em; background: color-mix(in srgb, #00a4dc 28%, transparent); }
-.dq-media-marker[data-stopped=true] { background: color-mix(in srgb, #df6570 28%, transparent); }
-.dq-media-marker[data-completed=true] { background: color-mix(in srgb, #3baf75 28%, transparent); }
+.dq-media-marker { position: absolute; inset-inline-start: var(--dq-position); top: -3.1em; transform: translateX(-50%); text-align: center; border-radius: .6em; padding: .2em .45em; background: transparent; border-bottom: 2px solid currentColor; }
+.dq-media-marker[data-stopped=true] { border-color: #df6570; }
+.dq-media-marker[data-completed=true] { border-color: #3baf75; }
 .dq-marker-label { display: block; white-space: nowrap; font-size: .85em; }
-.dq-pending-label { margin: .5em 1em; opacity: .7; }
-.dq-pending-checkpoints { display: flex; gap: 1em; padding: 1em; }
-.dq-pending-checkpoints > li { flex: 0 0 9em; text-align: center; border-block-start: 1px dashed currentColor; padding-block-start: .5em; }
 .dq-checkpoint-label, .dq-timeline time, .dq-checkpoint-date { display: block; overflow-wrap: anywhere; }
 .dq-timeline time, .dq-checkpoint-date { margin-top: .3rem; opacity: .8; }
 .dq-context-section { border-block-start: 1px solid color-mix(in srgb, currentColor 18%, transparent); margin-block-start: .4em; padding-block: .4em; min-width: 0; }
@@ -54,6 +51,10 @@
 .dq-context-heading { font-size: .8em; font-weight: 600; opacity: .8; }
 .dq-context-section .dq-context-action { width: 100%; text-align: start; }
 .dq-context-action .listItemIcon { background: none; border-radius: 0; }
+.dq-media-action > .material-icons, .dq-context-action .material-icons { background: transparent; box-shadow: none; }
+.dq-context-section .dq-context-action:not([data-removal-status]):not([aria-pressed=true]):not(:hover):not(:focus-visible) { background: transparent; }
+.dq-context-section[hidden] { display: none; }
+.dq-media-action[hidden] { display: none; }
 .dq-context-section .dq-context-progress { max-width: min(26rem, 80vw); box-sizing: border-box; }
 .dq-context-progress .dq-timeline { max-width: 100%; }
 .dq-context-action[aria-pressed=true][data-answer=allow] { background: color-mix(in srgb, #3baf75 22%, transparent); }
@@ -71,7 +72,7 @@
 .dq-calendar-filter { display: flex; gap: .5em; align-items: center; text-align: start; }
 .dq-calendar-filter[aria-pressed=true] { background: color-mix(in srgb, #df6570 22%, transparent); }
 .dq-item-progress { max-width: 100%; min-width: 0; }
-.dq-timing, .dq-closure { font-size: .8em; line-height: 1.5; }
+.dq-closure { font-size: .8em; line-height: 1.5; }
 .dq-closure { border-inline-start: 3px solid #df6570; padding-inline-start: .75em; }
 [data-removal-status=Blocked], [data-removal-status=Waiting] { background: color-mix(in srgb, #e8b75c 22%, transparent); }
 [data-removal-status=Ready], [data-removal-status=Completed], [data-removal-status=FilesDeleted] { background: color-mix(in srgb, #3baf75 22%, transparent); }
@@ -83,6 +84,5 @@
 .dq-local-shortcut { display: inline-flex; align-items: center; justify-content: center; min-width: 2.75rem; min-height: 2.75rem; padding: .4rem; }
 .dq-notice { display: block; width: 100%; box-sizing: border-box; padding: .75em; text-align: start; }
 .dq-error { margin: 0 1.25em; }
-.dq-card-action { position: absolute; inset-inline-start: .3em; top: .3em; z-index: 2; min-width: 2.75em; min-height: 2.75em; }
 .dq-request-action { display: inline-flex; align-items: center; gap: .3em; }
 @media (max-width: 40em) { .dq-panel { width: 96vw; } .dq-actions > button { flex: 1 1 auto; } }

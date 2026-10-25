@@ -20,7 +20,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var latest = runtime.Read();
         var current = QueueRules.Find(latest, proposal.Id);
         return new(new EvaluationEvidence(authorized, resolved.Fingerprint == proposal.Target.Fingerprint, scan, runtime.Available, true,
-            AdministratorAuthorized(latest, current)), current.Revision);
+            AdministratorAuthorized(latest, current)) { NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision);
     }
 
     public Task<bool> AnchorClaimAsync(ExecutionClaim claim, CancellationToken ct)

@@ -16,7 +16,7 @@ public sealed class HubDispatcher(QueueRuntime runtime, AccountHubClient client,
             try
             {
                 var settings = runtime.Read().Hub;
-                availability.Set(settings.HubIntegrationEnabled && await notifications.ReadyForRegisteredTypesAsync(stoppingToken));
+                availability.Set(settings.HubIntegrationEnabled && await notifications.ReadyForRegisteredTypesAsync(stoppingToken) && await notifications.ReadyForUpsertAsync(stoppingToken));
                 if (!availability.Ready && !warned)
                 { logger.LogInformation("Notifications absent, outdated or unavailable; existing requests remain accessible through the queue."); warned = true; }
                 if (availability.Ready) warned = false;
@@ -38,7 +38,9 @@ public sealed class HubDispatcher(QueueRuntime runtime, AccountHubClient client,
                     {
                         var enabled = settings.HubIntegrationEnabled && (e.Kind == "audit" ? settings.PublishAudit :
                             settings.NotificationMode is NotificationMode.Auto or NotificationMode.Hub);
-                        var result = enabled && availability.Ready ? await client.PublishAsync(e.Kind, e.PayloadJson, stoppingToken) : "unavailable";
+                        using var payload = System.Text.Json.JsonDocument.Parse(e.PayloadJson);
+                        var upsert = e.Kind == "notification" && payload.RootElement.TryGetProperty("adminOnly", out var adminOnly) && !adminOnly.GetBoolean();
+                        var result = enabled && availability.Ready ? await client.PublishWithUpdateAsync(e.Kind, e.PayloadJson, stoppingToken, upsert) : "unavailable";
                         // Disabled/local changes abandon pending notifications locally, never republish local history.
                         if (!enabled && e.Kind == "notification") result = "rejected";
                         results.Add((e.EventId, result));

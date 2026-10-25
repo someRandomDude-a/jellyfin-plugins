@@ -7,7 +7,7 @@ namespace AccountHub.Notifications;
 
 public sealed class NotificationService(NotificationStore store, INotificationHost host, NotificationOptions options)
 {
-    public static readonly string[] Operations = ["hello", "health", "notifications.register", "notifications.publish", "notifications.publishBatch", "audit.publish"];
+    public static readonly string[] Operations = ["hello", "health", "notifications.register", "notifications.publish", "notifications.upsert", "notifications.publishBatch", "audit.publish"];
     public NotificationCatalogEntry[] Catalog()
     {
         foreach (var registration in host.NotificationRegistrations) {
@@ -65,18 +65,19 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             var request = JsonSerializer.Deserialize<Request>(json, Contract.Json);
             if (request is null || request.ApiVersion != "1" || request.RequestId == Guid.Empty || request.Payload.ValueKind != JsonValueKind.Object)
                 throw new NotificationException("invalid_request", "Invalid v1 envelope");
-            if (requiredOperation is not null && request.Operation != requiredOperation && !(requiredOperation == "notifications.publish" && request.Operation == "notifications.publishBatch"))
+            if (requiredOperation is not null && request.Operation != requiredOperation && !(requiredOperation == "notifications.publish" && request.Operation is "notifications.publishBatch" or "notifications.upsert"))
                 throw new NotificationException("unauthorized", "Operation not permitted", 403);
             object data;
             switch (request.Operation)
             {
                 case "hello": data = new { hostVersion = "0.1.0", apiVersion = "1", operations = Operations }; break;
-                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook", "registered-types", "layouts", "admin-alerts", "scoped-access", "commands" } }; break;
+                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook", "registered-types", "layouts", "admin-alerts", "scoped-access", "commands", "upsert" } }; break;
                 case "notifications.register":
                     if (producer is not null) throw new NotificationException("unauthorized", "Only internal plugins can register types", 403);
                     Register(request.Payload.Deserialize<NotificationRegistration>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing registration"));
                     data = new { status = "registered" }; break;
                 case "notifications.publish": data = await PublishAsync(request.Payload, ct, producer); break;
+                case "notifications.upsert": data = await PublishAsync(request.Payload, ct, producer, true); break;
                 case "notifications.publishBatch":
                     if (!request.Payload.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array || events.GetArrayLength() is < 1 or > 50)
                         throw new NotificationException("invalid_request", "Batch requires 1-50 events");
@@ -105,20 +106,21 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
         catch (Exception) { return Contract.Serialize(Contract.Failure("unavailable", "Host unavailable", true)); }
     }
 
-    private async Task<PublishResult> PublishAsync(JsonElement payload, CancellationToken ct, ProducerIdentity? producer)
+    private async Task<PublishResult> PublishAsync(JsonElement payload, CancellationToken ct, ProducerIdentity? producer, bool upsert = false)
     {
         Validation.Require(Encoding.UTF8.GetByteCount(payload.GetRawText()) <= Contract.EventLimit, "Event too large");
         var entry = payload.Deserialize<NotificationEvent>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing event");
-        return await PublishAsync(entry, Validation.Hash(payload.GetRawText()), ct, producer);
+        return await PublishAsync(entry, Validation.Hash(payload.GetRawText()), ct, producer, upsert);
     }
 
-    public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null)
+    public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null, bool upsert = false)
     {
         var registrations = host.NotificationRegistrations.Where(registration => registration.Source == entry.Source).ToArray();
         var registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
         Validation.Event(entry, options, producer, registered is not null || registrations.Length > 0);
         // Acknowledged events do not depend on today's directory/link/preferences availability.
-        if (store.TryDuplicate(entry, hash) is { } duplicate) return duplicate;
+        if (upsert) Validation.Require(!string.IsNullOrWhiteSpace(entry.DedupeKey), "Upsert requires a stable dedupe key");
+        if (store.TryDuplicate(entry, hash, upsert) is { } duplicate) return duplicate;
         foreach (var registration in registrations) Register(registration);
         registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
         var definition = Definition(entry, registered is null ? [] : [registered]);
@@ -163,7 +165,7 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             }
             fanout.Add((user, inbox, selected.ToArray(), link));
         }
-        return store.Accept(entry, hash, fanout);
+        return store.Accept(entry, hash, fanout, upsert);
     }
     internal static bool Matches(string rule, string value) => rule == "*" || rule == value;
     internal static bool Enabled(Preference[] prefs, NotificationEvent e, string channel, bool fallback) =>

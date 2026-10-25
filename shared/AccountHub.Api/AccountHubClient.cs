@@ -70,9 +70,11 @@ public sealed class AccountHubClient
     }
 
     public async Task<string> PublishAsync(string kind, string payloadJson, CancellationToken ct)
+        => await PublishWithUpdateAsync(kind, payloadJson, ct, false).ConfigureAwait(false);
+    public async Task<string> PublishWithUpdateAsync(string kind, string payloadJson, CancellationToken ct, bool upsert)
     {
         using var doc = JsonDocument.Parse(payloadJson);
-        var response = await CallAsync(kind == "notification" ? "notifications.publish" : "audit.publish", doc.RootElement, ct).ConfigureAwait(false);
+        var response = await CallAsync(kind == "notification" ? upsert ? "notifications.upsert" : "notifications.publish" : "audit.publish", doc.RootElement, ct).ConfigureAwait(false);
         try
         {
             if (response is not { } r) return "unavailable";

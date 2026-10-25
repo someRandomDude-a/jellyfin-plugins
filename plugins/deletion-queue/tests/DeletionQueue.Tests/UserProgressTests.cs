@@ -6,6 +6,19 @@ namespace DeletionQueue.Tests;
 
 public sealed class UserProgressTests
 {
+    [Fact] public void CompleteNativeHistoryReplacesObservationWarmupButNotConsentOrDelay()
+    {
+        var state = State(); var p = Propose(state); state.CoverageSince = Now;
+        QueueRules.Evaluate(state, p, Good, Now); Assert.Equal("ActivityCoverageIncomplete", p.Reason);
+        var native = Good with { NativeHistoryVerified = true };
+        QueueRules.Evaluate(state, p, native, Now); Assert.Equal(ProposalStatus.Waiting, p.Status);
+        Assert.True(p.NotBefore >= Now.AddHours(48));
+        QueueRules.RecordActivity(state, Viewer.Id, p.Target.ActivityKey, null, false, Now);
+        QueueRules.Evaluate(state, p, native, Now); Assert.Equal("ConsentRequired", p.Reason);
+        QueueRules.Evaluate(state, p, native with { CompleteActivityScan = false }, Now);
+        Assert.Equal("ActivityCoverageIncomplete", p.Reason);
+    }
+
     [Fact] public void UndoDuringDelayRetainsTheActualStoppingCheckpointDateAndPublicReason()
     {
         var state = State(); var p = Propose(state); Evaluate(state, p);

@@ -58,6 +58,27 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             target.Kind, target.Is4K, Selection = selection, target.RequestOnly, ExecutionAvailable = true });
     }
 
+    [HttpGet("proposals/{id:guid}/status")]
+    public async Task<IActionResult> RefreshStatus(Guid id, [FromServices] SeerrExecutionGateway gateway)
+    {
+        var caller = identity.Caller(User);
+        var p = Visible(runtime.Read(), id, caller.Id);
+        if (!p.Terminal && p.Claim is null) {
+            try {
+                var check = await gateway.PreflightAsync(p, HttpContext.RequestAborted);
+                runtime.Write(Guid.NewGuid(), "status-check", "EligibilityEvaluated", state => {
+                    var current = Visible(state, id, identity.Caller(User).Id);
+                    if (current.Revision != check.ProposalRevision) throw new QueueException("RevisionChanged");
+                    var before = (current.Status, current.Reason, current.NotBefore, current.EligibleSince, current.DelayFloorHours);
+                    QueueRules.Evaluate(state, current, check.Evidence, clock.GetUtcNow());
+                    if (before != (current.Status, current.Reason, current.NotBefore, current.EligibleSince, current.DelayFloorHours)) current.Revision++;
+                    return true;
+                });
+            } catch (QueueException e) when (e.Code == "RevisionChanged") { /* A concurrent domain change wins. */ }
+        }
+        return Detail(id);
+    }
+
     [HttpPost("targets/items/{id:guid}/preview")]
     public async Task<IActionResult> PreviewItem(Guid id, CancellationToken ct)
     {
@@ -81,15 +102,34 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     }
 
     [HttpGet("targets/items/{id:guid}/removal")]
-    public IActionResult ItemRemoval(Guid id)
+    public async Task<IActionResult> ItemRemoval(Guid id, [FromServices] SeerrExecutionGateway? gateway = null)
     {
         var caller = identity.Caller(User);
         if (!targets.Accessible(caller.Id, id)) throw new QueueException("TargetUnavailable");
         var state = runtime.Read(); var now = clock.GetUtcNow();
         var matching = state.Proposals.Where(p => p.Target.JellyfinItemId == id && targets.Accessible(caller.Id, p)).ToArray();
+        if (gateway is not null) {
+            foreach (var p in matching.Where(p => !p.Terminal && p.Claim is null)) await RefreshStatus(p.Id, gateway);
+            state = runtime.Read();
+            matching = state.Proposals.Where(p => p.Target.JellyfinItemId == id && targets.Accessible(caller.Id, p)).ToArray();
+        }
         foreach (var p in matching) QueueRules.Expire(p, now);
+        var authority = QueueRules.Authority(state, caller.Id);
+        var canPropose = authority != ProposalAuthority.Denied;
+        string? reason = canPropose ? null : "ProposalNotPermitted";
+        if (canPropose && !matching.Any(p => !p.Terminal)) {
+            try {
+                VerifiedTarget target;
+                try { target = await targets.ResolveAsync(caller, new(id, null, false), HttpContext.RequestAborted); }
+                catch (QueueException e) when (e.Code is "TargetEditionUnverified" or "SeerrTargetNotManaged") {
+                    target = await targets.ResolveAsync(caller, new(id, null, true), HttpContext.RequestAborted);
+                }
+                canPropose = authority == ProposalAuthority.AnyAccessibleItem || target.OwnRequestVerified;
+                if (!canPropose) reason = "NotYourRequest";
+            } catch (QueueException e) { canPropose = false; reason = e.Code; }
+        }
         return Ok(new {
-            CanPropose = QueueRules.Authority(state, caller.Id) != ProposalAuthority.Denied,
+            CanPropose = canPropose, Reason = reason,
             Proposals = matching.Where(p => !p.Terminal).OrderByDescending(p => p.CreatedAt)
                 .Select(p => QueueRules.Project(state, p, caller.Id, now)).ToArray()
         });

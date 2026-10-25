@@ -163,7 +163,7 @@ public static class QueueRules
             : state.Policy.Suspended ? "Suspended"
             : !evidence.OwnerAuthorized ? "OwnerNotAuthorized"
             : !evidence.TargetVerified ? "TargetVerificationRequired"
-            : !CoverageComplete(state, now) || !evidence.CompleteActivityScan ? "ActivityCoverageIncomplete"
+            : (!CoverageComplete(state, now) && !evidence.NativeHistoryVerified) || !evidence.CompleteActivityScan ? "ActivityCoverageIncomplete"
             : !evidence.LocalCheckpointVerified ? "LocalCheckpointRequired"
             : !evidence.SeerrDelegationVerified ? "SeerrDelegationRequired" : null;
         var viewers = state.Activity.Where(a => a.Key == proposal.Target.ActivityKey &&
@@ -195,6 +195,12 @@ public static class QueueRules
             proposal.ClosedAt = (proposal.LastPlaybackResetAt ?? proposal.CreatedAt).AddDays(30);
             proposal.Revision++;
         }
+    }
+
+    public static void VerificationUnavailable(QueueState state, Proposal proposal, DateTimeOffset now)
+    {
+        Expire(proposal, now);
+        if (!proposal.Terminal && proposal.Claim is null) Block(proposal, "VerificationUnavailable");
     }
 
     public static ExecutionClaim Claim(QueueState state, Guid id, long revision, EvaluationEvidence evidence, DateTimeOffset now)
@@ -348,6 +354,7 @@ public static class QueueRules
                 ClosedCheckpoint = p.ClosedCheckpoint is "checks" or "delay" ? p.ClosedCheckpoint : null,
                 ClosureExplanation = p.Terminal && p.Status != ProposalStatus.Completed ? progress.Help : null,
                 MediaKind = p.Target.Kind.ToString(),
+                CanConsent = !p.Terminal && p.Claim is null && IsRecent(state, p.Target, caller, now),
                 ExpiresAt = p.Status == ProposalStatus.Blocked ? (p.LastPlaybackResetAt ?? p.CreatedAt).AddDays(30) : null,
                 Stage = p.Terminal ? "History" : p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "Queued" :
                     p.Status is ProposalStatus.Claimed or ProposalStatus.Uncertain or ProposalStatus.FilesDeleted ? "Processing" :

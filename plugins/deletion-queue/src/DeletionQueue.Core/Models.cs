@@ -122,7 +122,10 @@ public sealed record JournalEntry(long Sequence, Guid CommandId, string Actor, s
 
 public sealed record EvaluationEvidence(
     bool OwnerAuthorized, bool TargetVerified, bool CompleteActivityScan,
-    bool LocalCheckpointVerified, bool SeerrDelegationVerified, bool AdministratorAuthorized = false);
+    bool LocalCheckpointVerified, bool SeerrDelegationVerified, bool AdministratorAuthorized = false)
+{
+    public bool NativeHistoryVerified { get; init; }
+}
 
 // Deliberately does not contain another user's identity, vote, activity, paths or request IDs.
 public sealed record UserProposal(
@@ -143,6 +146,7 @@ public sealed record UserProposal(
     public string? ClosedCheckpoint { get; init; }
     public string? ClosureExplanation { get; init; }
     public string MediaKind { get; init; } = "Movie";
+    public bool CanConsent { get; init; }
 }
 public sealed record RemovalCheckpoint(string Key, string Label, string State, DateTimeOffset? At = null)
 {
