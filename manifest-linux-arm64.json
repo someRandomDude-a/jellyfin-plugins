@@ -1,43 +1,35 @@
 [
   {
-    "guid": "4b047046-a550-4415-b204-4206f1f18201",
-    "name": "Discord Bridge",
-    "description": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
-    "overview": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
+    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
+    "name": "Notifications",
+    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
       {
+        "version": "0.1.8.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "version": "0.1.5.0",
-        "timestamp": "2026-10-24T23:36:36.7801119Z",
-        "checksum": "8f27cf1b2ea776d319834bf6791293f2",
-        "targetAbi": "12.3.0.0",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.5/DiscordBridge-0.1.5.0-linux-arm64.zip"
-      },
-      {
-        "timestamp": "2026-10-24T21:00:06.4245821Z",
-        "checksum": "a2d92c89ce2d7347879d4098f211ac15",
-        "version": "0.1.3.0",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.3/DiscordBridge-0.1.3.0-linux-arm64.zip",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-25T09:43:29.9716458Z",
+        "checksum": "9440a9e77e1512f77d3f2ce6be2cec22",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.8/Notifications-0.1.8.0-linux-arm64.zip",
         "targetAbi": "12.3.0.0"
       },
       {
-        "timestamp": "2026-10-24T20:51:16.8690046Z",
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "checksum": "5552a20b2c0160f598f67b3def7f1f76",
-        "version": "0.1.2.0",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.2/DiscordBridge-0.1.2.0-linux-arm64.zip"
+        "version": "0.1.6.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.6/Notifications-0.1.6.0-linux-arm64.zip",
+        "timestamp": "2026-10-24T23:51:16.0997181Z",
+        "checksum": "373320a39a94e2775b1229039407027e"
       },
       {
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T17:53:58.2627035Z",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DiscordBridge-0.1.0.0-linux-arm64.zip",
-        "targetAbi": "12.2.0.0",
-        "version": "0.1.0.0",
-        "checksum": "738be3ee4cdf1183d1d503053f5e7644"
+        "timestamp": "2026-10-24T23:36:29.5391663Z",
+        "targetAbi": "12.3.0.0",
+        "version": "0.1.5.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-linux-arm64.zip",
+        "checksum": "6e1c6e199f6d8265892ff69c1588b205"
       }
     ]
   },
@@ -49,6 +41,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.8.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-25T09:43:43.413659Z",
+        "checksum": "8c8c1a44dce0912cdfd9d4b789fee784",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.8/AccountHub-0.1.8.0-linux-arm64.zip",
+        "targetAbi": "12.3.0.0"
+      },
       {
         "version": "0.1.5.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/account-hub%2Fv0.1.5/AccountHub-0.1.5.0-linux-arm64.zip",
@@ -84,6 +84,56 @@
     ]
   },
   {
+    "guid": "4b047046-a550-4415-b204-4206f1f18201",
+    "name": "Discord Bridge",
+    "description": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
+    "overview": "Independent Discord transport with optional Hub self-service and native watch-party invitations.",
+    "owner": "someRandomDude-a",
+    "category": "General",
+    "versions": [
+      {
+        "version": "0.1.8.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-25T09:43:50.3057582Z",
+        "checksum": "b581373b49d24f4a217fc4f2862d03a6",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.8/DiscordBridge-0.1.8.0-linux-arm64.zip",
+        "targetAbi": "12.3.0.0"
+      },
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.1.5.0",
+        "timestamp": "2026-10-24T23:36:36.7801119Z",
+        "checksum": "8f27cf1b2ea776d319834bf6791293f2",
+        "targetAbi": "12.3.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.5/DiscordBridge-0.1.5.0-linux-arm64.zip"
+      },
+      {
+        "timestamp": "2026-10-24T21:00:06.4245821Z",
+        "checksum": "a2d92c89ce2d7347879d4098f211ac15",
+        "version": "0.1.3.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.3/DiscordBridge-0.1.3.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "targetAbi": "12.3.0.0"
+      },
+      {
+        "timestamp": "2026-10-24T20:51:16.8690046Z",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "5552a20b2c0160f598f67b3def7f1f76",
+        "version": "0.1.2.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/discord-bridge%2Fv0.1.2/DiscordBridge-0.1.2.0-linux-arm64.zip"
+      },
+      {
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-24T17:53:58.2627035Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.0/DiscordBridge-0.1.0.0-linux-arm64.zip",
+        "targetAbi": "12.2.0.0",
+        "version": "0.1.0.0",
+        "checksum": "738be3ee4cdf1183d1d503053f5e7644"
+      }
+    ]
+  },
+  {
     "guid": "09514a9e-f7a0-4c5a-91bc-3a46338298ca",
     "name": "Private SyncPlay",
     "description": "Private watch parties and isolated guest playback.",
@@ -91,6 +141,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.8.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-25T09:43:53.9043817Z",
+        "checksum": "b57f7dd25c3ec0a91de44d2f4c454e01",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.8/PrivateSyncPlay-0.1.8.0-linux-arm64.zip",
+        "targetAbi": "12.3.0.0"
+      },
       {
         "checksum": "1f8719231ea8195d7e1a6c31135f7187",
         "version": "0.1.5.0",
@@ -126,32 +184,6 @@
     ]
   },
   {
-    "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
-    "name": "Notifications",
-    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "owner": "someRandomDude-a",
-    "category": "General",
-    "versions": [
-      {
-        "targetAbi": "12.3.0.0",
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "version": "0.1.6.0",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.6/Notifications-0.1.6.0-linux-arm64.zip",
-        "timestamp": "2026-10-24T23:51:16.0997181Z",
-        "checksum": "373320a39a94e2775b1229039407027e"
-      },
-      {
-        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
-        "timestamp": "2026-10-24T23:36:29.5391663Z",
-        "targetAbi": "12.3.0.0",
-        "version": "0.1.5.0",
-        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/notifications%2Fv0.1.5/Notifications-0.1.5.0-linux-arm64.zip",
-        "checksum": "6e1c6e199f6d8265892ff69c1588b205"
-      }
-    ]
-  },
-  {
     "guid": "3de88ba1-6d5c-49f5-854b-65a72f473f21",
     "name": "Deletion Queue",
     "description": "Standalone consent-driven deletion workflow with authenticated evidence.",
@@ -159,6 +191,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.8.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-25T09:43:57.0989749Z",
+        "checksum": "fbbe6fb80d2894c82d4ab5731e82607e",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.8/DeletionQueue-0.1.8.0-linux-arm64.zip",
+        "targetAbi": "12.3.0.0"
+      },
       {
         "checksum": "ca272f304854b8672e0ef71be40832f5",
         "timestamp": "2026-10-24T23:59:42.5040913Z",
