@@ -11,7 +11,7 @@ public sealed record HubPolicyPatch(ProposalAuthority? DefaultAuthority = null, 
     bool? AutomaticDeletion = null, bool? RequireAdministratorApproval = null, bool? SeerrManagedDeletionAcknowledged = null, bool? Suspended = null)
 {
     public Policy Apply(Policy p) => new() { Accounts = new(p.Accounts), DefaultAuthority = DefaultAuthority ?? p.DefaultAuthority,
-        ActivityDays = ActivityDays ?? p.ActivityDays, DelayHours = DelayHours ?? p.DelayHours, AutomaticDeletion = AutomaticDeletion ?? p.AutomaticDeletion,
+        ActivityDays = ActivityDays ?? p.ActivityDays, DelayHours = DelayHours ?? p.DelayHours, AdministratorApprovalDays = p.AdministratorApprovalDays, AutomaticDeletion = AutomaticDeletion ?? p.AutomaticDeletion,
         RequireAdministratorApproval = RequireAdministratorApproval ?? p.RequireAdministratorApproval,
         SeerrManagedDeletionAcknowledged = SeerrManagedDeletionAcknowledged ?? p.SeerrManagedDeletionAcknowledged, Suspended = Suspended ?? p.Suspended };
 }

@@ -2,3 +2,12 @@
 #deletionQueueAdmin .dq-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
 #deletionQueueAdmin #dqOptInDialog { inset: 0; margin: auto; max-width: min(38rem, 90vw); max-height: 80vh; overflow: auto; }
 #deletionQueueAdmin .dq-dialog-content { padding-inline: 1.5rem; }
+#deletionQueueAdmin .dq-policy-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1.25rem; padding: 0; margin-block: 1.5rem; list-style: none; counter-reset: policy-stage; }
+#deletionQueueAdmin .dq-policy-timeline > li { position: relative; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-block-start: 3px solid var(--theme-primary-color, currentColor); border-radius: .65rem; counter-increment: policy-stage; }
+#deletionQueueAdmin .dq-policy-timeline > li > h3::before { content: counter(policy-stage) '. '; }
+#deletionQueueAdmin .dq-policy-timeline h3 { margin-block: .5rem; }
+#deletionQueueAdmin .dq-policy-timeline p { font-size: .9em; line-height: 1.5; overflow-wrap: anywhere; }
+#deletionQueueAdmin .dq-policy-timeline input[type=number] { width: 100%; box-sizing: border-box; }
+#deletionQueueAdmin .dq-policy-icon { background: transparent; }
+#deletionQueueAdmin .dq-policy-timeline > li:not(:last-child)::after { content: '→'; position: absolute; inset-inline-end: -.95rem; inset-block-start: 1rem; }
+@media (max-width: 40em) { #deletionQueueAdmin .dq-policy-timeline > li:not(:last-child)::after { content: '↓'; inset-inline-end: 1rem; inset-block-start: auto; inset-block-end: -1.25rem; } }

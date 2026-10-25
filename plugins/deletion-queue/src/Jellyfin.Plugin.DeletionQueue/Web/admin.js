@@ -14,6 +14,20 @@
     const normalizedId = id => id.replaceAll('-', '').toLowerCase();
     // Jellyfin renders Guid values without hyphens, but System.Text.Json's Guid dictionary keys require D format.
     const policyId = id => normalizedId(id).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+    function previewPolicy() {
+        const days = Number(el('dqDays').value), hours = Number(el('dqHours').value);
+        el('dqLookbackPreview').textContent = el('dqDays').value && days >= 1 && days <= 365 ? 'Look back ' + days + ' days from each check — not an additional waiting period.' : 'Choose a playback lookback from 1 to 365 days.';
+        el('dqApprovalPreview').textContent = el('dqRequireAdminApproval').checked ? 'Advance after current viewer consent AND administrator approval.' : 'Advance after current viewer consent and all safety checks.';
+        el('dqDelayPreview').textContent = el('dqHours').value && hours >= 48 && hours <= 8760 ? 'Earliest removal: checks passed + at least ' + Number((hours / 24).toFixed(4)) + ' days (' + hours + ' hours).' : 'Choose a delay from 2 to 365 days.';
+        el('dqExecutionPreview').textContent = el('dqSuspend').checked ? 'Paused — requests cannot advance to removal.' : el('dqAuto').checked ? 'Automatic removal opted in — all previous gates still apply.' : 'Monitoring only — automatic removal is off.';
+    }
+    el('dqDelayDays').addEventListener('input', () => {
+        const days = el('dqDelayDays').valueAsNumber;
+        el('dqHours').value = Number.isFinite(days) ? String(Math.round(days * 24)) : '';
+        previewPolicy();
+    });
+    el('dqHours').addEventListener('input', () => { el('dqDelayDays').value = el('dqHours').value ? Number(el('dqHours').value) / 24 : ''; previewPolicy(); });
+    for (const id of ['dqDays', 'dqRequireAdminApproval', 'dqAuto', 'dqSuspend']) el(id).addEventListener('input', previewPolicy);
     const confirmOptIn = () => new Promise(resolve => {
         const dialog = el('dqOptInDialog');
         const finish = result => { cancelOptIn = null; dialog.close(); el('dqOptInCancel').onclick = null; el('dqOptInYes').onclick = null; dialog.oncancel = null; resolve(result); };
@@ -74,12 +88,15 @@
             el('dqAuthority').value = authorityNumber(value(policy, 'defaultAuthority'));
             el('dqDays').value = value(policy, 'activityDays');
             el('dqHours').value = value(policy, 'delayHours');
+            el('dqDelayDays').value = value(policy, 'delayHours') / 24;
             el('dqAuto').checked = value(policy, 'automaticDeletion') && value(policy, 'seerrManagedDeletionAcknowledged');
             const seerrConfigured = !!value(seerr, 'baseUrl') && value(seerr, 'keyConfigured') === true;
             el('dqAuto').disabled = !seerrConfigured && !el('dqAuto').checked;
             el('dqSeerrDependency').textContent = seerrConfigured ? 'Seerr connection is configured. Execution still requires all local safety and consent checks.' : 'Seerr-managed deletion is unavailable: configure and verify the Seerr URL and API key above, or import an enabled Enhanced connection. Monitoring, local evidence and configuration remain independent. An existing opt-in may still be switched off.';
             el('dqRequireAdminApproval').checked = value(policy, 'requireAdministratorApproval');
+            el('dqApprovalDays').value = value(policy, 'administratorApprovalDays') ?? 30;
             el('dqSuspend').checked = value(policy, 'suspended');
+            previewPolicy();
             const selected = el('dqUsers').value;
             el('dqUsers').replaceChildren();
             const overrides = value(policy, 'accounts');
@@ -204,7 +221,7 @@
         try {
             await request('admin/policy', 'PATCH', { commandId: crypto.randomUUID(), revision: value(old, 'revision'), policy: {
                 defaultAuthority: Number(el('dqAuthority').value), accounts,
-                activityDays: Number(el('dqDays').value), delayHours: Number(el('dqHours').value),
+                activityDays: Number(el('dqDays').value), delayHours: Number(el('dqHours').value), administratorApprovalDays: Number(el('dqApprovalDays').value),
                 automaticDeletion, seerrManagedDeletionAcknowledged: automaticDeletion,
                 requireAdministratorApproval: el('dqRequireAdminApproval').checked, suspended: el('dqSuspend').checked
             } });

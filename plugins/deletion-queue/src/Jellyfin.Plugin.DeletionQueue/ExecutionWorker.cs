@@ -43,6 +43,7 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
                         var due = clock.GetUtcNow().AddDays(1);
                         if (current.Reason is "ActivityCoverageIncomplete" or "VerificationUnavailable") due = clock.GetUtcNow().AddMinutes(5);
                         if (current.NotBefore is { } deadline && deadline > clock.GetUtcNow() && deadline < due) due = deadline;
+                        if (current.ApprovalDeadline is { } decisionDeadline && decisionDeadline > clock.GetUtcNow() && decisionDeadline < due) due = decisionDeadline;
                         checkedAt[current.Id] = (current.Revision, due);
                         if (state.Policy.AutomaticDeletion && state.Policy.SeerrManagedDeletionAcknowledged && current.Status == ProposalStatus.Ready)
                             await coordinator.ExecuteAsync(current.Id, stoppingToken);

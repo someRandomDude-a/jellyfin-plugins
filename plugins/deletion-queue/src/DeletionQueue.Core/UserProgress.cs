@@ -4,11 +4,11 @@ namespace DeletionQueue.Core;
 // viewer activity times, administrator identity, storage evidence or upstream data.
 internal sealed record UserProgress(string Label, string Help, DateTimeOffset? ScheduledFor, RemovalCheckpoint[] Timeline)
 {
-    public static string Checkpoint(Proposal p) => p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "delay" : "checks";
+    public static string Checkpoint(Proposal p) => p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "delay" : p.Reason == "AdministratorApprovalRequired" ? "approval" : "checks";
     public static string PublicReason(string reason) => reason switch {
         "ActivityCoverageIncomplete" or "ConsentRequired" or "AdministratorApprovalRequired" or "PlaybackActive" or "Suspended" or "PolicyChanged" or
         "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
-        "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
+        "AdministratorApprovalExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
         _ => "VerificationRequired"
     };
     public static UserProgress For(QueueState state, Proposal p)
@@ -28,6 +28,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
             ProposalStatus.Completed => ("Completed", "The removal was confirmed and recorded. Request history is retained."),
             ProposalStatus.Cancelled => ("Cancelled", "This removal request was withdrawn using Undo. It will not be executed."),
             ProposalStatus.Expired when p.Reason == "AdministratorDenied" => ("Denied", "This request was denied and closed. A new removal request can be submitted."),
+            ProposalStatus.Expired when p.Reason == "AdministratorApprovalExpired" => ("Expired", "The administrator approval deadline passed. This request is closed."),
             ProposalStatus.Expired => ("Expired", "This request was not accepted within 30 days and is now closed."),
             _ => ("Pending checks", "The queue is checking this request. No removal time is confirmed.")
         };
@@ -50,6 +51,16 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
                 DateLabel = index == 2 && p.NotBefore is not null ? "Abandoned earliest date" : "Stopped at" };
             if (index > 1) steps[1] = steps[1] with { State = "complete", At = p.ClosedChecksAt };
             steps[^1] = steps[^1] with { State = "complete" };
+        }
+        steps[1] = steps[1] with { Label = p.Inactive && p.ActivityVerifiedAt is not null ? "Inactive" : "Consent and activity", At = steps[1].At ?? p.ActivityVerifiedAt };
+        if (state.Policy.RequireAdministratorApproval || p.ApprovalWaitingSince is not null || p.AdministratorApproval is not null || p.Reason == "AdministratorDenied") {
+            var approved = p.AdministratorApproval is not null && (p.Terminal || QueueRules.AdministratorApprovalCurrent(state, p));
+            var denied = p.Reason == "AdministratorDenied";
+            var expired = p.Reason == "AdministratorApprovalExpired";
+            if ((denied || expired) && steps[1].State == "cancelled") steps[1] = steps[1] with { State = "stopped" };
+            var approval = new RemovalCheckpoint("approval", "Administrator consent", denied || expired ? "cancelled" : approved ? "complete" : p.Reason == "AdministratorApprovalRequired" ? "current" : p.Terminal ? "stopped" : "pending",
+                denied ? p.ClosedAt : approved ? null : p.ApprovalDeadline) { Decision = denied ? "denied" : approved ? "approved" : p.Reason == "AdministratorApprovalExpired" ? "expired" : "pending", DateLabel = !approved && !denied && p.ApprovalDeadline is not null ? "Decision deadline" : null };
+            steps = steps.Take(2).Append(approval).Concat(steps.Skip(2)).ToArray();
         }
         return new(label, help, scheduled, steps);
     }

@@ -18,6 +18,8 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
             (authority == ProposalAuthority.AnyAccessibleItem || authority == ProposalAuthority.OwnRequests && resolved.OwnRequestVerified);
         var scan = fence.Quiet && inventory.Scan(resolved) && fence.Quiet && observedGeneration == fence.Generation && runtime.CollectorHealthy;
         var latest = runtime.Read();
+        scan = scan && latest.Policy.Revision == state.Policy.Revision;
+        scan = scan && latest.Preferences.Count == state.Preferences.Count && state.Preferences.All(pair => latest.Preferences.TryGetValue(pair.Key, out var pref) && pref.Revision == pair.Value.Revision);
         var current = QueueRules.Find(latest, proposal.Id);
         return new(new EvaluationEvidence(authorized, resolved.Fingerprint == proposal.Target.Fingerprint, scan, runtime.Available, true,
             AdministratorAuthorized(latest, current)) { NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision);

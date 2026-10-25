@@ -35,6 +35,17 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         assert.equal(resets.length, 1); assert.equal(resets[0].type, 'POST');
         const body = JSON.parse(resets[0].data); assert.equal(body.revision, 42); assert.match(body.commandId, /^[a-f0-9-]{36}$/);
         assert.deepEqual(Object.keys(body).sort(), ['commandId', 'revision']);
+        assert.equal(d.querySelectorAll('.dq-policy-timeline > li').length, 5);
+        assert.equal(d.querySelector('#dqDelayDays').value, '2');
+        const writesBeforePreview = calls.filter(c => c.type !== 'GET').length;
+        d.querySelector('#dqDelayDays').value = '3'; d.querySelector('#dqDelayDays').dispatchEvent(new w.Event('input'));
+        assert.equal(d.querySelector('#dqHours').value, '72'); assert.match(d.querySelector('#dqDelayPreview').textContent, /3 days/);
+        d.querySelector('#dqRequireAdminApproval').checked = true; d.querySelector('#dqRequireAdminApproval').dispatchEvent(new w.Event('input'));
+        assert.match(d.querySelector('#dqApprovalPreview').textContent, /AND administrator approval/);
+        assert.equal(calls.filter(c => c.type !== 'GET').length, writesBeforePreview, 'Preview must not save policy or opt in');
+        d.querySelector('#dqPolicy').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
+        const savedPolicy = JSON.parse(calls.find(c => c.type === 'PATCH' && c.url.endsWith('/admin/policy')).data);
+        assert.equal(savedPolicy.policy.delayHours, 72); assert.equal(savedPolicy.policy.activityDays, 30); assert.equal(savedPolicy.policy.requireAdministratorApproval, true);
         d.querySelector('#dqHubSettings').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
         const settings = calls.find(c => c.type === 'PUT'); assert(settings); assert(!('notificationMode' in JSON.parse(settings.data)));
     } finally { dom.window.close(); }

@@ -22,6 +22,7 @@ public sealed class Policy
     public Dictionary<Guid, ProposalAuthority> Accounts { get; set; } = [];
     public int ActivityDays { get; set; } = 14;
     public int DelayHours { get; set; } = 48;
+    public int AdministratorApprovalDays { get; set; } = 30;
     public bool AutomaticDeletion { get; set; }
     public bool RequireAdministratorApproval { get; set; }
     // Absent in older previews: an old preview-only opt-in must never silently enable a new destructive transport.
@@ -31,6 +32,8 @@ public sealed class Policy
 
 public sealed class Preferences
 {
+    public int ActivityDays { get; set; }
+    public int AdministratorApprovalDays { get; set; }
     public long Revision { get; set; }
     public int DelayHours { get; set; } = 48;
     public bool Notifications { get; set; } = true;
@@ -64,6 +67,10 @@ public sealed record ExecutionClaim(Guid Id, DateTimeOffset At, string TargetFin
 
 public sealed class Proposal
 {
+    public bool Inactive { get; set; }
+    public DateTimeOffset? ActivityVerifiedAt { get; set; }
+    public DateTimeOffset? ApprovalWaitingSince { get; set; }
+    public DateTimeOffset? ApprovalDeadline { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid OwnerId { get; set; }
     public VerifiedTarget Target { get; set; } = null!;
@@ -151,6 +158,7 @@ public sealed record UserProposal(
 public sealed record RemovalCheckpoint(string Key, string Label, string State, DateTimeOffset? At = null)
 {
     public string? DateLabel { get; init; }
+    public string? Decision { get; init; }
 }
 
 public interface IStateStore

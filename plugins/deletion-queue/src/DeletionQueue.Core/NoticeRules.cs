@@ -15,7 +15,7 @@ public static class NoticeRules
             .Select(n => (n.UserId, n.ProposalId)).ToHashSet();
         foreach (var (id, proposal) in changed)
         foreach (var user in state.Activity.Where(a => a.Key == proposal.Target.ActivityKey &&
-                     (a.At >= now.AddDays(-state.Policy.ActivityDays) || a.Sessions.Count > 0)).Select(a => a.UserId)
+                     (a.At >= now.AddDays(-QueueRules.ActivityDays(state, a.UserId)) || a.Sessions.Count > 0)).Select(a => a.UserId)
                      .Append(proposal.OwnerId).Concat(state.Preferences.Where(p => p.Value.Subscriptions.Contains(id)).Select(p => p.Key)).Distinct())
         {
             if (state.Preferences.GetValueOrDefault(user)?.Notifications == false) continue;

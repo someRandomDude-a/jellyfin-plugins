@@ -188,7 +188,8 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     {
         var caller = identity.Caller(User);
         runtime.Write(body.CommandId, caller.Id.ToString(), "PreferencesChanged", state =>
-        { _ = identity.Caller(User); QueueRules.UpdatePreferences(state, caller.Id, body.Revision, body.DelayHours, body.Notifications); return true; });
+        { _ = identity.Caller(User); QueueRules.UpdatePreferences(state, caller.Id, body.Revision, body.DelayHours, body.Notifications);
+            QueueRules.UpdatePersonalTimelines(state, caller.Id, body.ActivityDays ?? state.Preferences[caller.Id].ActivityDays, body.AdministratorApprovalDays ?? state.Preferences[caller.Id].AdministratorApprovalDays); return true; });
         return Preferences();
     }
 

@@ -35,6 +35,9 @@ public sealed class ActivityInventory(ILibraryManager library, IUserManager user
             foreach (var child in children) items[child.Id] = child;
         }
         if ((long)items.Count * allUsers.Length > 100000) return false;
+        // Jellyfin provides the latest playback timestamp, not a stream of all
+        // historical plays. Only retain evidence inside the saved lookback.
+        var snapshot = runtime.Read(); var policy = snapshot.Policy;
         var activity = new Dictionary<Guid, DateTimeOffset>(); var now = clock.GetUtcNow();
         foreach (var user in allUsers)
         foreach (var item in items.Values)
@@ -46,6 +49,7 @@ public sealed class ActivityInventory(ILibraryManager library, IUserManager user
             {
                 var utc = new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc));
                 if (utc > now.AddMinutes(1)) return false;
+                if (utc < now.AddDays(-QueueRules.ActivityDays(snapshot, user.Id))) continue;
                 if (!activity.TryGetValue(user.Id, out var previous) || utc > previous) activity[user.Id] = utc;
             }
         }
@@ -53,12 +57,13 @@ public sealed class ActivityInventory(ILibraryManager library, IUserManager user
         var live = sessions.Sessions.Take(1025).ToArray(); if (live.Length > 1024) return false;
         if (live.Any(s => s.NowPlayingItem is { } playing && items.ContainsKey(playing.Id))) return false;
         var before = runtime.Read();
-        if (!activity.Any(pair => pair.Value >= now.AddDays(-before.Policy.ActivityDays) &&
+        if (before.Policy.Revision != policy.Revision) return false;
+        if (!activity.Any(pair => pair.Value >= now.AddDays(-QueueRules.ActivityDays(before, pair.Key)) &&
                 !before.Activity.Any(a => a.UserId == pair.Key && a.Key == target.ActivityKey && a.At >= pair.Value)) &&
             !before.Activity.Any(a => a.Key == target.ActivityKey && a.Sessions.Count > 0)) return true;
         runtime.Write(Guid.NewGuid(), "inventory", "HistoricalActivityVerified", state =>
         {
-            foreach (var (user, at) in activity.Where(a => a.Value >= now.AddDays(-state.Policy.ActivityDays)))
+            foreach (var (user, at) in activity.Where(a => a.Value >= now.AddDays(-QueueRules.ActivityDays(state, a.Key))))
             {
                 var old = state.Activity.SingleOrDefault(a => a.UserId == user && a.Key == target.ActivityKey);
                 if (old is null || old.At < at) QueueRules.RecordActivity(state, user, target.ActivityKey, null, false, at);

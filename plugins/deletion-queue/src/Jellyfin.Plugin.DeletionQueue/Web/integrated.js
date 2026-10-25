@@ -176,7 +176,27 @@
     }
     function date(value) { const at = value ? new Date(value) : null; return at && Number.isFinite(at.getTime()) ? at : null; }
     function renderTimeline(p, content) {
-        const checkpoints = get(p, 'timeline') || [{ key: 'requested', label: 'Requested', state: 'complete', at: get(p, 'createdAt') }];
+        const original = get(p, 'timeline') || [{ key: 'requested', label: 'Check permission', state: 'complete', at: get(p, 'createdAt') }];
+        const crossedDelay = ['Ready', 'Claimed', 'Uncertain', 'FilesDeleted', 'Completed'].includes(get(p, 'status'));
+        const terminal = ['Completed', 'Cancelled', 'Expired'].includes(get(p, 'status'));
+        const checks = original.find(point => get(point, 'key') === 'checks');
+        const checkpoints = original.filter(point => {
+            const key = get(point, 'key');
+            if (key === 'confirmed') return false;
+            if (key === 'removing') return crossedDelay || date(get(point, 'at'));
+            if (key === 'closed') return crossedDelay || terminal || date(get(point, 'at'));
+            if (key === 'approval') return get(point, 'state') !== 'pending' || get(checks, 'state') === 'complete';
+            return true;
+        }).map(point => {
+            const key = get(point, 'key');
+            if (key === 'closed' && !['Cancelled', 'Expired'].includes(get(p, 'status'))) return { ...point, label: 'Confirm removal & completed', at: get(point, 'at') || get(original.find(step => get(step, 'key') === 'confirmed'), 'at') };
+            if (key === 'checks' && !['Inactive', 'Consent and activity'].includes(get(point, 'label'))) return { ...point, label: 'Consent and activity' };
+            if (key === 'requested') {
+                const requestedAt = date(get(point, 'at')), checkedAt = date(get(checks, 'at')) || date(get(p, 'evaluatedAt'));
+                if (requestedAt && checkedAt && Math.abs(checkedAt - requestedAt) < 86400000) return { ...point, label: 'Check permission' };
+            }
+            return point;
+        });
         if (!checkpoints.length) return;
         const timeline = node('div', undefined, 'dq-timeline'); timeline.setAttribute('aria-label', 'Removal request timeline'); timeline.tabIndex = 0;
         const dated = checkpoints.map((point, index) => ({ point, index })).filter(({ point }) => date(get(point, 'at')));
@@ -203,16 +223,23 @@
         const track = node('div', undefined, 'dq-time-track');
         const datedNodes = node('ol', undefined, 'dq-dated-nodes'); datedNodes.setAttribute('aria-label', 'Recorded and scheduled dates'); track.append(datedNodes);
         const occupied = [];
-        const icons = { requested: 'playlist_add', checks: 'fact_check', delay: 'hourglass_top', removing: 'auto_delete', confirmed: 'task_alt', closed: 'flag' };
+        const icons = { requested: 'verified_user', checks: 'fact_check', approval: 'call_split', delay: 'hourglass_top', removing: 'auto_delete', closed: 'task_alt' };
         for (const [index, point] of checkpoints.entries()) {
             const step = node('li'); step.dataset.state = get(point, 'state'); step.dataset.checkpoint = get(point, 'key');
             if (['current', 'cancelled'].includes(get(point, 'state'))) step.setAttribute('aria-current', 'step');
             const glyph = node('span', get(point, 'state') === 'cancelled' ? 'cancel' : icons[get(point, 'key')] || 'radio_button_unchecked', 'material-icons dq-checkpoint-icon'); glyph.setAttribute('aria-hidden', 'true'); step.append(glyph);
             step.append(node('span', get(point, 'label'), 'dq-checkpoint-label'));
+            if (get(point, 'key') === 'approval') {
+                const fork = node('div', undefined, 'dq-approval-fork');
+                const decision = get(point, 'decision');
+                fork.append(node('span', 'Yes → Safety delay', decision === 'approved' ? 'dq-branch-selected' : ''), node('span', decision === 'expired' ? 'Timed out → Cancelled' : 'Denied → Cancelled', ['denied', 'expired'].includes(decision) ? 'dq-branch-selected' : ''));
+                step.append(fork);
+            }
             const at = date(get(point, 'at'));
             {
                 const x = positions[index]; let lane = 0;
-                while (occupied.some(previous => previous.lane === lane && Math.abs(previous.x - x) < 22)) lane++;
+                const spacing = checkpoints.some(step => get(step, 'key') === 'approval') ? 32 : 22;
+                while (occupied.some(previous => previous.lane === lane && Math.abs(previous.x - x) < spacing)) lane++;
                 occupied.push({ x, lane }); step.style.setProperty('--dq-position', x + '%'); step.style.setProperty('--dq-lane', lane);
                 if (get(point, 'dateLabel')) step.append(node('span', get(point, 'dateLabel'), 'dq-checkpoint-date'));
                 if (at) { const time = node('time', at.toLocaleDateString()); time.dateTime = at.toISOString(); step.append(time); }
@@ -223,17 +250,39 @@
         track.style.setProperty('--dq-lanes', Math.max(1, ...occupied.map(point => point.lane + 1)));
         {
             timeline.append(track);
-            if (now) {
+            let pendingIndex = checkpoints.findIndex(point => get(point, 'state') === 'current');
+            if (pendingIndex < 0) pendingIndex = checkpoints.findIndex(point => get(point, 'state') === 'pending');
+            const followStage = !ended && pendingIndex >= 0 && (!now || dated.length < 2 || finish === start || !date(get(checkpoints[pendingIndex], 'at')));
+            const markerPosition = followStage ? positions[pendingIndex] : now ? position(now.getTime()) : null;
+            if (markerPosition !== null && (followStage || Math.abs(markerPosition - positions[0]) >= 8)) {
                 const completed = get(p, 'status') === 'Completed';
-                const marker = node('div', undefined, 'dq-media-marker'); marker.dataset.stopped = String(ended && !completed); marker.dataset.completed = String(completed); marker.style.setProperty('--dq-position', position(now.getTime()) + '%');
+                const marker = node('div', undefined, 'dq-media-marker'); marker.dataset.stopped = String(ended && !completed); marker.dataset.completed = String(completed); marker.style.setProperty('--dq-position', markerPosition + '%');
+                if (followStage) { marker.dataset.checkpoint = get(checkpoints[pendingIndex], 'key'); marker.style.setProperty('--dq-marker-lane', occupied[pendingIndex].lane); }
+                const closedIndex = checkpoints.findIndex(point => get(point, 'key') === 'closed');
+                if (ended && closedIndex >= 0 && Math.abs(markerPosition - positions[closedIndex]) < 8) { marker.dataset.checkpoint = 'closed'; marker.style.setProperty('--dq-marker-lane', occupied[closedIndex].lane); }
                 const icon = node('span', get(p, 'mediaKind') === 'Series' ? 'tv' : 'movie', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
                 marker.append(icon, node('span', completed ? 'Removed' : ended ? 'Stopped here' : 'Now', 'dq-marker-label'));
-                marker.title = (ended ? 'Request ended · ' : 'Current date · ') + now.toLocaleDateString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
+                marker.title = followStage ? 'Now · ' + get(checkpoints[pendingIndex], 'label') : (ended ? 'Request ended · ' : 'Current date · ') + now.toLocaleDateString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
             }
         }
         const closed = get(p, 'closureExplanation');
-        if (closed) content.append(node('p', closed + (get(p, 'closedCheckpoint') ? ' Stopped during ' + (get(p, 'closedCheckpoint') === 'delay' ? 'the safety delay.' : 'checks & consent.') : ' The original stopping checkpoint was not recorded.'), 'dq-closure'));
+        if (closed) content.append(node('p', closed + (get(p, 'closedCheckpoint') ? ' Stopped during ' + (get(p, 'closedCheckpoint') === 'delay' ? 'the safety delay.' : get(p, 'closedCheckpoint') === 'approval' ? 'administrator review.' : 'consent and activity checks.') : ' The original stopping checkpoint was not recorded.'), 'dq-closure'));
         content.append(timeline);
+        const centerMarker = () => {
+            const marker = timeline.querySelector('.dq-media-marker');
+            if (!timeline.isConnected || !marker || !timeline.clientWidth) return;
+            const box = marker.getBoundingClientRect(), viewport = timeline.getBoundingClientRect();
+            timeline.scrollLeft += box.left - viewport.left - timeline.clientWidth / 2 + box.width / 2;
+        };
+        requestAnimationFrame(centerMarker);
+        if (typeof ResizeObserver === 'function') {
+            let width = timeline.clientWidth;
+            const observer = new ResizeObserver(() => {
+                if (!timeline.isConnected) { observer.disconnect(); return; }
+                if (timeline.clientWidth !== width) { width = timeline.clientWidth; centerMarker(); }
+            });
+            observer.observe(timeline);
+        }
     }
     function renderProposal(p, content) {
         const id = get(p, 'id'), status = get(p, 'status'), revision = get(p, 'revision');
@@ -367,9 +416,15 @@
             const hours = node('input', undefined, 'emby-input'); hours.type = 'number'; hours.min = '48'; hours.max = '8760'; hours.value = get(pref, 'delayHours');
             hours.id = 'dq-delay-' + command(); hoursLabel.htmlFor = hours.id; hours.setAttribute('is', 'emby-input'); hours.labelElement = hoursLabel;
             hours.addEventListener('focus', () => hoursLabel.classList.add('inputLabelFocused')); hours.addEventListener('blur', () => hoursLabel.classList.remove('inputLabelFocused')); hoursRow.append(hoursLabel, hours);
-            panel.content.append(row, hoursRow, node('p', 'Reducing or resetting this preference never advances an existing proposal deadline.'), button('Save preferences', async () => {
+            const personalRows = [], personalInputs = {};
+            for (const [key, text] of [['activityDays', 'Personal activity window (days; 0 inherits)'], ['administratorApprovalDays', 'Personal administrator timeout (days; 0 inherits)']]) {
+                const container = node('div', undefined, 'inputContainer'), caption = node('label', text, 'inputLabel'), input = node('input', undefined, 'emby-input');
+                input.type = 'number'; input.min = '0'; input.max = '365'; input.step = '1'; input.value = get(pref, key) || 0; input.id = 'dq-personal-' + command(); caption.htmlFor = input.id; input.setAttribute('is', 'emby-input'); container.append(caption, input); personalRows.push(container); personalInputs[key] = input;
+            }
+            panel.content.append(row, hoursRow, ...personalRows, node('p', 'Administrator minimums always apply. Reducing preferences never shortens an existing removal deadline.'), button('Save preferences', async () => {
                 if (!hours.reportValidity()) return;
-                await api('me/preferences', 'PATCH', { commandId: command(), revision: get(pref, 'revision'), delayHours: Number(hours.value), notifications: notifications.checked });
+                if (!Object.values(personalInputs).every(input => input.reportValidity())) return;
+                await api('me/preferences', 'PATCH', { commandId: command(), revision: get(pref, 'revision'), delayHours: Number(hours.value), notifications: notifications.checked, activityDays: Number(personalInputs.activityDays.value), administratorApprovalDays: Number(personalInputs.administratorApprovalDays.value) });
                 if (alive(panel)) panel.d.close(); await loadNotices();
             }));
         } catch (err) { if (alive(panel)) showError(err, panel.d); }

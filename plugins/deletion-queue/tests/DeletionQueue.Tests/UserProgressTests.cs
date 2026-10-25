@@ -6,6 +6,36 @@ namespace DeletionQueue.Tests;
 
 public sealed class UserProgressTests
 {
+    [Fact] public void LegacyAdministratorWaitDoesNotRenewItsClockOnUpgrade()
+    {
+        var state = State(); state.Policy.RequireAdministratorApproval = true;
+        var p = Propose(state); p.CreatedAt = Now.AddDays(-10); p.Reason = "AdministratorApprovalRequired";
+        QueueRules.Evaluate(state, p, Good, Now);
+        Assert.Equal(Now.AddDays(-10), p.ApprovalWaitingSince);
+        Assert.Equal(Now.AddDays(20), p.ApprovalDeadline);
+    }
+    [Fact] public void PersonalWindowRequiresConsentFromRecentParticipantsButNotUninvolvedAccounts()
+    {
+        var state = State(); state.Policy.ActivityDays = 14;
+        state.Preferences[Viewer.Id] = new Preferences { ActivityDays = 30 };
+        var p = Propose(state);
+        QueueRules.RecordActivity(state, Viewer.Id, p.Target.ActivityKey, null, false, Now.AddDays(-20));
+        QueueRules.Evaluate(state, p, Good, Now); Assert.Equal("ConsentRequired", p.Reason);
+        QueueRules.Consent(state, p.Id, Viewer, p.Revision, QueueRules.Snapshot(state, p.Target, Viewer.Id), Answer.Yes, true, Now);
+        QueueRules.Evaluate(state, p, Good, Now); Assert.Equal(ProposalStatus.Waiting, p.Status);
+        Assert.False(p.Inactive);
+    }
+    [Fact] public void AdministratorTimeoutUsesTheLongerPersonalWindowAndIsNotRenewedByEvaluation()
+    {
+        var state = State(); state.Policy.RequireAdministratorApproval = true; state.Policy.AdministratorApprovalDays = 45;
+        state.Preferences[Owner.Id] = new Preferences { AdministratorApprovalDays = 60 };
+        var p = Propose(state); QueueRules.Evaluate(state, p, Good, Now);
+        Assert.Equal(Now.AddDays(60), p.ApprovalDeadline);
+        QueueRules.Evaluate(state, p, Good, Now.AddHours(1)); Assert.Equal(Now.AddDays(60), p.ApprovalDeadline);
+        QueueRules.Expire(p, Now.AddDays(31)); Assert.False(p.Terminal);
+        QueueRules.Expire(p, Now.AddDays(60)); Assert.Equal("AdministratorApprovalExpired", p.Reason);
+        Assert.Equal("expired", QueueRules.Project(state, p, Owner.Id, Now.AddDays(60)).Timeline.Single(step => step.Key == "approval").Decision);
+    }
     [Fact] public void CompleteNativeHistoryReplacesObservationWarmupButNotConsentOrDelay()
     {
         var state = State(); var p = Propose(state); state.CoverageSince = Now;
@@ -14,6 +44,7 @@ public sealed class UserProgressTests
         QueueRules.Evaluate(state, p, native, Now); Assert.Equal(ProposalStatus.Waiting, p.Status);
         Assert.True(p.NotBefore >= Now.AddHours(48));
         QueueRules.RecordActivity(state, Viewer.Id, p.Target.ActivityKey, null, false, Now);
+        Assert.False(p.Inactive);
         QueueRules.Evaluate(state, p, native, Now); Assert.Equal("ConsentRequired", p.Reason);
         QueueRules.Evaluate(state, p, native with { CompleteActivityScan = false }, Now);
         Assert.Equal("ActivityCoverageIncomplete", p.Reason);

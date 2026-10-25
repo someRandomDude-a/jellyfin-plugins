@@ -277,7 +277,7 @@ const http = require('node:http');
         await selectedRow.getByRole('heading', { name: 'Selected removal request fixture', exact: true }).waitFor();
         assert.equal(page.url(), beforeReview, 'Review must open the queue, not navigate away');
         assert.equal(await selectedRow.getAttribute('data-request-id'), selectedRequest);
-        assert.equal(await selectedRow.locator('.dq-timeline li').count(), 6);
+        assert.equal(await selectedRow.locator('.dq-timeline li').count(), 3);
         assert.equal(await selectedRow.locator('[aria-current=step]').getAttribute('data-checkpoint'), 'delay');
         assert.equal(await selectedRow.locator('.dq-timeline time').first().getAttribute('datetime'), '2026-10-20T12:00:00.000Z');
         assert.equal(await selectedRow.locator('.dq-media-marker .material-icons').textContent(), 'tv');
@@ -301,6 +301,43 @@ const http = require('node:http');
         const box = await queueDialog.boundingBox();
         await page.mouse.click(box.x - 5, box.y - 5);
         await queueDialog.waitFor({ state: 'detached' });
+        await page.unroute(detailPattern);
+        for (const denied of [false, true]) {
+            phase = denied ? 'approval-fork-history' : 'approval-fork-pending';
+            await page.route(detailPattern, route => route.fulfill({ json: {
+                id: selectedRequest, title: 'Administrator decision fixture', status: denied ? 'Expired' : 'Blocked', reason: denied ? 'AdministratorDenied' : 'AdministratorApprovalRequired',
+                closedCheckpoint: denied ? 'approval' : null, closureExplanation: denied ? 'This request was denied and closed.' : null,
+                timeline: [
+                    { key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-20T12:00:00Z' },
+                    { key: 'checks', label: 'Inactive', state: 'complete', at: '2026-10-20T12:00:00Z' },
+                    { key: 'approval', label: 'Administrator consent', state: denied ? 'cancelled' : 'current', decision: denied ? 'denied' : 'pending' },
+                    { key: 'delay', label: 'Safety delay', state: denied ? 'stopped' : 'pending' },
+                    { key: 'removing', label: 'Removal started', state: 'pending' },
+                    { key: 'closed', label: denied ? 'Cancelled' : 'Completed', state: denied ? 'complete' : 'pending', at: denied ? '2026-10-22T12:00:00Z' : null }
+                ]
+            } }));
+            await page.getByRole('link', { name: 'Review queue fixture', exact: true }).click();
+            const forkRow = queueDialog.locator('.dq-highlight'); await forkRow.locator('.dq-approval-fork').waitFor();
+            assert.equal(await forkRow.locator('li[data-checkpoint=removing]').count(), 0);
+            if (!denied) assert.equal(await forkRow.locator('.dq-media-marker').getAttribute('data-checkpoint'), 'approval');
+            else assert.match(await forkRow.locator('.dq-approval-fork .dq-branch-selected').textContent(), /Denied/);
+            for (const width of [320, 1280]) {
+                await page.setViewportSize({ width, height: 900 });
+                await page.waitForFunction(() => {
+                    const marker = document.querySelector('dialog.dq-panel .dq-highlight .dq-media-marker');
+                    if (!marker) return false;
+                    const box = marker.getBoundingClientRect(), viewport = marker.closest('.dq-timeline').getBoundingClientRect();
+                    return box.left >= viewport.left - 1 && box.right <= viewport.right + 1;
+                });
+                assert(await queueDialog.evaluate(e => e.scrollWidth <= e.clientWidth + 2), phase + ': no horizontal dialog overflow');
+                assert(await forkRow.locator('.dq-dated-nodes').evaluate(e => {
+                    const boxes = [...e.children].map(child => child.getBoundingClientRect());
+                    return boxes.every((a, i) => boxes.slice(i + 1).every(b => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top));
+                }), phase + ': checkpoint labels and branch paths must not overlap');
+                if (process.env.ADMIN_SCREENSHOTS) await queueDialog.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/' + phase + '-' + width + '.png' });
+            }
+            await queueDialog.evaluate(e => e.close()); await page.unroute(detailPattern);
+        }
         await page.locator('#dq-review-contract').evaluate(e => e.remove());
         await page.unroute(detailPattern); await page.unroute(proposalsPattern);
         phase = 'enhanced-12.13-native-calendar';

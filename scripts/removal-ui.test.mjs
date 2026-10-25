@@ -77,8 +77,38 @@ test('queue is an icon with inline selected actions, a small badge and no Load m
         assert(!modal.textContent.includes('Open full queue'));
     } finally { f.dom.window.close(); }
 });
+test('approval fork is shown during review while later removal stages stay collapsed', async () => {
+    const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'review', title: 'Movie', status: 'Blocked', timeline: [
+        { key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-01T00:00:00Z' },
+        { key: 'checks', label: 'Inactive', state: 'complete', at: '2026-10-01T00:00:00Z' },
+        { key: 'approval', label: 'Administrator consent', state: 'current', decision: 'pending', at: '2026-10-31T00:00:00Z' },
+        { key: 'delay', label: 'Safety delay', state: 'pending' },
+        { key: 'removing', label: 'Removal started', state: 'pending' },
+        { key: 'closed', label: 'Completed', state: 'pending' }
+    ] }] });
+    try {
+        f.d.querySelector('.dq-local-shortcut').click(); await tick();
+        assert.equal(f.d.querySelector('[data-checkpoint=requested] .dq-checkpoint-label').textContent, 'Check permission');
+        assert.equal(f.d.querySelector('[data-checkpoint=checks] .dq-checkpoint-label').textContent, 'Inactive');
+        assert.match(f.d.querySelector('.dq-approval-fork').textContent, /Yes.*Safety delay.*Denied.*Cancelled/);
+        assert.equal(f.d.querySelector('[data-checkpoint=removing]'), null); assert.equal(f.d.querySelector('[data-checkpoint=closed]'), null);
+    } finally { f.dom.window.close(); }
+});
+test('Now follows the pending stage when only the requested date is known', async () => {
+    const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'pending', title: 'Movie', status: 'Blocked', timeline: [
+        { key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-01T00:00:00Z' },
+        { key: 'checks', label: 'Consent and activity', state: 'current' },
+        { key: 'delay', label: 'Safety delay', state: 'pending' }
+    ] }] });
+    try {
+        f.d.querySelector('.dq-local-shortcut').click(); await tick();
+        const marker = f.d.querySelector('.dq-media-marker'); assert(marker);
+        assert.equal(marker.dataset.checkpoint, 'checks'); assert.equal(marker.style.getPropertyValue('--dq-position'), '50%');
+        assert.equal(marker.querySelector('.dq-marker-label').textContent, 'Now');
+    } finally { f.dom.window.close(); }
+});
 test('timeline scales dated nodes and the media marker without inventing pending dates', async () => {
-    const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'request', title: 'Series', status: 'Waiting', mediaKind: 'Series', evaluatedAt: '2026-10-03T00:00:00Z', activityWindowDays: 30, safetyDelayHours: 96, scheduledFor: '2026-10-05T00:00:00Z', timeline: [
+    const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'request', title: 'Series', status: 'Ready', mediaKind: 'Series', evaluatedAt: '2026-10-03T00:00:00Z', activityWindowDays: 30, safetyDelayHours: 96, scheduledFor: '2026-10-05T00:00:00Z', timeline: [
         { key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-01T00:00:00Z' },
         { key: 'checks', label: 'Checks & consent', state: 'complete', at: '2026-10-02T00:00:00Z' },
         { key: 'delay', label: 'Safety delay', state: 'current', at: '2026-10-05T00:00:00Z' },
@@ -178,7 +208,7 @@ test('scheduled rows show a qualified removal date and milestone dates below the
         f.d.querySelector('.dq-local-shortcut').click(); await tick(); const row = f.d.querySelector('.dq-queue-row');
         assert.match(row.querySelector('.dq-schedule').textContent, /Scheduled no earlier than/);
         assert.equal(row.lastElementChild.className, 'dq-timeline'); assert.equal(row.querySelector('[data-checkpoint=delay] time').dateTime, '2026-11-05T15:00:00.000Z');
-        assert.equal(row.querySelector('[data-checkpoint=confirmed] time'), null);
+        assert.equal(row.querySelector('[data-checkpoint=confirmed]'), null);
         const reads = f.calls.filter(call => call.path.endsWith('/proposals')).length;
         const now = f.w.Date.now(); f.w.Date.now = () => now + 6000;
         row.querySelector('.dq-timeline time').dispatchEvent(new f.w.MouseEvent('pointerdown', { bubbles: true })); await tick();
