@@ -55,7 +55,6 @@
             const settings = await request('admin/account-hub/v1/settings');
             if (!settings.ok) throw new Error('Hub adapter unavailable');
             hubCurrent = settings.data;
-            el('dqNotificationMode').value = hubCurrent.notificationMode;
             el('dqHubEnabled').checked = hubCurrent.hubIntegrationEnabled;
             el('dqPublishAudit').checked = hubCurrent.publishAudit;
             el('dqDeviceBell').checked = hubCurrent.deviceBell;
@@ -65,12 +64,10 @@
                 const hub = dependencies.find(item => item.id === 'account-hub');
                 el('dqDependencyStatus').textContent = dependencies.map(item => item.name + ': ' + item.state + '. ' + (item.available ? item.reason : item.reason + ' ' + item.fix)).join(' ') + ' Local queue, evidence and notifications do not require those integrations.';
                 for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) { el(id).disabled = !hub?.available; el(id).title = hub?.available ? '' : hub?.reason + ' ' + hub?.fix; }
-                el('dqNotificationMode').querySelector('option[value="Hub"], option:nth-child(3)').disabled = !hub?.available;
             } catch {
                 if (!active || view !== epoch) return;
                 el('dqDependencyStatus').textContent = 'Optional integration health could not be verified. Check Dashboard → Plugins, enable compatible providers and restart; local queue features remain available.';
                 for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) el(id).disabled = true;
-                el('dqNotificationMode').querySelector('option[value="Hub"], option:nth-child(3)').disabled = true;
             }
             el('dqUrl').value = value(seerr, 'baseUrl');
             el('dqKey').value = '';
@@ -147,7 +144,7 @@
         e.preventDefault(); if (!hubCurrent || busy) return;
         try {
             await request('admin/account-hub/v1/settings', 'PUT', { revision: hubCurrent.revision, commandId: crypto.randomUUID(),
-                notificationMode: el('dqNotificationMode').value, hubIntegrationEnabled: el('dqHubEnabled').checked,
+                hubIntegrationEnabled: el('dqHubEnabled').checked,
                 publishAudit: el('dqPublishAudit').checked, deviceBell: el('dqDeviceBell').checked,
                 hubFallbackAfterMinutes: Number(el('dqHubFallback').value) });
             await refresh();
@@ -171,6 +168,16 @@
         try { await request('admin/users/' + id + '/reset', 'POST', { commandId: crypto.randomUUID(),
             revision: value(value(current, 'policy'), 'revision'), preferencesRevision: value(account, 'preferencesRevision') }); await refresh(); }
         catch (err) { error(err); }
+    });
+    el('dqResetAllPermissions').addEventListener('click', async () => {
+        const control = el('dqResetAllPermissions');
+        if (!current || busy || control.disabled || !confirm('Reset all users to the saved global removal permission? Personal preferences, consent and history are kept. Unsaved edits are not saved.')) return;
+        control.disabled = true;
+        try {
+            await request('admin/users/reset-permissions', 'POST', { commandId: crypto.randomUUID(), revision: value(value(current, 'policy'), 'revision') });
+            await refresh();
+        } catch (err) { error(err); }
+        finally { control.disabled = false; }
     });
     const hide = () => { active = false; epoch++; busy = false; cancelOptIn?.(); clearEvidence(); page.setAttribute('aria-busy', 'false'); };
     const show = () => { active = true; refresh(); };

@@ -82,9 +82,9 @@ public static class HubIntegration
                 Add(state, alert);
             }
         }
-        if (state.Hub.PublishAudit && commandKind is ("AdministratorPolicyChanged" or "UserPolicyAndPreferencesReset" or "SeerrConfigurationChanged" or
+        if (state.Hub.PublishAudit && commandKind is ("AdministratorPolicyChanged" or "UserPolicyAndPreferencesReset" or "AllUserPermissionsReset" or "SeerrConfigurationChanged" or
             "EnhancedSeerrConnectionImported" or "AccountHubAdapterChanged" or "AccountHubPolicyReset"))
-            Audit(state, commandKind is "UserPolicyAndPreferencesReset" or "AccountHubPolicyReset" ? "deletion.policy.reset" : "deletion.policy.changed", null, actor, now,
+            Audit(state, commandKind is "UserPolicyAndPreferencesReset" or "AllUserPermissionsReset" or "AccountHubPolicyReset" ? "deletion.policy.reset" : "deletion.policy.changed", null, actor, now,
                 new { before = configurationBefore, after = ConfigurationSummary(state), summary = commandSummary });
     }
 

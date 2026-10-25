@@ -43,7 +43,7 @@ public sealed class ExecutionCoordinator(IStateStore store, IExecutionGateway ga
             return;
         }
         store.Write(Guid.NewGuid(), "executor", "MonitoringCleanupNotApplicable", state =>
-        { QueueRules.Complete(state, id); return true; });
+        { QueueRules.Complete(state, id, clock.GetUtcNow()); return true; });
     }
 
     public void RecoverClaims()

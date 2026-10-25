@@ -8,6 +8,37 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
+test('Deletion Queue hides routing mode and confirms permissions-only reset using the saved revision', async () => {
+    const html = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.html');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
+    const w = dom.window, d = w.document, calls = []; let confirmed = false;
+    const status = { mode: 'test', storageAvailable: true,
+        policy: { revision: 42, defaultAuthority: 1, activityDays: 30, delayHours: 48, accounts: {} },
+        seerr: { baseUrl: '', keyConfigured: false }, accounts: [], enhanced: { connectionAvailable: false }, proposals: [], journal: [] };
+    w.confirm = () => confirmed;
+    w.ApiClient = { getUrl: path => path, ajax: async options => {
+        calls.push(options);
+        if (options.url.endsWith('/admin/status')) return status;
+        if (options.url.endsWith('/settings')) return { ok: true, data: { revision: 'saved-settings', hubFallbackAfterMinutes: 10 } };
+        if (options.url.endsWith('/dependencies')) return { data: { items: [] } };
+        return {};
+    } };
+    try {
+        w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.js'));
+        await turn(); await turn();
+        assert.equal(d.querySelector('#deletionQueueAdmin').getAttribute('aria-busy'), 'false');
+        assert.equal(d.querySelector('#dqNotificationMode'), null); assert(!d.body.textContent.includes('Notification mode'));
+        const button = d.querySelector('#dqResetAllPermissions'); button.click(); await turn();
+        assert.equal(calls.filter(c => c.type !== 'GET').length, 0);
+        d.querySelector('#dqAuthority').value = '2'; confirmed = true; button.click(); await turn(); await turn();
+        const resets = calls.filter(c => c.url.endsWith('/admin/users/reset-permissions'));
+        assert.equal(resets.length, 1); assert.equal(resets[0].type, 'POST');
+        const body = JSON.parse(resets[0].data); assert.equal(body.revision, 42); assert.match(body.commandId, /^[a-f0-9-]{36}$/);
+        assert.deepEqual(Object.keys(body).sort(), ['commandId', 'revision']);
+        d.querySelector('#dqHubSettings').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
+        const settings = calls.find(c => c.type === 'PUT'); assert(settings); assert(!('notificationMode' in JSON.parse(settings.data)));
+    } finally { dom.window.close(); }
+});
 // The source may come from either Git checkout convention. JavaScript's dot
 // does not match CR, so /^import .*\n/ leaves imports behind on Windows CRLF.
 const workspaceScript = code => code.replace(/^import[^\r\n]*\r?\n/, 'const mountSecurityPanel = () => () => {};\n')
@@ -273,11 +304,14 @@ test('Native creation override uses explicit fresh confirmation and exposes five
 
 test('Deletion Queue retains native surfaces and scoped semantic selection tints', async t => {
     const css = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/integrated.css');
-    assert.doesNotMatch(css, /(?:^|[;{])\s*(?:color|font-family|backdrop-filter)\s*:|::backdrop|prefers-color-scheme/mi);
+    assert.doesNotMatch(css.replace(/color:\s*inherit\s*;/g, ''), /(?:^|[;{])\s*(?:color|font-family|backdrop-filter)\s*:|::backdrop|prefers-color-scheme/mi);
+    assert.match(css, /:where\(dialog\.dq-panel\)\s*\{\s*color:\s*inherit/);
     assert.match(css, /\[data-answer=allow\]\[aria-pressed=true\]/);
     assert.match(css, /\[data-answer=keep\]\[aria-pressed=true\]/);
     assert.doesNotMatch(css, /background(?:-color)?\s*:\s*#[\da-f]+/i);
-    const dom = new JSDOM('<style>.dialog { background: rgb(10, 20, 30); color: rgb(230, 220, 210); border-radius: 9px; } .emby-button { background: rgb(40, 50, 60); color: rgb(210, 200, 190); border-radius: 7px; }</style><dialog class="dialog dq-panel" open></dialog><button class="emby-button dq-card-action">Remove</button>', { url: 'https://example.test/web/' });
+    // jsdom does not resolve :where specificity/inherited computed color like a
+    // browser. Verify inline skin priority here; Chromium covers class overrides.
+    const dom = new JSDOM('<style>.dialog { background: rgb(10, 20, 30); color: rgb(230, 220, 210); border-radius: 9px; } .emby-button { background: rgb(40, 50, 60); color: rgb(210, 200, 190); border-radius: 7px; }</style><dialog class="dialog dq-panel" style="color:rgb(230, 220, 210)" open></dialog><button class="emby-button dq-card-action">Remove</button>', { url: 'https://example.test/web/' });
     t.after(() => dom.window.close());
     const style = dom.window.document.createElement('style'); style.textContent = css; dom.window.document.head.append(style);
     const panel = dom.window.getComputedStyle(dom.window.document.querySelector('dialog')), card = dom.window.getComputedStyle(dom.window.document.querySelector('button'));

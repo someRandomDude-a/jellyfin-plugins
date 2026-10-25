@@ -8,6 +8,47 @@ public sealed class DomainEditorTests
 {
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value, HubWire.Json);
 
+    [Fact] public void PermissionsOnlyResetClearsEveryOverrideAndPreservesPersonalDataAndFloors()
+    {
+        var state = QueueRulesTests.State(); var p = QueueRulesTests.Propose(state);
+        state.Policy.Accounts[Guid.NewGuid()] = ProposalAuthority.Denied;
+        state.Policy.Accounts[Guid.NewGuid()] = ProposalAuthority.AnyAccessibleItem;
+        QueueRules.UpdatePreferences(state, QueueRulesTests.Owner.Id, 0, 200, false);
+        QueueRules.Subscription(state, p.Id, QueueRulesTests.Owner.Id, 1, true);
+        p.NotBefore = QueueRulesTests.Now.AddHours(200);
+        var preferences = JsonSerializer.Serialize(state.Preferences);
+        var consents = JsonSerializer.Serialize(p.Consents);
+        var policy = JsonSerializer.Serialize(state.Policy);
+        var oldRevision = state.Policy.Revision; var count = state.Policy.Accounts.Count;
+        var before = JsonSerializer.Serialize(state);
+        Assert.Throws<QueueException>(() => QueueRules.ResetAllUserPermissions(state, oldRevision + 1));
+        Assert.Equal(before, JsonSerializer.Serialize(state));
+        Assert.Equal(count, QueueRules.ResetAllUserPermissions(state, oldRevision));
+        Assert.Empty(state.Policy.Accounts); Assert.Equal(oldRevision + 1, state.Policy.Revision);
+        Assert.Equal(preferences, JsonSerializer.Serialize(state.Preferences));
+        Assert.Equal(consents, JsonSerializer.Serialize(p.Consents));
+        Assert.Equal(p.Id, Assert.Single(state.Proposals).Id);
+        Assert.True(p.NotBefore >= QueueRulesTests.Now.AddHours(200)); Assert.True(p.DelayFloorHours >= 200);
+        var restored = JsonSerializer.Deserialize<Policy>(policy)!;
+        restored.Accounts.Clear(); restored.Revision++;
+        Assert.Equal(JsonSerializer.Serialize(restored), JsonSerializer.Serialize(state.Policy));
+    }
+
+    [Theory]
+    [InlineData(NotificationMode.Local)]
+    [InlineData(NotificationMode.Hub)]
+    [InlineData(NotificationMode.Disabled)]
+    public void LegacySettingsCannotSelectNonAutomaticRouting(NotificationMode mode)
+    {
+        var state = QueueRulesTests.State();
+        HubAdapter.SettingsChange(state, new(HubAdapter.Revision(state), Guid.NewGuid(), NotificationMode: mode), "fixture", QueueRulesTests.Now);
+        Assert.Equal(NotificationMode.Auto, state.Hub.NotificationMode);
+        var before = JsonSerializer.Serialize(state);
+        Assert.Throws<QueueException>(() => HubAdapter.SettingsChange(state,
+            new(HubAdapter.Revision(state), Guid.NewGuid(), NotificationMode: (NotificationMode)99), "fixture", QueueRulesTests.Now));
+        Assert.Equal(before, JsonSerializer.Serialize(state));
+    }
+
     [Fact] public void PagedPolicyIsStableBoundedAndContainsDefaultOverrideEffectiveWithoutEvidence()
     {
         var state = QueueRulesTests.State();

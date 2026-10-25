@@ -200,7 +200,8 @@ public static class HubAdapter
                 QueueRules.BreakCoverage(s, "IntegrationChanged", now);
             }
         }
-        h.NotificationMode = r.NotificationMode ?? h.NotificationMode; h.HubIntegrationEnabled = r.HubIntegrationEnabled ?? h.HubIntegrationEnabled;
+        // Retain the legacy request field for wire compatibility, not as a setting.
+        h.NotificationMode = NotificationMode.Auto; h.HubIntegrationEnabled = r.HubIntegrationEnabled ?? h.HubIntegrationEnabled;
         h.HubFallbackAfterMinutes = r.HubFallbackAfterMinutes ?? h.HubFallbackAfterMinutes;
         h.PublishAudit = r.PublishAudit ?? h.PublishAudit; h.DeviceBell = r.DeviceBell ?? h.DeviceBell; h.Revision++;
     }

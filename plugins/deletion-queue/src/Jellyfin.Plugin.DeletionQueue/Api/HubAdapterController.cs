@@ -33,7 +33,6 @@ public sealed class HubAdapterController(QueueRuntime runtime, LiveIdentity iden
             features = new[] { "settings", "globalPolicy", "perUserPolicy", "preview", "reset", "adminExclusion" }, adminExclusion = true,
             limits = new { bodyBytes = 32768, users = 500, outbox = 2000, adapterReceipts = 2000 },
             fields = new {
-                notificationMode = new { type = "enum", values = Enum.GetNames<NotificationMode>(), @default = "Auto" },
                 hubIntegrationEnabled = new { type = "boolean", @default = true }, publishAudit = new { type = "boolean", @default = true },
                 deviceBell = new { type = "boolean", @default = true }, hubFallbackAfterMinutes = new { type = "integer", min = 1, max = 1440, @default = 15 },
                 defaultAuthority = new { type = "enum", values = Enum.GetNames<ProposalAuthority>(), @default = "OwnRequests" },

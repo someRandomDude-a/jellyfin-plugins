@@ -66,13 +66,18 @@ public static class QueueRules
     }
 
     public static void Undo(QueueState state, Guid id, Guid caller, long revision)
+        => Undo(state, id, caller, revision, null);
+    public static void Undo(QueueState state, Guid id, Guid caller, long revision, DateTimeOffset? now)
     {
         var proposal = Find(state, id);
         if (proposal.OwnerId != caller) throw new QueueException("OwnerOnly");
         RequireMutable(proposal, revision);
+        proposal.ClosedCheckpoint = UserProgress.Checkpoint(proposal);
+        proposal.ClosedChecksAt = proposal.EligibleSince;
         proposal.Status = ProposalStatus.Cancelled;
         proposal.Reason = "Cancelled";
         proposal.EligibleSince = null;
+        proposal.ClosedAt = now;
         proposal.Revision++;
     }
 
@@ -105,7 +110,10 @@ public static class QueueRules
         if (!caller.Enabled || !caller.Administrator || !accessible) throw new QueueException("AccessDenied");
         var p = Find(state, id); Expire(p, now); RequireMutable(p, revision);
         if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
+        p.ClosedCheckpoint = UserProgress.Checkpoint(p);
+        p.ClosedChecksAt = p.EligibleSince;
         p.AdministratorApproval = null; p.Status = ProposalStatus.Expired; p.Reason = "AdministratorDenied"; p.EligibleSince = null; p.Revision++;
+        p.ClosedAt = now;
     }
 
     public static void RecordActivity(QueueState state, Guid user, string key, string? session,
@@ -180,9 +188,11 @@ public static class QueueRules
     public static void Expire(Proposal proposal, DateTimeOffset now)
     {
         if (proposal.Status == ProposalStatus.Blocked && proposal.Claim is null && proposal.FilesDeletedAt is null && now >= (proposal.LastPlaybackResetAt ?? proposal.CreatedAt).AddDays(30)) {
+            proposal.ClosedCheckpoint = UserProgress.Checkpoint(proposal);
             proposal.Status = ProposalStatus.Expired;
             proposal.Reason = "RequestExpired";
             proposal.EligibleSince = null;
+            proposal.ClosedAt = (proposal.LastPlaybackResetAt ?? proposal.CreatedAt).AddDays(30);
             proposal.Revision++;
         }
     }
@@ -224,12 +234,15 @@ public static class QueueRules
     }
 
     public static void Complete(QueueState state, Guid id)
+        => Complete(state, id, null);
+    public static void Complete(QueueState state, Guid id, DateTimeOffset? now)
     {
         var p = Find(state, id);
         if (p.FilesDeletedAt is null || p.Status != ProposalStatus.FilesDeleted) throw new QueueException("FilesDeletedCheckpointRequired");
         p.CleanupOutcome = p.Target.RequestOnly ? "RequestDeclinedHistoryRetained" : "NotApplicableArrRecordRemovedBySeerr";
         p.Status = ProposalStatus.Completed;
         p.Reason = "Completed";
+        p.ClosedAt = now;
         p.Revision++;
     }
 
@@ -299,6 +312,17 @@ public static class QueueRules
         UpdatePreferences(state, user, preferencesRevision, 48, true);
         state.Preferences[user].Subscriptions.Clear();
     }
+    public static int ResetAllUserPermissions(QueueState state, long policyRevision)
+    {
+        var policy = state.Policy; var count = policy.Accounts.Count;
+        UpdatePolicy(state, new Policy {
+            Accounts = [], DefaultAuthority = policy.DefaultAuthority, ActivityDays = policy.ActivityDays,
+            DelayHours = policy.DelayHours, AutomaticDeletion = policy.AutomaticDeletion,
+            SeerrManagedDeletionAcknowledged = policy.SeerrManagedDeletionAcknowledged,
+            RequireAdministratorApproval = policy.RequireAdministratorApproval, Suspended = policy.Suspended
+        }, policyRevision);
+        return count;
+    }
 
     public static UserProposal Project(QueueState state, Proposal p, Guid caller, DateTimeOffset now)
     {
@@ -309,14 +333,25 @@ public static class QueueRules
         var ownActivity = state.Activity.SingleOrDefault(a => a.UserId == caller && a.Key == p.Target.ActivityKey);
         var action = !p.Terminal && p.Claim is null && IsRecent(state, p.Target, caller, now) && answer != Answer.Yes
             ? "ApproveCurrentSnapshot" : "None";
+        var progress = UserProgress.For(state, p);
         return new UserProposal(p.Id, p.Target.Title, p.OwnerId == caller ? "Yours" : "Anonymous",
-            p.Status.ToString(), p.Reason, p.Revision, p.NotBefore, p.OwnerId == caller && !p.Terminal && p.Claim is null,
+            p.Status.ToString(), UserProgress.PublicReason(p.Reason), p.Revision, p.NotBefore, p.OwnerId == caller && !p.Terminal && p.Claim is null,
             snapshot, answer, ownActivity?.At, action) {
                 CreatedAt = p.CreatedAt,
+                StatusLabel = progress.Label,
+                StatusHelp = progress.Help,
+                ScheduledFor = progress.ScheduledFor,
+                Timeline = progress.Timeline,
+                EvaluatedAt = now,
+                ActivityWindowDays = state.Policy.ActivityDays,
+                SafetyDelayHours = p.Terminal ? p.DelayFloorHours : Math.Max(state.Policy.DelayHours, p.DelayFloorHours),
+                ClosedCheckpoint = p.ClosedCheckpoint is "checks" or "delay" ? p.ClosedCheckpoint : null,
+                ClosureExplanation = p.Terminal && p.Status != ProposalStatus.Completed ? progress.Help : null,
+                MediaKind = p.Target.Kind.ToString(),
                 ExpiresAt = p.Status == ProposalStatus.Blocked ? (p.LastPlaybackResetAt ?? p.CreatedAt).AddDays(30) : null,
                 Stage = p.Terminal ? "History" : p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "Queued" :
                     p.Status is ProposalStatus.Claimed or ProposalStatus.Uncertain or ProposalStatus.FilesDeleted ? "Processing" :
-                    p.Reason == "AdministratorApprovalRequired" ? "Administrator review" : "Consent"
+                    p.Reason == "AdministratorApprovalRequired" ? "Administrator review" : p.Reason == "ConsentRequired" ? "Consent" : "Safety checks"
             };
     }
 

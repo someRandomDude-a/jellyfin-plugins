@@ -123,6 +123,35 @@ public sealed class ProductionGatewayTests : IDisposable
         };
         return new(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
     }
+    [Fact] public async Task ContextMenuProjectionIsItemScopedAndPermissionsResetRequiresLiveAdministratorAndRevision()
+    {
+        var id = await Seed();
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+            new("Jellyfin-IsApiKey", "false"), new("Jellyfin-UserId", owner.Id.ToString())
+        ], "fixture"));
+        var controller = new Jellyfin.Plugin.DeletionQueue.Api.QueueController(runtime, identity, targets, null!, null!, clock, null!) {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext {
+                HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = principal }
+            }
+        };
+        var result = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.ItemRemoval(movie.Id));
+        var json = JsonSerializer.SerializeToElement(result.Value, HubWire.Json);
+        Assert.Equal(id, Assert.Single(json.GetProperty("proposals").EnumerateArray()).GetProperty("id").GetGuid());
+        var unrelated = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.ItemRemoval(Guid.NewGuid()));
+        Assert.Empty(JsonSerializer.SerializeToElement(unrelated.Value, HubWire.Json).GetProperty("proposals").EnumerateArray());
+        var revision = runtime.Read().Policy.Revision;
+        Assert.Throws<QueueException>(() => controller.ResetAllUserPermissions(new(Guid.NewGuid(), revision)));
+        administrator = true;
+        runtime.Write(Guid.NewGuid(), "fixture", "Override", s => { s.Policy.Accounts[owner.Id] = ProposalAuthority.AnyAccessibleItem; return true; });
+        Assert.Throws<QueueException>(() => controller.ResetAllUserPermissions(new(Guid.NewGuid(), revision + 1)));
+        Assert.Single(runtime.Read().Policy.Accounts);
+        Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.ResetAllUserPermissions(new(Guid.NewGuid(), revision)));
+        Assert.Empty(runtime.Read().Policy.Accounts);
+        Assert.Contains(runtime.History(), e => e.Kind == "AllUserPermissionsReset");
+        nativeGone = true;
+        Assert.Throws<QueueException>(() => controller.ItemRemoval(movie.Id));
+    }
+
     private async Task<Guid> Seed()
     {
         var target = await targets.ResolveAsync(new Account(owner.Id, true), new TargetSelection(movie.Id, null, false), default);

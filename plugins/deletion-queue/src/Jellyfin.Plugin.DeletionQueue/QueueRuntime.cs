@@ -29,6 +29,10 @@ public sealed class QueueRuntime : IDisposable, IStateStore
             store = new AuthenticatedStore(Path.Combine(paths.DataPath, "deletion-queue"));
             if (store.Read().Schema == 1)
                 store.Write(Guid.NewGuid(), "migration", "AccountHubFormatV2", state => { state.Schema = 2; return true; });
+            if (store.Read().Hub.NotificationMode != NotificationMode.Auto)
+                store.Write(Guid.NewGuid(), "migration", "AutomaticNotificationRouting", state => {
+                    state.Hub.NotificationMode = NotificationMode.Auto; state.Hub.Revision++; return true;
+                });
         }
         catch (Exception)
         {
@@ -47,6 +51,7 @@ public sealed class QueueRuntime : IDisposable, IStateStore
             var notices = state.Notices.Select(n => n.Id).ToHashSet();
             var configurationBefore = HubIntegration.ConfigurationSummary(state);
             var result = update(state);
+            state.Hub.NotificationMode = NotificationMode.Auto;
             // Notices and proposal changes commit together, including policy/coverage/deadline changes.
             // Progress/stop events still invalidate consent and block execution,
             // but must not generate another inbox notice every playback tick.

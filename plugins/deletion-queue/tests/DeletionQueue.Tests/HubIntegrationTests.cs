@@ -13,6 +13,46 @@ namespace DeletionQueue.Tests;
 
 public sealed class HubIntegrationTests
 {
+    [Theory]
+    [InlineData(NotificationMode.Local)]
+    [InlineData(NotificationMode.Hub)]
+    [InlineData(NotificationMode.Disabled)]
+    public void AutomaticRoutingMigrationIsDurableIdempotentAndPreservesRetainedState(NotificationMode mode)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dq-auto-" + Guid.NewGuid()); var data = Path.Combine(root, "deletion-queue");
+        try
+        {
+            QueueState expected;
+            using (var store = new AuthenticatedStore(data))
+            {
+                store.Write(Guid.NewGuid(), "fixture", "Seed", s => {
+                    s.Schema = 2; s.Hub.NotificationMode = mode; s.Hub.Revision = 7;
+                    s.Seerr.ApiKey = "retained-test-secret";
+                    var p = QueueRulesTests.Propose(s); NoticeRules.Publish(s, [p], QueueRulesTests.Now);
+                    p.Claim = new(Guid.NewGuid(), QueueRulesTests.Now, p.Target.Fingerprint, p.Revision);
+                    return true;
+                });
+                expected = store.Read();
+            }
+            expected.Hub.NotificationMode = NotificationMode.Auto; expected.Hub.Revision++;
+            var keys = File.ReadAllBytes(Path.Combine(data, "keys.json"));
+            var paths = DispatchProxy.Create<IApplicationPaths, ProductionGatewayTests.Proxy>();
+            ((ProductionGatewayTests.Proxy)(object)paths).Call = (m, _) => m.Name == "get_DataPath" ? root : throw new NotSupportedException();
+            for (var restart = 0; restart < 2; restart++)
+            {
+                using var runtime = new QueueRuntime(paths, NullLogger<QueueRuntime>.Instance, TimeProvider.System);
+                Assert.True(runtime.Available);
+                Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(runtime.Read()));
+                Assert.Single(runtime.History(), e => e.Kind == "AutomaticNotificationRouting");
+                Assert.Equal(keys, File.ReadAllBytes(Path.Combine(data, "keys.json")));
+            }
+            using var writer = new QueueRuntime(paths, NullLogger<QueueRuntime>.Instance, TimeProvider.System);
+            writer.Write(Guid.NewGuid(), "fixture", "LegacyWrite", s => { s.Hub.NotificationMode = mode; return true; });
+            Assert.Equal(NotificationMode.Auto, writer.Read().Hub.NotificationMode);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
     [Fact] public void AdapterNormalizesNativeCompactGuidsWithoutChangingTheV1WireShape()
     {
         var id = Guid.NewGuid();

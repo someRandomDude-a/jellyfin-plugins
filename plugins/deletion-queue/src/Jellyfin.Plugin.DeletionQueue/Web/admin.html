@@ -35,17 +35,17 @@
         <div class="selectContainer"><label for="dqUserAuthority">Proposal permission</label><select is="emby-select" id="dqUserAuthority"><option value="">Inherit global</option><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
         <button is="emby-button" type="button" id="dqResetUser" class="raised">Reset selected user</button>
         <p data-help-for="#dqResetUser">Restore inherited permission and default preferences for this user. Existing proposals and deletion safeguards are kept. Other unsaved edits are not saved.</p>
+        <button is="emby-button" type="button" id="dqResetAllPermissions" class="raised">Reset all user permissions to global</button>
+        <p data-help-for="#dqResetAllPermissions">Remove all per-user removal permissions. Personal preferences, consent, history and existing delay floors are kept. Unsaved policy edits are not saved.</p>
       </div>
       <button is="emby-button" type="submit" class="raised button-submit">Save policy</button>
     </form>
     <h2>Notifications and audit</h2>
     <form id="dqHubSettings">
-      <div class="selectContainer"><label for="dqNotificationMode">Notification mode</label><select is="emby-select" id="dqNotificationMode"><option>Auto</option><option>Local</option><option>Hub</option><option>Disabled</option></select></div>
       <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="dqHubEnabled" /><span>Enable optional Account Hub integration</span></label>
       <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="dqPublishAudit" /><span>Publish redacted audit summaries</span></label>
       <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="dqDeviceBell" /><span>Show local notification bell</span></label>
       <div class="inputContainer"><label for="dqHubFallback">Hub fallback delay (minutes)</label><input is="emby-input" id="dqHubFallback" type="number" min="1" max="1440" required /></div>
-      <p data-help-for="#dqNotificationMode">Auto prefers the shared Notifications inbox when available. Local uses only this queue. The queue shortcut remains available when the local bell is hidden. Existing local notices are not imported.</p>
       <button is="emby-button" type="submit" class="raised button-submit">Save integration settings</button>
     </form>
     <details class="suiteCard"><summary>Coverage and integrity</summary><pre id="dqCoverage" class="dq-evidence"></pre></details>

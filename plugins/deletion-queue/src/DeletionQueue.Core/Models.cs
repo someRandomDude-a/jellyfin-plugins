@@ -80,6 +80,9 @@ public sealed class Proposal
     public AdministratorApproval? AdministratorApproval { get; set; }
     public ExecutionClaim? Claim { get; set; }
     public DateTimeOffset? FilesDeletedAt { get; set; }
+    public DateTimeOffset? ClosedAt { get; set; }
+    public string? ClosedCheckpoint { get; set; }
+    public DateTimeOffset? ClosedChecksAt { get; set; }
     public string? DeletionEvidence { get; set; }
     public string? CleanupOutcome { get; set; }
     public bool Terminal => Status is ProposalStatus.Completed or ProposalStatus.Cancelled or ProposalStatus.Expired;
@@ -130,6 +133,20 @@ public sealed record UserProposal(
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
     public string Stage { get; init; } = "Consent";
+    public string StatusLabel { get; init; } = "Pending checks";
+    public string StatusHelp { get; init; } = "Removal is waiting for safety checks.";
+    public DateTimeOffset? ScheduledFor { get; init; }
+    public RemovalCheckpoint[] Timeline { get; init; } = [];
+    public DateTimeOffset EvaluatedAt { get; init; }
+    public int ActivityWindowDays { get; init; }
+    public int SafetyDelayHours { get; init; }
+    public string? ClosedCheckpoint { get; init; }
+    public string? ClosureExplanation { get; init; }
+    public string MediaKind { get; init; } = "Movie";
+}
+public sealed record RemovalCheckpoint(string Key, string Label, string State, DateTimeOffset? At = null)
+{
+    public string? DateLabel { get; init; }
 }
 
 public interface IStateStore

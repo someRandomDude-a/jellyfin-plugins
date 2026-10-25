@@ -80,6 +80,21 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         return Ok(new { CanPropose = targets.Accessible(caller.Id, id) && QueueRules.Authority(runtime.Read(), caller.Id) != ProposalAuthority.Denied });
     }
 
+    [HttpGet("targets/items/{id:guid}/removal")]
+    public IActionResult ItemRemoval(Guid id)
+    {
+        var caller = identity.Caller(User);
+        if (!targets.Accessible(caller.Id, id)) throw new QueueException("TargetUnavailable");
+        var state = runtime.Read(); var now = clock.GetUtcNow();
+        var matching = state.Proposals.Where(p => p.Target.JellyfinItemId == id && targets.Accessible(caller.Id, p)).ToArray();
+        foreach (var p in matching) QueueRules.Expire(p, now);
+        return Ok(new {
+            CanPropose = QueueRules.Authority(state, caller.Id) != ProposalAuthority.Denied,
+            Proposals = matching.Where(p => !p.Terminal).OrderByDescending(p => p.CreatedAt)
+                .Select(p => QueueRules.Project(state, p, caller.Id, now)).ToArray()
+        });
+    }
+
     [HttpPost("proposals")]
     public async Task<IActionResult> Propose(ProposeBody body, CancellationToken ct)
     {
@@ -117,7 +132,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     {
         var caller = identity.Caller(User);
         runtime.Write(body.CommandId, caller.Id.ToString(), "OwnerUndo", state =>
-        { _ = Visible(state, id, caller.Id); _ = identity.Caller(User); QueueRules.Undo(state, id, caller.Id, body.Revision); return true; });
+        { _ = Visible(state, id, caller.Id); _ = identity.Caller(User); QueueRules.Undo(state, id, caller.Id, body.Revision, clock.GetUtcNow()); return true; });
         return NoContent();
     }
 
@@ -168,7 +183,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         _ = identity.Caller(User);
         var state = runtime.Read();
         return Ok(new { ApiVersion = "1", HubAvailable = hub.Ready,
-            DeviceBell = state.Hub.DeviceBell, NotificationMode = state.Hub.NotificationMode.ToString(), EnhancedRequestsEnabled = enhanced.RequestsPageEnabled });
+            DeviceBell = state.Hub.DeviceBell, EnhancedRequestsEnabled = enhanced.RequestsPageEnabled });
     }
 
     [HttpPost("me/notices/{id:guid}/read")]
@@ -200,7 +215,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             ContinuousWindowCollected = QueueRules.CoverageComplete(state, clock.GetUtcNow()),
             PerProposalInventoryChecksEnabled = true, SeerrDelegationTrusted = true,
             state.NoticeDeliveryIncomplete,
-            Integration = new { state.Hub.NotificationMode, Pending = state.Outbox.Count(e => e.Status is "pending" or "delivering"),
+             Integration = new { Pending = state.Outbox.Count(e => e.Status is "pending" or "delivering"),
                 DeadLetters = state.Outbox.Count(e => e.Status == "dead_letter"), LocalFallbacks = state.Outbox.Count(e => e.Status == "local_fallback"),
                 state.HubDeliveryMetadataRolledOff },
              Seerr = new { state.Seerr.BaseUrl, state.Seerr.Revision, KeyConfigured = state.Seerr.ApiKey.Length > 0, JellyfinServerId = host.SystemId },
@@ -277,6 +292,16 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             return true;
         });
         return NoContent();
+    }
+    [HttpPost("admin/users/reset-permissions")]
+    public IActionResult ResetAllUserPermissions(RevisionBody body)
+    {
+        var caller = identity.Caller(User, administrator: true);
+        var count = runtime.Write(body.CommandId, caller.Id.ToString(), "AllUserPermissionsReset", state => {
+            _ = identity.Caller(User, administrator: true);
+            return QueueRules.ResetAllUserPermissions(state, body.Revision);
+        });
+        return Ok(new { ResetCount = count });
     }
 
     [HttpPost("admin/proposals/{id:guid}/reconcile")]

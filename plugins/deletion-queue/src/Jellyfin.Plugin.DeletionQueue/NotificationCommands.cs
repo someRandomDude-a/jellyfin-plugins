@@ -22,7 +22,7 @@ public sealed class NotificationCommands(QueueRuntime runtime, TargetResolver ta
                 var proposal = QueueRules.Find(current, id);
                 var account = identity.Account(user);
                 if (!account.Enabled || !targets.Accessible(user, proposal.Target)) throw new QueueException("NotFound");
-                if (command.Id == "undo") QueueRules.Undo(current, id, user, command.Revision);
+                if (command.Id == "undo") QueueRules.Undo(current, id, user, command.Revision, clock.GetUtcNow());
                 else if (command.Id is "allow" or "keep") QueueRules.Consent(current, id, account, command.Revision, command.Snapshot, command.Id == "allow" ? Answer.Yes : Answer.No, true, clock.GetUtcNow());
                 else throw new QueueException("InvalidAction");
                 return true;

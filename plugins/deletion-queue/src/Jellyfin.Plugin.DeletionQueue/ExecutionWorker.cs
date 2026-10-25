@@ -57,7 +57,7 @@ public sealed class ExecutionWorker(QueueRuntime runtime, SeerrExecutionGateway 
                 }
                 offset += 10;
                 foreach (var p in runtime.Read().Proposals.Where(p => p.Status == ProposalStatus.FilesDeleted))
-                    runtime.Write(Guid.NewGuid(), "recovery", "CompletedAfterFilesDeletedCheckpoint", state => { QueueRules.Complete(state, p.Id); return true; });
+                    runtime.Write(Guid.NewGuid(), "recovery", "CompletedAfterFilesDeletedCheckpoint", state => { QueueRules.Complete(state, p.Id, clock.GetUtcNow()); return true; });
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }

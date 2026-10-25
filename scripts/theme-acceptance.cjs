@@ -158,6 +158,12 @@ const http = require('node:http');
         // Installed injection + bounded DOM/API contracts; no deletion or real media access.
         const deletionItem = '11111111111111111111111111111111';
         let deletionPreviews = 0;
+        let queuedMenu = false;
+        await page.route('**/DeletionQueue/targets/items/*/removal', route => route.fulfill({ json: { canPropose: true, proposals: queuedMenu ? [{
+            id: '22222222-2222-2222-2222-222222222222', title: 'Queued series', status: 'Waiting', statusLabel: 'Scheduled',
+            revision: 3, ownSnapshot: 'fixture', ownAnswer: 1, canUndo: true,
+            timeline: [{ key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-20T12:00:00Z' }, { key: 'delay', label: 'Safety delay', state: 'current', at: '2026-10-27T12:00:00Z' }]
+        }] : [] } }));
         await page.route('**/DeletionQueue/targets/items/*/capabilities', route => route.fulfill({ json: { canPropose: true } }));
         await page.route('**/DeletionQueue/targets/items/*/preview', route => {
             assert.equal(route.request().method(), 'POST');
@@ -171,6 +177,7 @@ const http = require('node:http');
             fixture.innerHTML = `<div class="mainDetailButtons"></div><div class="card" data-type="Movie" data-id="${id}"><div class="cardScalable">Fixture</div></div><div class="je-request-card"><div class="je-request-info"><span data-media-id="${id}">Enhanced available request fixture</span><div class="je-request-actions"></div></div></div>`;
             document.body.append(fixture);
         }, deletionItem);
+        assert.equal(await page.locator('#dq-installed-contract .card .dq-media-action').count(), 0, 'Thumbnails must not contain removal actions');
         for (const selector of ['#dq-installed-contract .mainDetailButtons .dq-media-action', '#dq-installed-contract .dq-request-action']) {
             await page.locator(selector).waitFor({ state: 'attached' });
             await page.locator(selector).dispatchEvent('click');
@@ -185,6 +192,8 @@ const http = require('node:http');
             document.body.append(menu);
         });
         await page.locator('.dq-context-action').waitFor({ state: 'attached' });
+        assert.equal(await page.locator('.dq-context-section .dq-timeline').count(), 0, 'Unqueued items must not show a timeline');
+        assert.equal(await page.locator('.dq-context-action .material-icons').textContent(), 'delete_outline');
         await page.locator('.dq-context-action').dispatchEvent('click');
         await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
         await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
@@ -201,6 +210,21 @@ const http = require('node:http');
         await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
         await page.locator('#dq-native-menu-fixture').evaluate(e => e.remove());
         assert.equal(deletionPreviews, 4, 'Detail, Enhanced request, removed menu and native dialog must each open a read-only preview');
+        queuedMenu = true;
+        await page.evaluate(() => {
+            document.querySelector('#dq-installed-contract .card').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+            const menu = document.createElement('dialog'); menu.className = 'dialog actionSheet'; menu.id = 'dq-queued-menu-fixture';
+            menu.innerHTML = '<div class="actionSheetScroller"><button class="listItem listItem-button actionSheetMenuItem">Play</button></div>'; document.body.append(menu); menu.showModal();
+        });
+        const queuedContext = page.locator('#dq-queued-menu-fixture');
+        await queuedContext.getByRole('button', { name: 'Undo removal request', exact: true }).waitFor();
+        assert(await queuedContext.evaluate(e => getComputedStyle(e).color === getComputedStyle(document.body).color), 'Native context section must inherit theme foreground');
+        assert.equal(await queuedContext.locator('[aria-current=step]').getAttribute('data-checkpoint'), 'delay');
+        assert.equal(await queuedContext.getByRole('button', { name: 'Request removal', exact: true }).count(), 0);
+        assert.equal(await queuedContext.getByRole('button', { name: 'Keep item (reject removal)', exact: true }).getAttribute('aria-pressed'), 'true');
+        assert.equal(await queuedContext.locator('.dq-context-action .listItemIcon').count(), 4);
+        if (process.env.ADMIN_SCREENSHOTS) await queuedContext.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/deletion-queue-context-menu.png' });
+        await queuedContext.evaluate(e => { e.close(); e.remove(); });
         phase = 'enhanced-deletion-views';
         const proposalsPattern = '**/DeletionQueue/proposals?*';
         await page.route(proposalsPattern, route => {
@@ -219,8 +243,68 @@ const http = require('node:http');
         assert.equal(await enhanced.locator('.dq-enhanced-view [data-answer=allow]').getAttribute('aria-pressed'), 'true');
         await enhanced.locator('.dq-enhanced-view').getByRole('tab', { name: 'History', exact: true }).click();
         await enhanced.locator('.dq-enhanced-view').getByRole('heading', { name: 'Past removal', exact: true }).waitFor();
-        await enhanced.locator('.dq-calendar-removals').getByRole('heading', { name: 'Pending removal', exact: true }).waitFor();
-        await enhanced.evaluate(e => e.remove()); await page.unroute(proposalsPattern);
+        assert.equal(await enhanced.locator('.dq-calendar-removals').count(), 0);
+        await enhanced.evaluate(e => e.remove());
+        phase = 'queue-review-timeline';
+        const selectedRequest = '55555555-5555-5555-5555-555555555555';
+        const detailPattern = '**/DeletionQueue/proposals/' + selectedRequest;
+        await page.route(detailPattern, route => route.fulfill({ json: {
+            id: selectedRequest, title: 'Selected removal request fixture', status: 'Waiting', reason: 'DelayRequired', statusLabel: 'Scheduled',
+            statusHelp: 'Removal can happen no earlier than the displayed date, after fresh safety checks.', revision: 1, canUndo: true, ownAnswer: 0, ownSnapshot: 'fixture', stage: 'Queued',
+            evaluatedAt: '2026-10-25T12:00:00Z', scheduledFor: '2026-10-27T12:00:00Z', activityWindowDays: 30, safetyDelayHours: 144, mediaKind: 'Series',
+            timeline: [
+                { key: 'requested', label: 'Requested', state: 'complete', at: '2026-10-20T12:00:00Z' },
+                { key: 'checks', label: 'Checks & consent', state: 'complete', at: '2026-10-21T12:00:00Z' },
+                { key: 'delay', label: 'Safety delay', state: 'current', at: '2026-10-27T12:00:00Z' },
+                { key: 'removing', label: 'Removal started', state: 'pending' },
+                { key: 'confirmed', label: 'Removal confirmed', state: 'pending' },
+                { key: 'closed', label: 'Completed', state: 'pending' }
+            ]
+        } }));
+        await page.evaluate(id => {
+            const link = document.createElement('a'); link.id = 'dq-review-contract'; link.textContent = 'Review queue fixture'; link.href = '#/home?deletionQueueProposal=' + id;
+            link.style.cssText = 'position:fixed;top:5rem;left:1rem;z-index:1800;'; document.body.append(link);
+        }, selectedRequest);
+        const beforeReview = page.url();
+        await page.getByRole('link', { name: 'Review queue fixture', exact: true }).click();
+        const queueDialog = page.locator('dialog.dq-panel');
+        await queueDialog.getByRole('heading', { name: 'Deletion queue', exact: true }).waitFor();
+        assert(await queueDialog.evaluate(e => getComputedStyle(e).color === getComputedStyle(document.body).color), 'HTML dialog must inherit native text color, not user-agent CanvasText');
+        const skinColor = await page.addStyleTag({ content: '.dialog.dq-panel { color: rgb(181, 193, 211); }' });
+        assert.equal(await queueDialog.evaluate(e => getComputedStyle(e).color), 'rgb(181, 193, 211)', 'A custom skin must retain foreground control');
+        await skinColor.evaluate(e => e.remove());
+        const selectedRow = queueDialog.locator('.dq-highlight');
+        await selectedRow.getByRole('heading', { name: 'Selected removal request fixture', exact: true }).waitFor();
+        assert.equal(page.url(), beforeReview, 'Review must open the queue, not navigate away');
+        assert.equal(await selectedRow.getAttribute('data-request-id'), selectedRequest);
+        assert.equal(await selectedRow.locator('.dq-timeline li').count(), 6);
+        assert.equal(await selectedRow.locator('[aria-current=step]').getAttribute('data-checkpoint'), 'delay');
+        assert.equal(await selectedRow.locator('.dq-timeline time').first().getAttribute('datetime'), '2026-10-20T12:00:00.000Z');
+        assert.equal(await selectedRow.locator('.dq-media-marker .material-icons').textContent(), 'tv');
+        assert(await selectedRow.evaluate(e => parseFloat(e.querySelector('[data-checkpoint=checks]').style.getPropertyValue('--dq-position')) < parseFloat(e.querySelector('.dq-media-marker').style.getPropertyValue('--dq-position'))), 'Media marker must reflect server time relative to dated nodes');
+        for (const width of [320, 1280]) {
+            await page.setViewportSize({ width, height: 900 });
+            const help = selectedRow.getByRole('button', { name: 'About removal status', exact: true });
+            await help.hover(); await selectedRow.getByRole('tooltip').waitFor({ state: 'visible' });
+            assert.match(await selectedRow.getByRole('tooltip').textContent(), /fresh safety checks/);
+            await help.focus(); await help.press('Escape');
+            await selectedRow.getByRole('tooltip').waitFor({ state: 'hidden' });
+            assert(await queueDialog.evaluate(e => e.open), 'Escape should dismiss status help before the queue');
+            assert(await queueDialog.evaluate(e => e.scrollWidth <= e.clientWidth + 2), 'Timeline must scroll within its row, not overflow the modal');
+            assert(await selectedRow.locator('.dq-timeline').evaluate(e => {
+                e.scrollLeft = e.scrollWidth;
+                const reached = e.lastElementChild.getBoundingClientRect().right <= e.getBoundingClientRect().right + 1;
+                e.scrollLeft = 0; return reached;
+            }), 'The final timeline checkpoint must be reachable by horizontal scrolling');
+            if (process.env.ADMIN_SCREENSHOTS) await queueDialog.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/deletion-queue-timeline-' + width + '.png' });
+        }
+        const box = await queueDialog.boundingBox();
+        await page.mouse.click(box.x - 5, box.y - 5);
+        await queueDialog.waitFor({ state: 'detached' });
+        await page.locator('#dq-review-contract').evaluate(e => e.remove());
+        await page.unroute(detailPattern); await page.unroute(proposalsPattern);
+        phase = 'enhanced-12.13-native-calendar';
+        await require('./enhanced-calendar-acceptance.cjs')(page);
         await page.evaluate(() => document.querySelector('#dq-installed-contract')?.remove());
         const adminPages = [];
         for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {

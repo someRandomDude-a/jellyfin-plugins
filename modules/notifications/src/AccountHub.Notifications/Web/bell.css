@@ -1,4 +1,7 @@
 /* Scoped native-theme surfaces. Skins retain control of palette and typography. */
+.accountHubInbox { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent; }
+.accountHubInbox::-webkit-scrollbar { width: 5px; height: 5px; }
+.accountHubInbox::-webkit-scrollbar-thumb { background: color-mix(in srgb, currentColor 25%, transparent); border-radius: 1rem; }
 [data-notifications-bell] { position: relative; flex: 0 0 auto; overflow: visible; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 2.75rem; min-height: 2.75rem; }
 [data-notifications-bell] > .material-icons { line-height: 1; font-size: 1.5rem; overflow: visible; }
 [data-notifications-bell] .notificationBadge { position: absolute; inset-inline-end: .1rem; inset-block-start: .1rem; min-width: 1.15em; line-height: 1.2; text-align: center; font-size: .65rem; border-radius: 1rem; padding: .1em .25em; background: var(--theme-primary-color, Highlight); color: var(--theme-background-color, HighlightText); border: 1px solid currentColor; pointer-events: none; }

@@ -16,6 +16,8 @@
     let sessionKey = '', epoch = 0, frame = 0, notices = [], noticeProblem = '', context = null, pollingEpoch = -1, lastPoll = 0;
     const requests = new Set();
     const capabilities = new Map();
+    const itemStates = new Map();
+    let pendingRequestFocus = null, calendarData = null, calendarLoading = false, calendarReadAt = 0;
     let twoFactorPending = false, integration = { deviceBell: true }, linkedProposal = '', enhancedDeletionSelected = false, fullQueueUntil = 0;
     function session() {
         try {
@@ -29,7 +31,10 @@
         const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n;
     }
     function resetPrivate() {
-        epoch++; notices = []; noticeProblem = ''; context = null; capabilities.clear();
+        epoch++; notices = []; noticeProblem = ''; context = null; capabilities.clear(); itemStates.clear();
+        pendingRequestFocus = null; calendarData = null; calendarLoading = false; calendarReadAt = 0;
+        const calendarState = window.JellyfinEnhanced?.internals?.calendarPage?.state;
+        if (Array.isArray(calendarState?.events)) calendarState.events = calendarState.events.filter(event => !String(event.id).startsWith('dq-removal:'));
         twoFactorPending = false; integration = { deviceBell: true }; linkedProposal = '';
         enhancedDeletionSelected = false; fullQueueUntil = 0; document.querySelectorAll('.dq-deletion-selected').forEach(element => element.classList.remove('dq-deletion-selected'));
         requests.forEach(c => c.abort()); requests.clear();
@@ -109,6 +114,11 @@
         const error = node('p', '', 'dq-error'); error.setAttribute('role', 'alert');
         d.append(header, error, content); document.body.append(d);
         const focus = document.activeElement;
+        let outside = false;
+        const backdrop = event => { const r = d.getBoundingClientRect(); return event.target === d && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); };
+        d.addEventListener('pointerdown', event => { outside = event.button === 0 && backdrop(event); });
+        d.addEventListener('pointercancel', () => { outside = false; });
+        d.addEventListener('click', event => { if (outside && backdrop(event)) d.close(); outside = false; });
         d.addEventListener('close', () => { d.remove(); if (focus?.isConnected) focus.focus(); });
         d.showModal(); return { d, content, generation: epoch };
     }
@@ -121,13 +131,6 @@
         }
         d.querySelector('.dq-error').textContent = error?.message || 'Operation unavailable.';
         d.querySelector('.dq-close')?.remove();
-        if (!d.dataset.dismissibleError) {
-            d.dataset.dismissibleError = 'true';
-            let outside = false;
-            const backdrop = event => { const r = d.getBoundingClientRect(); return event.target === d && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); };
-            d.addEventListener('pointerdown', event => { outside = backdrop(event); });
-            d.addEventListener('click', event => { if (outside && backdrop(event)) d.close(); outside = false; });
-        }
     }
     const alive = panel => panel.d.isConnected && panel.generation === epoch && syncSession();
     function explanation(content) {
@@ -154,16 +157,92 @@
             }));
         } catch (err) { if (alive(panel)) { panel.content.replaceChildren(button('Try again', () => propose(itemId))); showError(err, panel.d); } }
     }
+    function statusHelp(text) {
+        const wrap = node('span', undefined, 'dq-help'), control = node('button', '?', 'emby-button button-flat dq-help-button'); control.type = 'button';
+        control.setAttribute('is', 'emby-button');
+        const tip = node('span', text, 'dialog dq-help-text'); tip.id = 'dq-status-help-' + command(); tip.setAttribute('role', 'tooltip'); tip.hidden = true;
+        control.setAttribute('aria-label', 'About removal status'); control.setAttribute('aria-describedby', tip.id); control.setAttribute('aria-expanded', 'false');
+        const hide = () => { tip.hidden = true; control.setAttribute('aria-expanded', 'false'); };
+        const show = () => {
+            tip.hidden = false; control.setAttribute('aria-expanded', 'true'); tip.style.insetBlockStart = '100%'; tip.style.insetBlockEnd = 'auto';
+            const bounds = wrap.closest('dialog')?.getBoundingClientRect();
+            if (bounds && tip.getBoundingClientRect().bottom > bounds.bottom - 8) { tip.style.insetBlockStart = 'auto'; tip.style.insetBlockEnd = '100%'; }
+        };
+        wrap.addEventListener('mouseenter', show); wrap.addEventListener('mouseleave', () => { if (!wrap.contains(document.activeElement)) hide(); });
+        control.addEventListener('focus', show); wrap.addEventListener('focusout', event => { if (!wrap.contains(event.relatedTarget)) hide(); });
+        control.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); show(); });
+        wrap.addEventListener('keydown', event => { if (event.key === 'Escape' && !tip.hidden) { hide(); event.preventDefault(); event.stopPropagation(); control.focus(); hide(); } });
+        wrap.append(control, tip); return wrap;
+    }
+    function date(value) { const at = value ? new Date(value) : null; return at && Number.isFinite(at.getTime()) ? at : null; }
+    function renderTimeline(p, content) {
+        const checkpoints = get(p, 'timeline') || [{ key: 'requested', label: 'Requested', state: 'complete', at: get(p, 'createdAt') }];
+        if (!checkpoints.length) return;
+        const timeline = node('div', undefined, 'dq-timeline'); timeline.setAttribute('aria-label', 'Removal request timeline'); timeline.tabIndex = 0;
+        const dated = checkpoints.filter(point => date(get(point, 'at'))), undated = checkpoints.filter(point => !date(get(point, 'at')));
+        const evaluated = date(get(p, 'evaluatedAt'));
+        const ended = ['Completed', 'Cancelled', 'Expired'].includes(get(p, 'status'));
+        const stopped = checkpoints.find(point => get(point, 'state') === 'cancelled');
+        const end = date(get(checkpoints.find(point => get(point, 'key') === 'closed'), 'at')) || date(get(stopped, 'at'));
+        const now = ended ? end : evaluated;
+        const dates = dated.map(point => date(get(point, 'at')).getTime()); if (now) dates.push(now.getTime());
+        const start = dates.length ? Math.min(...dates) : 0, finish = dates.length ? Math.max(...dates) : start;
+        const position = at => finish === start ? 50 : Math.max(0, Math.min(100, (at - start) / (finish - start) * 100));
+        const track = node('div', undefined, 'dq-time-track');
+        const datedNodes = node('ol', undefined, 'dq-dated-nodes'); datedNodes.setAttribute('aria-label', 'Recorded and scheduled dates'); track.append(datedNodes);
+        const pending = node('ol', undefined, 'dq-pending-checkpoints'); pending.setAttribute('aria-label', 'Undated checkpoints');
+        const occupied = [];
+        const icons = { requested: 'playlist_add', checks: 'fact_check', delay: 'hourglass_top', removing: 'auto_delete', confirmed: 'task_alt', closed: 'flag' };
+        for (const point of checkpoints) {
+            const step = node('li'); step.dataset.state = get(point, 'state'); step.dataset.checkpoint = get(point, 'key');
+            if (['current', 'cancelled'].includes(get(point, 'state'))) step.setAttribute('aria-current', 'step');
+            const glyph = node('span', get(point, 'state') === 'cancelled' ? 'cancel' : icons[get(point, 'key')] || 'radio_button_unchecked', 'material-icons dq-checkpoint-icon'); glyph.setAttribute('aria-hidden', 'true'); step.append(glyph);
+            step.append(node('span', get(point, 'label'), 'dq-checkpoint-label'));
+            const at = date(get(point, 'at'));
+            if (at) {
+                const x = position(at.getTime()); let lane = 0;
+                while (occupied.some(previous => previous.lane === lane && Math.abs(previous.x - x) < 22)) lane++;
+                occupied.push({ x, lane }); step.style.setProperty('--dq-position', x + '%'); step.style.setProperty('--dq-lane', lane);
+                if (get(point, 'dateLabel')) step.append(node('span', get(point, 'dateLabel'), 'dq-checkpoint-date'));
+                const time = node('time', at.toLocaleString()); time.dateTime = at.toISOString(); time.title = at.toLocaleString(); step.append(time); datedNodes.append(step);
+            }
+            else step.append(node('span', get(point, 'state') === 'current' && get(point, 'key') === 'checks' ? 'In progress' : ['complete', 'current'].includes(get(point, 'state')) ? 'Date not recorded' : get(point, 'state') === 'stopped' ? 'Stopped' : 'Pending', 'dq-checkpoint-date'));
+            if (!at) pending.append(step);
+        }
+        track.style.setProperty('--dq-lanes', Math.max(1, ...occupied.map(point => point.lane + 1)));
+        if (dated.length) {
+            timeline.append(track);
+            if (now) {
+                const completed = get(p, 'status') === 'Completed';
+                const marker = node('div', undefined, 'dq-media-marker'); marker.dataset.stopped = String(ended && !completed); marker.dataset.completed = String(completed); marker.style.setProperty('--dq-position', position(now.getTime()) + '%');
+                const icon = node('span', get(p, 'mediaKind') === 'Series' ? 'tv' : 'movie', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
+                marker.append(icon, node('span', completed ? 'Removed' : ended ? 'Stopped here' : 'Now', 'dq-marker-label'));
+                marker.title = (ended ? 'Request ended · ' : 'Server time · ') + now.toLocaleString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
+                if (!ended) { marker.dataset.serverTime = now.getTime(); marker.dataset.sampledAt = Date.now(); marker.dataset.start = start; marker.dataset.finish = finish; }
+            }
+        }
+        if (undated.length) { timeline.append(node('div', 'Undated / pending checkpoints', 'dq-pending-label'), pending); }
+        const closed = get(p, 'closureExplanation');
+        if (closed) content.append(node('p', closed + (get(p, 'closedCheckpoint') ? ' Stopped during ' + (get(p, 'closedCheckpoint') === 'delay' ? 'the safety delay.' : 'checks & consent.') : ' The original stopping checkpoint was not recorded.'), 'dq-closure'));
+        if (evaluated) {
+            const timing = node('p', 'As of ' + evaluated.toLocaleString() + ' · Current activity-window setting: ' + get(p, 'activityWindowDays') + ' days · Request safety-delay floor: ' + (get(p, 'safetyDelayHours') / 24).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' days', 'dq-timing');
+            const until = date(get(p, 'scheduledFor'));
+            if (until) { const hours = Math.max(0, (until - evaluated) / 3600000); timing.append(document.createTextNode(hours ? ' · ' + (hours / 24).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' days remaining (earliest)' : ' · Delay elapsed; awaiting fresh checks')); }
+            content.append(timing);
+        }
+        content.append(timeline);
+    }
     function renderProposal(p, content, compact = false) {
         const id = get(p, 'id'), status = get(p, 'status'), revision = get(p, 'revision');
         const heading = node('div', undefined, 'dq-request-heading');
-        const badge = node('span', status, 'dq-status'); badge.dataset.status = status;
-        badge.title = ({ ActivityCoverageIncomplete: 'Collecting recent viewing activity', ConsentRequired: 'Waiting for viewer approval', AdministratorApprovalRequired: 'Waiting for administrator approval', DelayRequired: 'Safety delay', RequestExpired: 'Not accepted within 30 days', AdministratorDenied: 'Denied by an administrator' })[get(p, 'reason')] || get(p, 'reason');
-        badge.setAttribute('aria-label', status + ': ' + badge.title);
-        heading.append(node('h3', get(p, 'title')), badge); content.append(heading);
+        const label = get(p, 'statusLabel') || ({ Blocked: 'Blocked', Waiting: 'Waiting', Ready: 'Ready for removal', Claimed: 'Removing', Uncertain: 'Needs review', FilesDeleted: 'Removal confirmed', Completed: 'Completed', Cancelled: 'Cancelled', Expired: 'Expired' })[status] || 'Pending checks';
+        const help = get(p, 'statusHelp') || ({ ActivityCoverageIncomplete: 'Viewing-activity checks are not complete yet.', ConsentRequired: 'Required consent is missing or no longer current.', AdministratorApprovalRequired: 'Administrator approval is required.', DelayRequired: 'The safety delay must pass before removal.', RequestExpired: 'This request was not accepted within 30 days.', AdministratorDenied: 'This request was denied and closed.' })[get(p, 'reason')] || 'Removal is waiting for safety checks. No removal time is confirmed.';
+        const badge = node('span', label, 'dq-status'); badge.dataset.status = status;
+        heading.append(node('h3', get(p, 'title')), badge, statusHelp(help)); content.append(heading);
         if (get(p, 'stage') && get(p, 'stage') !== 'History') content.append(node('span', get(p, 'stage'), 'dq-stage'));
-        const deadline = get(p, 'notBefore');
-        if (deadline && !compact) content.append(node('p', 'Earliest removal · ' + new Date(deadline).toLocaleString(), 'dq-hint'));
+        const scheduled = date(get(p, 'scheduledFor'));
+        if (scheduled) content.append(node('p', (status === 'Ready' ? 'Eligible since · ' : 'Scheduled no earlier than · ') + scheduled.toLocaleString(), 'dq-schedule'));
+        else if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) content.append(node('p', 'Not scheduled yet', 'dq-hint'));
         const answer = get(p, 'ownAnswer');
         if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) {
             const actions = node('div', undefined, 'dq-actions');
@@ -183,28 +262,57 @@
             }, 'emby-button button-flat'));
             content.append(actions);
         }
+        renderTimeline(p, content);
     }
     async function proposal(id) {
-        const panel = dialog('Removal request');
-        try { const p = await api('proposals/' + id); if (!alive(panel)) return; renderProposal(p, panel.content); explanation(panel.content); }
-        catch (err) { if (alive(panel)) showError(err, panel.d); }
+        return queue('active', id);
     }
-    async function queue(initialView = 'active') {
+    async function queue(initialView = 'active', focusId = null) {
         const panel = dialog('Deletion queue');
-        if (get(integration, 'enhancedRequestsEnabled')) panel.content.append(button('Open full queue', () => {
-            panel.d.close(); enhancedDeletionSelected = true; fullQueueUntil = Date.now() + 15000;
-            const navigation = document.querySelector('a[data-itemid="Jellyfin.Plugin.JellyfinEnhanced.DownloadsPage"]');
-            if (navigation) navigation.click();
-            else if (typeof window.JellyfinEnhanced?.downloadsPage?.showPage === 'function') window.JellyfinEnhanced.downloadsPage.showPage();
-            else location.hash = '#/downloads';
-            enhancedDeletionSelected = true; schedule();
-        }, 'emby-button button-flat dq-open-full'));
-        await queueView(panel.content, initialView, () => alive(panel), panel.d);
+        panel.d.classList.add('dq-queue-popover');
+        const anchor = document.querySelector('[data-notifications-bell], [data-account-hub-bell], .dq-local-shortcut, .dq-bell, .headerUserButton');
+        const position = () => { const bounds = anchor?.getBoundingClientRect(); panel.d.style.setProperty('--dq-anchor-top', Math.max(8, bounds?.bottom || 64) + 'px'); };
+        position(); window.addEventListener('resize', position);
+        panel.d.addEventListener('close', () => window.removeEventListener('resize', position), { once: true });
+        const control = panel.d.querySelector('.dq-close');
+        control.replaceChildren(node('span', get(integration, 'enhancedRequestsEnabled') ? 'open_in_new' : 'close', 'material-icons'));
+        control.setAttribute('aria-label', get(integration, 'enhancedRequestsEnabled') ? 'Open Deletion Queue in Requests' : 'Close deletion queue');
+        control.title = control.getAttribute('aria-label');
+        if (get(integration, 'enhancedRequestsEnabled')) {
+            // Replace the close listener with a small popout action, not a second large button.
+            const popout = control.cloneNode(true); control.replaceWith(popout);
+            popout.addEventListener('click', () => { panel.d.close(); void openRequests(focusId); });
+        }
+        let focused;
+        if (focusId) {
+            try {
+                focused = await api('proposals/' + focusId); if (!alive(panel)) return;
+                initialView = ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active';
+            } catch (error) { if (!alive(panel)) return; showError(error, panel.d); }
+        }
+        await queueView(panel.content, initialView, () => alive(panel), panel.d, focused);
     }
-    async function queueView(host, initialView = 'active', valid = () => host.isConnected && syncSession(), scrollRoot = host) {
+    async function openRequests(id = null) {
+        if (!get(integration, 'enhancedRequestsEnabled')) { await queue('active', id); return; }
+        pendingRequestFocus = id; enhancedDeletionSelected = true; fullQueueUntil = Date.now() + 15000;
+        const deadline = fullQueueUntil, generation = epoch;
+        const navigation = document.querySelector('a[data-itemid="Jellyfin.Plugin.JellyfinEnhanced.DownloadsPage"]');
+        if (navigation) navigation.click();
+        else if (typeof window.JellyfinEnhanced?.downloadsPage?.showPage === 'function') window.JellyfinEnhanced.downloadsPage.showPage();
+        else location.hash = '#/downloads';
+        const route = location.pathname + location.hash;
+        setTimeout(() => {
+            if (generation === epoch && fullQueueUntil === deadline && route === location.pathname + location.hash && syncSession()) {
+                fullQueueUntil = 0; pendingRequestFocus = null; void queue('active', id);
+            }
+        }, 5000);
+        schedule();
+    }
+    async function queueView(host, initialView = 'active', valid = () => host.isConnected && syncSession(), scrollRoot = host, focused = null) {
         const tabs = node('div', undefined, 'dq-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Deletion requests');
         const rows = node('div', undefined, 'dq-queue-rows'); rows.setAttribute('role', 'tabpanel'); host.append(tabs, rows);
-        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0;
+        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true;
+        const seen = new Set(), sameId = (a, b) => String(a).replaceAll('-', '').toLowerCase() === String(b).replaceAll('-', '').toLowerCase();
         for (const [key, label] of [['active', 'Active'], ['history', 'History']]) {
             const tab = button(label, async () => { view = key; revision++; await refresh(); }, 'emby-button button-flat');
             tab.dataset.view = key; tab.setAttribute('role', 'tab'); tabs.append(tab);
@@ -213,22 +321,30 @@
             if (loading || !valid()) return; loading = true; const started = revision;
             try {
                 const start = append ? offset : 0;
+                if (focused && !append && !first) focused = await api('proposals/' + get(focused, 'id'));
                 const proposals = await api('proposals?skip=' + start + '&take=50&view=' + view); if (!valid() || revision !== started) return;
-                if (!append) rows.replaceChildren();
-                for (const p of proposals) {
+                if (!append) { rows.replaceChildren(); seen.clear(); }
+                const records = [...proposals];
+                const focusedView = focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active';
+                if (!append && focused && focusedView === view && !records.some(p => sameId(get(p, 'id'), get(focused, 'id')))) records.unshift(focused);
+                let selected;
+                for (const p of records) {
+                    const key = String(get(p, 'id')).replaceAll('-', '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
                     const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row, true);
-                    const date = get(p, 'stage') === 'Queued' ? get(p, 'notBefore') : get(p, 'createdAt');
-                    if (date) row.append(node('p', (get(p, 'stage') === 'Queued' ? 'Earliest removal · ' : 'Requested · ') + new Date(date).toLocaleString(), 'dq-hint'));
+                    row.dataset.requestId = get(p, 'id');
+                    if (focused && sameId(get(p, 'id'), get(focused, 'id'))) { row.classList.add('dq-highlight'); row.tabIndex = -1; row.setAttribute('aria-label', 'Selected removal request'); selected = row; }
                     rows.append(row);
                 }
+                if (first && selected) requestAnimationFrame(() => { if (valid() && selected.isConnected) { selected.focus({ preventScroll: true }); selected.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } });
+                first = false;
                 offset = start + proposals.length; more = proposals.length === 50; refreshed = Date.now();
-                if (!offset) rows.append(node('p', 'No removal requests.'));
+                if (!rows.children.length) rows.append(node('p', 'No removal requests.'));
                 for (const tab of tabs.querySelectorAll('[role=tab]')) { tab.setAttribute('aria-selected', String(tab.dataset.view === view)); tab.tabIndex = tab.dataset.view === view ? 0 : -1; }
-            } catch (error) { if (valid()) { if (!rows.children.length) rows.textContent = error.message; else showError(error, host.closest('dialog')); } }
+            } catch (error) { if (valid()) { rows.replaceChildren(node('p', error.message || 'Requests unavailable.')); seen.clear(); focused = null; more = false; showError(error, host.closest('dialog')); } }
             finally { loading = false; if (valid() && revision !== started) void refresh(); }
         }
         tabs.addEventListener('keydown', event => { if (['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) { event.preventDefault(); const controls = [...tabs.querySelectorAll('button')]; const current = controls.indexOf(document.activeElement); const index = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : controls.length - 1)) % controls.length; controls[index].focus(); controls[index].click(); } });
-        host.addEventListener('pointerdown', event => { if (!event.target.closest('button, input, a') && Date.now() - refreshed > 5000) void refresh(); });
+        host.addEventListener('pointerdown', event => { if (!event.target.closest('button, input, a, .dq-help, .dq-timeline') && Date.now() - refreshed > 5000) void refresh(); });
         scrollRoot.addEventListener('scroll', () => { if (more && scrollRoot.scrollTop + scrollRoot.clientHeight >= scrollRoot.scrollHeight - 120) void refresh(true); });
         await refresh();
     }
@@ -297,11 +413,48 @@
                 b.closest('.mainDetailButtons') && routeId() !== id) {
                 schedule(); throw new Error('This media changed. Reopen its removal action.');
             }
-            return propose(id);
+            const queued = get(itemStates.get(id)?.data, 'proposals')?.[0];
+            return queued ? proposal(get(queued, 'id')) : propose(id);
         }, cls + ' dq-media-action dq-web-owned');
         b.dataset.dqItem = id; b.setAttribute('aria-label', 'Request removal'); b.title = 'Request removal';
         b.replaceChildren(node('span', 'delete_outline', 'material-icons')); b.firstChild.setAttribute('aria-hidden', 'true');
+        void updateMediaState(b, id);
         return b;
+    }
+    function stageAppearance(p) {
+        const status = get(p, 'status');
+        const icon = ({ Blocked: get(p, 'reason') === 'ConsentRequired' ? 'how_to_vote' : 'pending_actions', Waiting: 'hourglass_top', Ready: 'event_available', Claimed: 'auto_delete', Uncertain: 'warning_amber', FilesDeleted: 'task_alt', Completed: 'task_alt', Cancelled: 'undo', Expired: 'event_busy' })[status] || 'delete_outline';
+        return { icon, label: get(p, 'statusLabel') || 'Pending checks', status };
+    }
+    function paintStage(control, p) {
+        const stage = stageAppearance(p); control.dataset.removalStatus = stage.status;
+        const icon = control.querySelector('.material-icons'); if (icon) icon.textContent = stage.icon;
+        const label = 'Removal · ' + stage.label;
+        control.setAttribute('aria-label', label); control.title = label;
+        let text = control.querySelector('.dq-action-label'); if (!text) { text = node('span', undefined, 'dq-action-label'); control.append(text); }
+        text.textContent = label;
+    }
+    async function updateMediaState(control, id) {
+        try {
+            let cached = itemStates.get(id);
+            if (!cached || Date.now() - cached.at > 30000) {
+                if (itemStates.size >= 200) itemStates.clear();
+                cached = { at: Date.now(), promise: api('targets/items/' + id + '/removal') }; itemStates.set(id, cached);
+                cached.data = await cached.promise;
+            } else if (!cached.data) cached.data = await cached.promise;
+            if (!control.isConnected || control.dataset.dqItem !== id) return;
+            const p = get(cached.data, 'proposals')?.[0];
+            const signature = p ? JSON.stringify([get(p, 'id'), get(p, 'revision'), get(p, 'status'), get(p, 'statusLabel')]) : 'none';
+            if (control.dataset.removalSignature === signature) return;
+            control.dataset.removalSignature = signature;
+            if (p) paintStage(control, p);
+            else { control.removeAttribute('data-removal-status'); control.setAttribute('aria-label', 'Request removal'); control.title = 'Request removal'; control.replaceChildren(node('span', 'delete_outline', 'material-icons'), node('span', 'Request removal', 'dq-action-label')); }
+            const host = control.closest('.je-request-card') || control.closest('.mainDetailButtons')?.parentElement;
+            if (host) {
+                host.querySelector(':scope > .dq-item-progress')?.remove();
+                if (p) { const progress = node('div', undefined, 'dq-item-progress dq-web-owned'); renderTimeline(p, progress); host.append(progress); }
+            }
+        } catch { /* Preview remains authoritative; do not invent a queued state. */ }
     }
     function routeId() {
         const route = location.hash.slice(1) || location.pathname + location.search;
@@ -331,12 +484,21 @@
     }
     function mountEnhanced() {
         for (const tabs of document.querySelectorAll('.je-requests-tabs')) {
-            const section = tabs.closest('.je-requests-section'); if (!section || tabs.querySelector('.dq-deletion-tab')) continue;
+            const section = tabs.closest('.je-requests-section'); if (!section) continue;
+            const existingTab = tabs.querySelector('.dq-deletion-tab');
+            if (existingTab) {
+                if (pendingRequestFocus || Date.now() < fullQueueUntil || enhancedDeletionSelected && !section.classList.contains('dq-deletion-selected')) { fullQueueUntil = 0; existingTab.click(); }
+                continue;
+            }
             const view = node('div', undefined, 'dq-enhanced-view dq-web-owned'); view.hidden = true;
             const tab = button('Deletion queue', async () => {
                 enhancedDeletionSelected = true; section.classList.add('dq-deletion-selected'); view.hidden = false;
                 for (const sibling of tabs.querySelectorAll('button')) sibling.classList.toggle('active', sibling === tab);
-                if (!view.children.length) await queueView(view);
+                if (!view.children.length || pendingRequestFocus) {
+                    const id = pendingRequestFocus; pendingRequestFocus = null; let focused;
+                    if (id) focused = await api('proposals/' + id);
+                    view.replaceChildren(); await queueView(view, focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active', undefined, view, focused);
+                }
             }, 'je-requests-tab emby-button dq-deletion-tab dq-web-owned');
             tabs.addEventListener('click', event => {
                 if (event.target.closest('button') && !event.target.closest('.dq-deletion-tab')) { enhancedDeletionSelected = false; section.classList.remove('dq-deletion-selected'); view.hidden = true; }
@@ -344,12 +506,58 @@
             tabs.append(tab); section.append(view);
             if (enhancedDeletionSelected || Date.now() < fullQueueUntil) { fullQueueUntil = 0; tab.click(); }
         }
-        for (const calendar of document.querySelectorAll('.je-calendar-layout')) {
-            if (calendar.querySelector('.dq-calendar-removals')) continue;
-            const agenda = node('section', undefined, 'dq-calendar-removals dq-web-owned');
-            agenda.append(node('h3', 'Removal requests'), node('p', 'Queued dates are earliest removal times. Consent-stage requests have no scheduled date.', 'dq-hint'));
-            (calendar.querySelector('.je-calendar-sidebar-content') || calendar).append(agenda);
-            void queueView(agenda);
+        mountCalendar();
+    }
+    function mountCalendar() {
+        document.querySelectorAll('.dq-calendar-removals').forEach(element => element.remove());
+        const calendars = [...document.querySelectorAll('.je-calendar-layout')]; if (!calendars.length) return;
+        const JE = window.JellyfinEnhanced, adapter = JE?.internals?.calendarPage, state = adapter?.state;
+        // Reviewed Enhanced 12.13 contract. Do not infer dates from day numbers or
+        // mutate unknown renderers; native rendering supplies all views and OR/AND/NOT.
+        if (!Array.isArray(state?.events) || !(state.activeFilters instanceof Set) || typeof JE.calendarPage?.renderPage !== 'function') return;
+        if (!calendarLoading && (!calendarData || Date.now() - calendarReadAt > 30000)) {
+            calendarLoading = true; const generation = epoch;
+            void (async () => {
+                const all = [];
+                try {
+                    for (let skip = 0; ; skip += 100) {
+                        if (skip >= 10000) throw new Error('Calendar capacity');
+                        const page = await api('proposals?view=active&skip=' + skip + '&take=100'); all.push(...page);
+                        if (page.length < 100) break;
+                    }
+                    if (generation === epoch) { calendarData = all; calendarReadAt = Date.now(); }
+                } catch { if (generation === epoch) { calendarData = []; calendarReadAt = Date.now(); } }
+                finally { if (generation === epoch) { calendarLoading = false; schedule(); } }
+            })();
+        }
+        if (!calendarData) return;
+        const events = calendarData.filter(p => date(get(p, 'scheduledFor'))).map(p => ({
+            id: 'dq-removal:' + get(p, 'id'), title: get(p, 'title'), releaseDate: get(p, 'scheduledFor'),
+            releaseType: 'DeletionDate', type: 'Movie', source: 'Deletion Queue', monitored: true, hasFile: false
+        }));
+        const existing = state.events.filter(event => String(event.id).startsWith('dq-removal:'));
+        if (JSON.stringify(existing) !== JSON.stringify(events)) {
+            state.events = state.events.filter(event => !String(event.id).startsWith('dq-removal:')).concat(events);
+            JE.calendarPage.renderPage(); schedule(); return;
+        }
+        for (const calendar of calendars) {
+            const legend = calendar.querySelector('.je-calendar-legend');
+            if (legend && !legend.querySelector('.dq-calendar-filter')) {
+                const filter = button('', async () => { JE.calendarPage.toggleFilter('DeletionDate'); schedule(); }, 'je-calendar-legend-item emby-button button-flat dq-calendar-filter dq-web-owned');
+                const icon = node('span', 'event_busy', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
+                filter.append(icon, node('span', 'Deletion Date')); filter.setAttribute('aria-pressed', String(state.activeFilters.has('DeletionDate'))); legend.append(filter);
+            }
+            for (const event of calendar.querySelectorAll('[data-event-id^="dq-removal:"]')) {
+                if (event.dataset.dqDecorated) continue;
+                const id = event.dataset.eventId.slice('dq-removal:'.length), p = calendarData.find(p => String(get(p, 'id')) === id); if (!p) continue;
+                event.dataset.dqDecorated = 'true'; event.classList.add('dq-calendar-event', 'dq-web-owned'); event.tabIndex = 0; event.setAttribute('role', 'button');
+                event.setAttribute('aria-label', get(p, 'title') + ' · Deletion Date (earliest)');
+                event.replaceChildren(node('span', 'event_busy', 'material-icons'), node('span', get(p, 'title'), 'je-calendar-event-title'), node('span', 'Deletion Date · no earlier than ' + date(get(p, 'scheduledFor')).toLocaleString(), 'dq-calendar-date'));
+                event.title = 'Earliest possible removal. Fresh safety checks still apply.';
+                const open = e => { e.preventDefault(); e.stopImmediatePropagation(); void openRequests(id); };
+                event.addEventListener('click', open, true);
+                event.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+            }
         }
     }
     function mount() {
@@ -373,7 +581,7 @@
             }
             header.querySelectorAll('.dq-two-factor').forEach(n => n.remove());
             const hosted = !!document.querySelector('[data-notifications-bootstrap]') || [...document.querySelectorAll('[data-account-hub-bell]')].some(b => b.getClientRects().length > 0);
-            if (hosted || get(integration, 'deviceBell') === false || get(integration, 'notificationMode') === 'Disabled') {
+            if (hosted || get(integration, 'deviceBell') === false) {
                 header.querySelectorAll('.dq-bell').forEach(n => n.remove());
                 if (!header.querySelector('.dq-local-shortcut')) {
                     const shortcut = button('', queue, 'paper-icon-button-light headerButton dq-local-shortcut dq-web-owned');
@@ -395,24 +603,19 @@
         mountEnhanced();
         const deepLink = guid(new URLSearchParams(location.hash.split('?')[1] || '').get('deletionQueueProposal'));
         if (deepLink && linkedProposal !== deepLink) { linkedProposal = deepLink; proposal(deepLink).catch(() => {}); }
-        for (const card of [...document.querySelectorAll('.card[data-id]')].slice(0, 500)) {
-            if (!['Movie', 'Series'].includes(card.dataset.type)) continue;
-            const id = guid(card.dataset.id); if (!id) continue;
-            const existing = card.querySelector('.dq-media-action');
-            if (existing?.dataset.dqItem === id) continue;
-            existing?.remove(); (card.querySelector('.cardScalable') || card).append(mediaButton(id, 'emby-button button-flat dq-card-action'));
-        }
+        // Keep thumbnails untouched: library-card actions belong to the native menu.
+        document.querySelectorAll('.card .dq-card-action').forEach(action => action.remove());
         const id = routeId();
         if (id && !capabilities.has(id)) {
             if (capabilities.size >= 200) capabilities.clear();
             capabilities.set(id, false); const generation = epoch;
-            api('targets/items/' + id + '/capabilities').then(result => {
-                if (generation === epoch) { capabilities.set(id, Boolean(get(result, 'canPropose'))); schedule(); }
+            api('targets/items/' + id + '/removal').then(result => {
+                if (generation === epoch) { itemStates.set(id, { at: Date.now(), data: result }); capabilities.set(id, Boolean(get(result, 'canPropose') || get(result, 'proposals')?.length)); schedule(); }
             }).catch(() => {});
         }
         for (const group of [...document.querySelectorAll('.mainDetailButtons')].slice(0, 5)) {
             const existing = group.querySelector('.dq-media-action');
-            if (existing?.dataset.dqItem === id) continue;
+            if (existing?.dataset.dqItem === id) { void updateMediaState(existing, id); continue; }
             existing?.remove(); if (id && capabilities.get(id)) group.append(mediaButton(id, 'emby-button button-flat detailButton'));
         }
         // Enhanced's available-request title/watch elements contain the authoritative native media ID.
@@ -422,7 +625,7 @@
             const metadata = card.querySelector('[data-tmdb-id][data-media-type]');
             const requestKey = id || (metadata ? metadata.dataset.mediaType + ':' + metadata.dataset.tmdbId : '');
             const existing = card.querySelector('.dq-request-action');
-            if (existing?.dataset.dqItem === requestKey) continue;
+            if (existing?.dataset.dqItem === requestKey) { if (id) void updateMediaState(existing, id); continue; }
             existing?.remove();
             const b = id ? mediaButton(id, 'emby-button button-flat dq-request-action') : button('Request removal', () => requestRemoval(card), 'emby-button button-flat dq-request-action dq-web-owned');
             b.dataset.dqItem = requestKey;
@@ -432,27 +635,76 @@
         }
         if (context && Date.now() - context.at < 15000) {
             for (const menu of document.querySelectorAll('.actionSheet')) {
-                if (!menu.getClientRects().length || menu.tagName === 'DIALOG' && !menu.open || context.before.has(menu) || menu.querySelector('.dq-context-action')) continue;
+                if (!menu.getClientRects().length || menu.tagName === 'DIALOG' && !menu.open || context.before.has(menu) || menu.querySelector('.dq-context-section')) continue;
                 const scroller = menu.querySelector('.actionSheetScroller'); if (!scroller) continue;
                 const captured = context; context = null;
-                const b = node('button', 'Request removal', 'listItem listItem-button actionSheetMenuItem dq-context-action dq-web-owned'); b.type = 'button';
-                // Let Jellyfin dismiss its own sheet as a cancellation (no command ID). Never execute native Delete.
-                b.addEventListener('click', () => {
-                    if (b.disabled) return; b.disabled = true;
-                    let done = false;
-                    const watch = new MutationObserver(() => { if (!menu.isConnected) open(); });
-                    const cleanup = () => { watch.disconnect(); clearTimeout(timeout); };
-                    const open = () => { if (done) return; done = true; cleanup(); if (syncSession() && epoch === captured.epoch) propose(captured.id).catch(err => showError(err)); };
-                    const timeout = setTimeout(() => { done = true; cleanup(); }, 15000);
-                    menu.addEventListener('close', open, { once: true });
-                    watch.observe(document.body, { childList: true, subtree: true });
-                    const nativeDialog = menu.closest('dialog');
-                    if (nativeDialog?.open) { nativeDialog.addEventListener('close', open, { once: true }); nativeDialog.close(); }
-                    if (!menu.isConnected) open();
-                });
-                scroller.append(b); break;
+                void mountContextSection(menu, scroller, captured); break;
             }
         }
+    }
+    async function mountContextSection(menu, scroller, captured) {
+        const section = node('section', undefined, 'dq-context-section dq-web-owned');
+        section.setAttribute('aria-label', 'Deletion Queue');
+        const heading = node('div', 'Deletion Queue', 'dq-context-heading');
+        const content = node('div'); content.append(node('div', 'Checking removal status…', 'dq-context-message'));
+        section.append(heading, content); scroller.append(section);
+        const valid = () => section.isConnected && (menu.tagName !== 'DIALOG' || menu.open) && syncSession() && epoch === captured.epoch;
+        function action(label, icon, run, selected) {
+            const b = node('button', undefined, 'listItem listItem-button actionSheetMenuItem dq-context-action'); b.type = 'button'; b.setAttribute('is', 'emby-button'); b.setAttribute('aria-label', label);
+            const glyph = node('span', icon, 'listItemIcon material-icons actionSheetItemIcon'); glyph.setAttribute('aria-hidden', 'true');
+            const body = node('span', undefined, 'listItemBody'); body.append(node('span', label, 'listItemBodyText actionSheetItemText'));
+            b.append(glyph, body);
+            if (selected !== undefined) { b.setAttribute('aria-pressed', String(selected)); b.dataset.answer = icon === 'block' ? 'keep' : 'allow'; }
+            b.addEventListener('click', () => {
+                if (b.disabled || !valid()) return; section.querySelectorAll('button').forEach(control => { control.disabled = true; });
+                // Cancel the native sheet; never invoke its destructive Delete command.
+                let done = false;
+                const watch = new MutationObserver(() => { if (!menu.isConnected) open(); });
+                const cleanup = () => { watch.disconnect(); clearTimeout(timeout); };
+                const open = () => { if (done) return; done = true; cleanup(); if (syncSession() && epoch === captured.epoch) Promise.resolve().then(run).catch(err => showError(err)); };
+                const timeout = setTimeout(() => { done = true; cleanup(); }, 15000);
+                menu.addEventListener('close', open, { once: true });
+                watch.observe(document.body, { childList: true, subtree: true });
+                const nativeDialog = menu.closest('dialog');
+                if (nativeDialog?.open) { nativeDialog.addEventListener('close', open, { once: true }); nativeDialog.close(); }
+                if (!menu.isConnected) open();
+            });
+            content.append(b);
+        }
+        try {
+            const result = await api('targets/items/' + captured.id + '/removal'); if (!valid()) return;
+            content.replaceChildren();
+            const proposals = get(result, 'proposals') || [];
+            if (!proposals.length) {
+                if (get(result, 'canPropose')) action('Request removal', 'delete_outline', () => propose(captured.id));
+                else content.append(node('div', 'Removal requests are not permitted.', 'dq-context-message'));
+                return;
+            }
+            for (const p of proposals) {
+                const id = get(p, 'id'), status = get(p, 'status'), answer = get(p, 'ownAnswer');
+                const progress = node('div', undefined, 'dq-context-progress');
+                progress.append(node('div', get(p, 'statusLabel') || 'Pending checks', 'dq-context-status'));
+                const scheduled = date(get(p, 'scheduledFor'));
+                if (scheduled) progress.append(node('div', 'No earlier than · ' + scheduled.toLocaleString(), 'dq-hint'));
+                renderTimeline(p, progress); content.append(progress);
+                const stage = stageAppearance(p);
+                action('Removal · ' + stage.label, stage.icon, () => proposal(id));
+                const stateAction = content.lastElementChild; stateAction.dataset.removalStatus = stage.status;
+                if (!['Claimed', 'Uncertain', 'FilesDeleted'].includes(status)) {
+                    for (const [label, value, icon] of [['Allow removal', 0, 'check_circle_outline'], ['Keep item (reject removal)', 1, 'block']]) {
+                        action(label, icon, async () => {
+                            await api('proposals/' + id + '/consent', 'POST', { commandId: command(), revision: get(p, 'revision'), snapshot: get(p, 'ownSnapshot'), answer: value });
+                            window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
+                        }, answer === value || answer === (value === 0 ? 'Yes' : 'No'));
+                    }
+                }
+                if (get(p, 'canUndo')) action('Undo removal request', 'undo', async () => {
+                    if (!confirm('Cancel this removal request?')) return;
+                    await api('proposals/' + id + '/undo', 'POST', { commandId: command(), revision: get(p, 'revision') });
+                    window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
+                });
+            }
+        } catch { if (valid()) content.replaceChildren(node('div', 'Removal status unavailable. Reopen this menu to retry.', 'dq-context-message')); }
     }
     function schedule() { if (!frame) frame = requestAnimationFrame(() => { try { mount(); } catch { /* Isolate unsupported Web markup. */ } }); }
     function captureContext(e) {
@@ -464,10 +716,20 @@
         // Modern cards do not necessarily expose data-type. The server preview
         // remains authoritative for item kind, access and proposal permission.
         const id = card ? guid(card.dataset.id || card.dataset.itemid) : more || e.type === 'contextmenu' ? routeId() : null;
-        document.querySelectorAll('.dq-context-action').forEach(button => button.remove());
+        document.querySelectorAll('.dq-context-section').forEach(section => section.remove());
         if (id) { context = { id, at: Date.now(), epoch, before: new Set([...document.querySelectorAll('.actionSheet')].filter(menu => menu.getClientRects().length && (menu.tagName !== 'DIALOG' || menu.open))) }; schedule(); }
     }
     document.addEventListener('contextmenu', captureContext, true);
+    document.addEventListener('click', event => {
+        if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const link = event.target.closest?.('a[href]'); if (!link) return;
+        let destination; try { destination = new URL(link.href, location.href); } catch { return; }
+        const web = new URL(serverRoot + '/web/');
+        if (destination.origin !== web.origin || ![web.pathname, web.pathname + 'index.html'].includes(destination.pathname)) return;
+        const id = guid(new URLSearchParams(destination.hash.split('?')[1] || '').get('deletionQueueProposal'));
+        if (!id || !syncSession()) return;
+        event.preventDefault(); event.stopPropagation(); void proposal(id).catch(error => showError(error));
+    }, true);
     document.addEventListener('click', captureContext, true);
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true,
         attributes: true, attributeFilter: ['data-id', 'data-media-id', 'data-type'] });
@@ -478,10 +740,18 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { twoFactorPending = false; schedule(); loadNotices(); } });
     window.addEventListener('focus', () => { twoFactorPending = false; schedule(); loadNotices(); });
     window.addEventListener('pagehide', () => { resetPrivate(); sessionKey = ''; });
+    window.addEventListener('suite-removal-changed', () => { itemStates.clear(); calendarReadAt = 0; schedule(); });
     setInterval(() => {
         const changed = session()?.key !== sessionKey;
         if (!syncSession()) return;
         if (changed) schedule();
+        if (!document.hidden) for (const marker of document.querySelectorAll('.dq-media-marker[data-server-time]')) {
+            const at = Number(marker.dataset.serverTime) + Math.max(0, Date.now() - Number(marker.dataset.sampledAt));
+            const start = Number(marker.dataset.start), finish = Number(marker.dataset.finish);
+            marker.style.setProperty('--dq-position', (finish === start ? 50 : Math.max(0, Math.min(100, (at - start) / (finish - start) * 100))) + '%');
+            const title = 'Server time · ' + new Date(at).toLocaleString();
+            if (marker.title !== title) { marker.title = title; marker.setAttribute('aria-label', title); }
+        }
         if (!document.hidden && Date.now() - lastPoll >= 30000) { lastPoll = Date.now(); loadNotices(); }
     }, 1000);
     schedule(); loadNotices();
