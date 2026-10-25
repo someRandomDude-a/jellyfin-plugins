@@ -28,6 +28,7 @@ switch ($Plugin) {
         DotnetTest 'plugins/private-syncplay/tests/Jellyfin.Plugin.PrivateSyncPlay.Tests/Jellyfin.Plugin.PrivateSyncPlay.Tests.csproj'
         Run 'plugins/private-syncplay' npm @('run','check')
         Run 'plugins/private-syncplay' npm @('run','test:ui')
+        Run 'plugins/private-syncplay' node @('--test','tests/guest-state.test.mjs')
         Run 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/package.ps1')
         Run 'plugins/private-syncplay' node @('scripts/validate-package.mjs')
         Run 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/test-sdk.ps1')

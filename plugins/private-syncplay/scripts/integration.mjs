@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { target } from './jellyfin-target.mjs';
+import { waitForGuestState } from './guest-state.mjs';
 
 const root = resolve(process.argv.slice(2).find(arg => !arg.startsWith('--')) || join(tmpdir(), 'opencode', 'private-syncplay-integration-' + Date.now()));
 const withConsumer = process.argv.includes('--with-consumer');
@@ -380,20 +381,19 @@ try {
     async function progress(position,index) {
         await request('Sessions/Playing/Progress',{method:'POST',auth:admin,body:{ItemId:item.id,PositionTicks:position*10000000,IsPaused:false,CanSeek:true,PlayMethod:'DirectPlay',SubtitleStreamIndex:index},expected:204});
     }
-    async function readyGuest() {
-        for(let i=0;i<30;i++) { const s=(await request('PrivateSyncPlay/Guest/State',{guest:true})).data; if(s.ready)return s; await wait(1000); }
-        throw new Error('Guest subtitle/media stream did not become ready');
+    async function readyGuest(matches) {
+        return waitForGuestState(async () => (await request('PrivateSyncPlay/Guest/State',{guest:true})).data, matches);
     }
     await progress(0,ass.index);
-    const burned=await readyGuest();
+    const burned=await readyGuest(s=>s.generation!==state.generation && s.burnedSubtitleIndex===ass.index && s.playbackMethod==='Transcode');
     assert.equal(burned.burnedSubtitleIndex,ass.index); assert.equal(burned.playbackMethod,'Transcode');
     assert(docker('top',name,'-eo','pid,args').includes('subtitles='),'Styled captions must use native FFmpeg rendering');
     await progress(60,-1);
-    const sought=await readyGuest();
+    const sought=await readyGuest(s=>s.generation!==burned.generation && s.offset===60 && s.playbackMethod==='Remux' && s.selectedSubtitleIndex===-1);
     assert.equal(sought.offset,60); assert.equal(sought.playbackMethod,'Remux');
     const seekCaptions=(await request(`PrivateSyncPlay/Guest/media/${sought.generation}/subtitles/${sought.subtitles[0].index}.vtt`,{guest:true})).data;
     assert(seekCaptions.includes('00:01:00'),'Text delivery preserves movie timestamps for the player offset adjustment');
-    await progress(0,-1); state=await readyGuest();
+    await progress(0,-1); state=await readyGuest(s=>s.generation!==sought.generation && s.offset===0 && s.playbackMethod==='Remux' && s.selectedSubtitleIndex===-1);
     console.log('PASS embedded/external text subtitles, native styled burn-in, seek offsets and scoped subtitle guards');
     // Create real member-owned HLS, then borrow it without forwarding its URLs/tokens or starting another encoder.
     const nativePlaySession='native-party-'+Date.now();
