@@ -20,6 +20,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("private-syncplay", "1", [
+            new("party.*", "Watch parties", "An invitation or watch-party membership changes", "explicit-users", new(), [])
+        ]));
         var status = new PluginStatus();
         services.AddSingleton(status);
         services.Configure<MvcOptions>(o => o.Filters.Add<PartyErrors>());

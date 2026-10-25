@@ -351,9 +351,9 @@ try {
         assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before+1);
         await request(endpoint+'notifications/'+inbox[0].id+'/read',{method:'POST'});
         assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before);
-        const credential=(await request(endpoint+'settings/notifications/producer-tokens',{method:'POST',expected:[201],body:{source:'deletion-queue',scopes:['notifications:write']}})).data.data;
+        const credential=(await request(endpoint+'settings/notifications/producer-tokens',{method:'POST',expected:[201],body:{source:'account-hub',scopes:['notifications:write']}})).data.data;
         const eventId=randomUUID();
-        const publication={apiVersion:'1',operation:'notifications.publish',requestId:randomUUID(),payload:{schemaVersion:1,eventId,source:'deletion-queue',type:'proposal.created',severity:'info',title:'Disposable proposal notification',body:'No media was changed.',audience:[guid(login.data.user.id)],adminOnly:false,occurredAt:new Date().toISOString()}};
+        const publication={apiVersion:'1',operation:'notifications.publish',requestId:randomUUID(),payload:{schemaVersion:1,eventId,source:'account-hub',type:'test.notification',severity:'info',title:'Disposable integration notification',body:'No media was changed.',audience:[guid(login.data.user.id)],adminOnly:false,occurredAt:new Date().toISOString()}};
         const published=await request(endpoint+'producer/notifications',{method:'POST',auth:null,headers:{Authorization:'Bearer '+credential.token},body:publication});
         assert.equal(published.data.data.status,'accepted');
         const repeated=await request(endpoint+'producer/notifications',{method:'POST',auth:null,headers:{Authorization:'Bearer '+credential.token},body:publication});
@@ -373,6 +373,11 @@ try {
         assert(!html.includes('data-account-hub-bootstrap'),'Hub must not inject a competing bell');
         assert.equal((html.match(/data-notifications-bootstrap/g)||[]).length,1);
         console.log('PASS standalone notification inbox, native authorization, read state and exclusive Web ownership');
+    }
+    if (has('deletion')) {
+        const preview = await request('DeletionQueue/targets/items/11111111-1111-1111-1111-111111111111/preview', { method: 'POST', body: {}, expected: [404,409,503] });
+        assert.notEqual(preview.data.code, 'InvalidJson', 'Removal preview must reach dependency/target validation');
+        if (!has('notifications')) assert.equal(preview.data.code, 'NotificationsRequired');
     }
     if (has('discord')) {
         const bridge = (await request('DiscordBridge/admin/v1/settings')).data.data;

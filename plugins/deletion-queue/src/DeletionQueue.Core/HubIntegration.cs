@@ -47,8 +47,9 @@ public static class HubIntegration
             var evt = new IntegrationEvent { Kind = "notification", NoticeId = notice.Id, CreatedAt = now, NextAttemptAt = now };
             var p = QueueRules.Find(state, notice.ProposalId);
             evt.PayloadJson = JsonSerializer.Serialize(new { schemaVersion = 1, eventId = evt.EventId, source = "deletion-queue",
-                type = p.Status == ProposalStatus.FilesDeleted ? "proposal.seerr_removal" : ProposalType(p, !revisions.ContainsKey(p.Id)), severity = "info", title = "Deletion proposal updated",
-                body = notice.Text, link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"), audience = new[] { notice.UserId },
+                type = p.Status == ProposalStatus.FilesDeleted ? "proposal.seerr_removal" : ProposalType(p, !revisions.ContainsKey(p.Id)), severity = "info", title = "Removal request updated",
+                body = notice.Text, link = "#/details?id=" + p.Target.JellyfinItemId.ToString("N"), audience = new[] { notice.UserId },
+                actions = new[] { new { label = "Review request", link = "#/home?deletionQueueProposal=" + p.Id.ToString("D"), size = "compact" } },
                 adminOnly = false, dedupeKey = "deletionqueue:notice:" + notice.Id.ToString("D"), occurredAt = now,
                 correlationId = p.Id, metadata = new { proposalId = p.Id } });
             Add(state, evt); SetDelivery(state, notice.Id, "pending");
@@ -61,9 +62,10 @@ public static class HubIntegration
             {
                 var alert = new IntegrationEvent { Kind = "notification", CreatedAt = now, NextAttemptAt = now };
                 alert.PayloadJson = JsonSerializer.Serialize(new { schemaVersion = 1, eventId = alert.EventId, source = "deletion-queue",
-                    type = "proposal.uncertain", severity = "critical", title = "Deletion outcome requires review",
-                    body = "An execution outcome is uncertain. Review the local evidence; never automatically resend removal.",
+                    type = "alert.removal_uncertain", severity = "critical", title = "Deletion outcome requires review",
+                    body = "Check the deletion journal and Seerr before retrying this removal.",
                     link = "#/configurationpage?name=DeletionQueueAdmin", audience = Array.Empty<Guid>(), adminOnly = true,
+                    actions = new[] { new { label = "Review deletion", link = "#/configurationpage?name=DeletionQueueAdmin", size = "normal" } },
                     dedupeKey = $"deletionqueue:uncertain:{p.Id:D}:{p.Revision}", occurredAt = now, correlationId = p.Id,
                     metadata = new { proposalId = p.Id } });
                 Add(state, alert);

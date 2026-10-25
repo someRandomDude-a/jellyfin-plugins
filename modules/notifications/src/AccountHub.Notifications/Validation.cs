@@ -11,7 +11,7 @@ internal static partial class Validation
     [GeneratedRegex("^[a-z0-9]+(?:[._-][a-z0-9]+)+$")]
     private static partial Regex Dotted();
     public static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    public static void Require(bool condition, string reason)
+    public static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool condition, string reason)
     {
         if (!condition) throw new NotificationException("rejected", reason);
     }
@@ -25,10 +25,10 @@ internal static partial class Validation
         return Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Scheme == "https" &&
             string.IsNullOrEmpty(uri.UserInfo) && options.AllowedLinkHosts.Contains(uri.IdnHost);
     }
-    public static void Event(NotificationEvent e, NotificationOptions options, ProducerIdentity? producer)
+    public static void Event(NotificationEvent e, NotificationOptions options, ProducerIdentity? producer, bool registeredSource = false)
     {
         Require(e.SchemaVersion == 1 && e.EventId != Guid.Empty, "Invalid event version or ID");
-        Require(e.Source is not null && options.Sources.Contains(e.Source), "Unknown source");
+        Require(e.Source is not null && (options.Sources.Contains(e.Source) || registeredSource), "Unknown source");
         if (producer is not null)
             Require(producer.Source == e.Source && e.Source != "jellyfin-security" &&
                 producer.Scopes.Contains("notifications:write") && (!e.AdminOnly || producer.Scopes.Contains("notifications:admin")), "Producer scope/source denied");
@@ -39,7 +39,24 @@ internal static partial class Validation
         Require(!e.AdminOnly || e.Audience!.Length == 0, "Admin audience must be resolved by host");
         Require(e.OccurredAt != default && e.DedupeKey?.Length is not > 200 && SafeLink(e.Link, options), "Invalid time, dedupe key or link");
         Require(e.Metadata is null || (e.Metadata.Count <= 20 && e.Metadata.All(p => p.Key.Length <= 80 && p.Value is not null && p.Value.Length <= 500 && !SecretKey(p.Key))), "Unsafe metadata");
+        Require(e.Details is null || e.Details.Length <= 8000, "Notification details too long");
+        if (e.Layout is not null) Layout(e.Layout);
+        Require(e.Actions is null || e.Actions.Length <= 5 && e.Actions.All(a => a is not null && a.Label is { Length: > 0 and <= 60 } &&
+            a.Link is not null && SafeLink(a.Link, options) && a.Size is "compact" or "normal"), "Invalid notification actions");
         Require(Encoding.UTF8.GetByteCount(Contract.Serialize(e)) <= Contract.EventLimit, "Event too large");
+    }
+    public static void Layout(NotificationLayout layout) => Require(layout is not null && layout.Density is "compact" or "standard" && layout.SummaryLength is >= 60 and <= 300, "Invalid notification layout");
+    public static void Registration(NotificationRegistration registration, NotificationOptions options)
+    {
+        Require(registration is not null && registration.Source is { Length: > 0 and <= 100 } && registration.Source.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '_' or '.') && registration.Version is { Length: > 0 and <= 50 } && registration.Types is { Length: > 0 and <= 100 }, "Invalid producer registration");
+        Require(registration.Types.Select(type => type?.Type).Distinct().Count() == registration.Types.Length, "Duplicate notification type");
+        foreach (var type in registration.Types) {
+            Require(type is not null && type.Type is { Length: > 0 and <= 100 } && (type.Type == "*" || Dotted().IsMatch(type.Type.EndsWith(".*", StringComparison.Ordinal) ? type.Type[..^1] + "event" : type.Type)), "Invalid notification type");
+            Require(type.Name is { Length: > 0 and <= 100 } && type.Trigger is { Length: > 0 and <= 200 } && type.Recipients is "explicit-users" or "administrators" or "event", "Invalid type description or recipients");
+            Layout(type.Layout);
+            Require(type.Actions is not null && type.Actions.Length <= 5 && type.Actions.All(action => action is not null && action.Label is { Length: > 0 and <= 60 } && action.Size is "compact" or "normal"), "Invalid registered actions");
+            Require(type.Actions.Select(action => action.Label).Distinct().Count() == type.Actions.Length, "Duplicate registered action");
+        }
     }
     public static bool SecretKey(string key) => new[] { "token", "secret", "password", "cookie", "code", "authorization", "path", "rationale", "vote" }
         .Any(x => key.Contains(x, StringComparison.OrdinalIgnoreCase)) && !key.Equals("errorCode", StringComparison.OrdinalIgnoreCase);

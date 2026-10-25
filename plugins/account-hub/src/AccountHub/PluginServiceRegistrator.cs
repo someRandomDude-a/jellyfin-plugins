@@ -20,6 +20,14 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("account-hub", "1", [
+            new("*", "Account notifications", "Account Hub publishes an account event", "event", new(), []),
+            new("library.*", "New library content", "A new episode or movie is added", "explicit-users", new(), []),
+            new("account.updated", "Account alerts", "Account management changes", "administrators", new(), [])
+        ]));
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("jellyfin-security", "1", [
+            new("*", "Security alerts", "Native Security reports a supported event", "event", new("standard", 180), [])
+        ]));
         services.AddSingleton(sp => new HubPaths(Path.Combine(
             sp.GetRequiredService<IApplicationPaths>().PluginConfigurationsPath, "AccountHub")));
         services.AddSingleton<HubStore>(sp => new(sp.GetRequiredService<HubPaths>(), TimeProvider.System));

@@ -65,12 +65,18 @@ public static class Endpoints
             return Results.Stream(stream, "text/javascript");
         }).AllowAnonymous();
         var user = endpoints.MapGroup(prefix + "/notifications").RequireAuthorization();
-        user.MapGet("", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
+        user.MapGet("", (HttpContext c, NotificationStore s, INotificationHost h, NotificationService service) => Guard(async () =>
         {
             var id = await User(c, h);
             var limit = Math.Clamp(Number(c, "limit", 25), 1, 100);
             var stored = s.Inbox(id, Number(c, "skip", 0), limit, c.Request.Query["source"], c.Request.Query["unread"] == "true", await h.IsAdministratorAsync(id, c.RequestAborted));
-            var rows = new List<InboxRow>(); foreach (var row in stored) if (await h.CanAccessNotificationAsync(id, row.Event, c.RequestAborted)) rows.Add(row);
+            var catalogs = service.Catalog();
+            var rows = new List<InboxRow>();
+            foreach (var row in stored) if (await h.CanAccessNotificationAsync(id, row.Event, c.RequestAborted)) {
+                var presented = NotificationService.Present(row.Event, catalogs);
+                // Fanout identities are server-owned, not notification content.
+                rows.Add(row with { Event = presented with { Audience = presented.AdminOnly ? [] : [id] } });
+            }
             var data = new { notifications = rows, hasMore = stored.Count == limit };
             var tag = "\"" + Validation.Hash(Contract.Serialize(data)) + "\"";
             c.Response.Headers.ETag = tag;
@@ -88,6 +94,12 @@ public static class Endpoints
                 if (rows.Count < 100) break;
             }
             return Json(Contract.Success(new { count, capped = s.Unread(id, administrator) > 1000 }));
+        }));
+        user.MapPut("/preferences/rule", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
+        {
+            var id = await User(c, h);
+            var rule = JsonSerializer.Deserialize<Preference>(await Body(c, 4096), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing preference");
+            s.SetPreference(id, rule); return Json(Contract.Success(new { status = "updated" }));
         }));
         foreach (var action in new[] { "read", "dismiss" })
         {
@@ -115,6 +127,15 @@ public static class Endpoints
             await s.SaveSettingsAsync(settings, await User(c, h), c.RequestAborted);
             return Json(Contract.Success(new { status = "updated", revision = settings.Revision + 1 }));
         }));
+        admin.MapGet("/types", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>
+        { await Admin(c, h, false); return Json(Contract.Success(new { catalogs = s.Catalog() })); }));
+        admin.MapPut("/types/layout", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>
+        {
+            await Admin(c, h, true);
+            var update = JsonSerializer.Deserialize<NotificationLayoutUpdate>(await Body(c, 8192), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing layout");
+            await h.AppendAuditAsync(new(1, Guid.NewGuid(), "notifications", "notifications.layout.changing", "success", DateTimeOffset.UtcNow, await User(c, h)), c.RequestAborted);
+            s.SaveLayout(update); return Json(Contract.Success(new { status = "updated" }));
+        }));
         admin.MapGet("/deliveries", (HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
         { await Admin(c, h, false); return Json(Contract.Success(new { deliveries = s.Deliveries(Number(c, "skip", 0), Number(c, "limit", 25)) })); }));
         admin.MapPost("/deliveries/{id:guid}/retry", (Guid id, HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
@@ -129,11 +150,11 @@ public static class Endpoints
             var entry = new NotificationEvent(1, Guid.NewGuid(), "account-hub", "notifications.test", "info", "Account Hub delivery test", "Sanitized notification transport test.", [], true, DateTimeOffset.UtcNow);
             return Json(Contract.Success(await s.PublishAsync(entry, Validation.Hash(Contract.Serialize(entry)), c.RequestAborted)));
         }));
-        admin.MapPost("/producer-tokens", (HttpContext c, INotificationHost h, NotificationStore s, NotificationOptions options) => Guard(async () =>
+        admin.MapPost("/producer-tokens", (HttpContext c, INotificationHost h, NotificationStore s, NotificationOptions options, NotificationService service) => Guard(async () =>
         {
             await Admin(c, h, true);
             var issue = JsonSerializer.Deserialize<ProducerIdentity>(await Body(c, 4096), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing credential parameters");
-            Validation.Require(options.Sources.Contains(issue.Source) && issue.Source != "jellyfin-security" && issue.Scopes is not null, "Invalid source/scopes");
+            Validation.Require((options.Sources.Contains(issue.Source) || service.Catalog().Any(catalog => catalog.Source == issue.Source)) && issue.Source != "jellyfin-security" && issue.Scopes is not null, "Invalid source/scopes");
             await h.AppendAuditAsync(new(1, Guid.NewGuid(), "account-hub", "notifications.producer.issuing", "success", DateTimeOffset.UtcNow, await User(c, h)), c.RequestAborted);
             var token = s.IssueToken(issue.Source, issue.Scopes!);
             return Json(Contract.Success(new { token, credentialId = Validation.Hash(token) }), 201);

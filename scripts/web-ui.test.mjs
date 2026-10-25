@@ -21,6 +21,53 @@ test('Notification settings use native fields and erase unsaved secrets on clean
     assert(window.document.querySelector('select.emby-select'));
     const secret = window.document.querySelector('input[type=password]'); secret.value = 'unsaved-test-secret'; cleanup(); assert.equal(secret.value, ''); assert.equal(window.document.querySelector('main').children.length, 0); dom.window.close();
 });
+test('Registered notification layout editor saves only layout with the current source revision', async () => {
+    const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
+    const { window } = dom, writes = []; window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
+    const cleanup = await window.AccountHubNotificationSettings.mount(window.document.querySelector('main'), async (path, method, body) => {
+        if (method === 'PUT') { writes.push(body); return { status: 'updated' }; }
+        if (path.endsWith('/types')) return { catalogs: [{ source: 'example-plugin', revision: 4, version: '1', types: [{ type: 'example.changed', name: 'Example changes', trigger: 'An example changes', recipients: 'explicit-users', layout: { density: 'compact', summaryLength: 140, expandable: true }, actions: [] }] }] };
+        return path.includes('deliveries') ? { deliveries: [] } : { revision: 0, notificationDays: 90, routes: [] };
+    });
+    const panel = window.document.querySelector('details'); panel.open = true; panel.dispatchEvent(new window.Event('toggle')); await turn();
+    const save = [...panel.querySelectorAll('button')].find(button => button.textContent === 'Save layout'); save.click(); await turn(); save.click(); await turn();
+    assert.equal(writes[0].revision, 4); assert.equal(writes[1].revision, 5);
+    assert.deepEqual(Object.keys(writes[0]).sort(), ['layout', 'revision', 'source', 'type']);
+    assert.equal(writes[0].layout.summaryLength, 140); cleanup(); dom.window.close();
+});
+test('Notifications page does not remount during initial viewshow or discard an active editor', async () => {
+    const html = await source('plugins/notifications/src/Jellyfin.Plugin.Notifications/Web/admin.html');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
+    const w = dom.window, page = w.document.querySelector('#notificationsAdmin'); let release, mounts = 0, cleanups = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    w.AccountHubNotificationSettings = { mount: async () => { mounts++; await gate; return () => { cleanups++; }; } };
+    w.eval(w.document.querySelector('script').textContent);
+    page.dispatchEvent(new w.Event('viewshow')); page.dispatchEvent(new w.Event('viewshow')); assert.equal(mounts, 1);
+    release(); await turn(); page.dispatchEvent(new w.Event('viewshow')); assert.equal(mounts, 1);
+    page.dispatchEvent(new w.Event('viewhide')); assert.equal(cleanups, 1);
+    page.dispatchEvent(new w.Event('viewshow')); await turn(); assert.equal(mounts, 2);
+    page.dispatchEvent(new w.Event('viewhide')); dom.window.close();
+});
+test('Notification catalog opening during initial fetch shares the request and preserves drafts', async () => {
+    const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window; w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
+    let release, reads = 0; const gate = new Promise(resolve => { release = resolve; });
+    const mounted = w.AccountHubNotificationSettings.mount(w.document.querySelector('main'), async path => {
+        if (path.endsWith('/types')) { reads++; await gate; return { catalogs: [{ source: 'example', version: '1', revision: 1, types: [{ type: 'example.changed', name: 'Example', trigger: 'Change', recipients: 'explicit-users', layout: { density: 'compact', summaryLength: 140, expandable: true }, actions: [] }] }] }; }
+        return path.includes('deliveries') ? { deliveries: [] } : { revision: 0, routes: [], notificationDays: 90 };
+    });
+    await turn(); const panel = w.document.querySelector('details'); panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn(); assert.equal(reads, 1);
+    release(); const cleanup = await mounted; const length = panel.querySelector('input[type=number]'); length.value = '220';
+    panel.open = false; panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn(); assert.equal(reads, 1); assert.equal(length.value, '220');
+    cleanup(); dom.window.close();
+});
+test('Aborting a pending notification settings mount cannot clear the next editor', async () => {
+    const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window; w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
+    const controller = new w.AbortController(), root = w.document.querySelector('main'); let release, reads = 0;
+    const mounted = w.AccountHubNotificationSettings.mount(root, async () => { reads++; return await new Promise(resolve => { release = resolve; }); }, { signal: controller.signal });
+    controller.abort(); assert.equal(root.children.length, 0); root.textContent = 'Replacement editor';
+    release({ revision: 0, routes: [], notificationDays: 90 }); const cleanup = await mounted; cleanup();
+    assert.equal(reads, 1); assert.equal(root.textContent, 'Replacement editor'); dom.window.close();
+});
 test('Workspace navigation clears an open fresh-proof dialog without issuing a write', async () => {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; const calls = [];

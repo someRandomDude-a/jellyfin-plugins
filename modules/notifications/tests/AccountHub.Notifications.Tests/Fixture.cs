@@ -13,6 +13,10 @@ public sealed class Clock : TimeProvider
 }
 public sealed class FakeHost : INotificationHost
 {
+    public List<NotificationRegistration> Registrations { get; } = [];
+    public IReadOnlyList<NotificationRegistration> NotificationRegistrations => Registrations;
+    public HashSet<string> MissingAccessProviders { get; } = [];
+    public bool NotificationAccessAvailable(string source) => !MissingAccessProviders.Contains(source);
     public Guid Alice { get; } = Guid.NewGuid();
     public Guid Bob { get; } = Guid.NewGuid();
     public HashSet<Guid> Admins { get; } = [];

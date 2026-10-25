@@ -12,6 +12,7 @@ function DotnetTest([string]$Project) { Run '.' dotnet @('test',$Project,'-c',$C
 # Common target and packaging contracts never compile another plugin implementation.
 Run '.' node @('plugins/private-syncplay/scripts/jellyfin-versions.mjs')
 Run '.' node @('--test','plugins/private-syncplay/tests/jellyfin-versions.test.mjs','scripts/plugin-isolation.test.mjs')
+Run '.' node @('--test','scripts/admin-ui.test.mjs')
 Run '.' pwsh @('-NoProfile','-File','scripts/inventory-distribution.test.ps1')
 Run '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
 Run '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
@@ -21,6 +22,7 @@ switch ($Plugin) {
         DotnetTest 'plugins/notifications/tests/Notifications.Tests/Notifications.Tests.csproj'
         DotnetTest 'modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj'
         Run 'modules/notifications' node @('--test','tests/web/bell.test.cjs')
+        Run '.' node @('--test','--test-name-pattern=[Nn]otification','scripts/web-ui.test.mjs')
     }
     'private-syncplay' {
         DotnetTest 'plugins/private-syncplay/tests/Jellyfin.Plugin.PrivateSyncPlay.Tests/Jellyfin.Plugin.PrivateSyncPlay.Tests.csproj'
@@ -34,6 +36,8 @@ switch ($Plugin) {
     }
     'deletion-queue' {
         DotnetTest 'plugins/deletion-queue/tests/DeletionQueue.Tests/DeletionQueue.Tests.csproj'
+        DotnetTest 'modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj'
+        Run '.' node @('--test','scripts/removal-ui.test.mjs')
         Run 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release-metadata.ps1')
         Run 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release.ps1','-Runtime','all','-Tag','v0.1.0.6')
     }

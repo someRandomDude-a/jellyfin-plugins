@@ -7,11 +7,16 @@
     const forbidden = () => /login|challenge|twofactorauth|invite|reset|linktoken/i.test(location.href);
     const client = () => window.ApiClient;
     const apiPrefix = document.querySelector('[data-notifications-bootstrap]')?.dataset.notificationsApi || 'AccountHub/api/v1/';
+    const expanded = new Set(); let moreObserver, moreSentinel, loadMoreRequested = false;
+    let localRows = [], localSequence = 0, settingsElement;
     const url = path => client().getUrl(apiPrefix + path);
     const element = (tag, text) => { const e = document.createElement(tag); if (tag === 'button') { e.className = 'emby-button raised'; e.setAttribute('is', 'emby-button'); e.type = 'button'; } if (text) e.textContent = text; return e; };
-    function clear() {
+    function clear(clearLocal = false) {
+        if (clearLocal) localRows = [];
         clearTimeout(timer); timer = null; etag = undefined; rows = [];
         generation++; skip = 0; hasMore = false; unreadCount = 0; settingsView = false;
+        expanded.clear(); moreObserver?.disconnect(); loadMoreRequested = false;
+        settingsElement = null;
         button?.remove(); panel?.remove(); button = panel = null;
     }
     async function request(path, method = 'GET', body, headers = {}) {
@@ -38,73 +43,158 @@
         }
         return { ...json.data, etag: response.headers.get('ETag') };
     }
-    function close() { if (panel) panel.hidden = true; button?.setAttribute('aria-expanded', 'false'); button?.focus(); }
+    function close(restoreFocus = true) { if (panel) panel.hidden = true; settingsView = false; button?.setAttribute('aria-expanded', 'false'); if (restoreFocus) button?.focus(); }
+    const resolveLink = link => link.startsWith('web/index.html#/') ? client().getUrl(link) : link;
+    function timestamp(value) {
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) return { relative: 'Time unavailable', exact: 'Time unavailable', age: 0 };
+        const seconds = (date.getTime() - Date.now()) / 1000, age = -seconds;
+        let relative = 'Just now';
+        if (Math.abs(seconds) >= 60) {
+            const [unit, scale] = Math.abs(seconds) >= 86400 * 365 ? ['year', 86400 * 365] : Math.abs(seconds) >= 86400 * 30 ? ['month', 86400 * 30] : Math.abs(seconds) >= 86400 ? ['day', 86400] : Math.abs(seconds) >= 3600 ? ['hour', 3600] : ['minute', 60];
+            relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(Math.round(seconds / scale), unit);
+        }
+        return { relative, exact: date.toLocaleString(), iso: date.toISOString(), age };
+    }
     function render() {
         if (!panel) return;
-        if (settingsView) { renderSettings(); return; }
-        panel.replaceChildren(element('h2', 'Notifications'));
+        moreObserver?.disconnect(); moreObserver = null; moreSentinel = null;
+        if (settingsView) { if (!settingsElement?.isConnected) renderSettings(); return; }
+        const header = element('div'); header.className = 'notificationHeader'; header.append(element('h2', 'Notifications')); panel.replaceChildren(header);
         const settings = element('button', ''); settings.className = 'paper-icon-button-light notificationSettings'; settings.setAttribute('aria-label', 'Notification settings');
         const gear = element('span', 'settings'); gear.className = 'material-icons'; gear.setAttribute('aria-hidden', 'true'); settings.append(gear);
-        settings.onclick = () => { settingsView = true; render(); }; panel.append(settings);
-        const all = element('button', 'Mark all read'); all.onclick = async () => { await request('notifications/read-all', 'POST'); etag = undefined; poll(); }; panel.append(all);
-        for (const row of rows) {
-            const item = element('section'); item.append(element('h3', row.event.title), element('p', row.event.body));
-            // Links are validated server-side; text is never inserted as HTML.
-            if (row.event.link) { const link = element('a', 'Open'); link.href = row.event.link.startsWith('web/index.html#/') ? client().getUrl(row.event.link) : row.event.link; item.append(link); }
+        settings.onclick = () => { settingsView = true; render(); }; header.append(settings);
+        const all = element('button', 'Mark all read'); all.onclick = async () => { await request('notifications/read-all', 'POST'); for (const row of localRows) row.read = true; etag = undefined; poll(); }; panel.append(all);
+        all.disabled = [...localRows, ...rows].every(row => row.read);
+        if (!rows.length && !localRows.length) panel.append(element('p', 'No notifications.'));
+        const groups = { Important: [], Other: [], Older: [] };
+        for (const row of [...localRows, ...rows]) {
+            const time = timestamp(row.event.occurredAt);
+            const group = time.age >= 7 * 86400 ? 'Older' : row.event.adminOnly || ['warning', 'high', 'critical'].includes(row.event.severity) ? 'Important' : 'Other';
+            groups[group].push({ row, time });
+        }
+        for (const [name, entries] of Object.entries(groups)) {
+        if (!entries.length) continue;
+        const heading = element('h2', name); heading.className = 'notificationGroupHeading'; panel.append(heading);
+        entries.sort((a, b) => (b.row.event.occurredAt || '').localeCompare(a.row.event.occurredAt || ''));
+        for (const { row, time } of entries) {
+            const item = element('section'); item.dataset.unread = String(!row.read);
+            item.dataset.density = row.event.layout?.density === 'standard' ? 'standard' : 'compact';
+            const mainLink = row.event.link || row.event.actions?.[0]?.link;
+            const main = element(mainLink ? 'a' : 'div'); main.className = 'notificationMain';
+            if (mainLink) { main.href = resolveLink(mainLink); main.onclick = () => { if (!row.read && !row.local) void request('notifications/' + row.id + '/read', 'POST').catch(() => {}); }; }
+            main.append(element('h3', row.event.title));
+            const summaryLength = Math.max(60, Math.min(300, row.event.layout?.summaryLength || 140));
+            const excerpt = element('span', row.event.body.slice(0, summaryLength) + (row.event.body.length > summaryLength ? '…' : '')); excerpt.className = 'notificationExcerpt'; main.append(excerpt);
+            const when = element('time', time.relative); when.title = time.exact; when.setAttribute('aria-label', time.exact); if (time.iso) when.setAttribute('datetime', time.iso); main.append(when); item.append(main);
+            const details = element('details'), summary = element('summary', 'Details'); details.className = 'notificationDetails';
+            details.open = expanded.has(row.id); details.addEventListener('toggle', () => { if (details.open) expanded.add(row.id); else expanded.delete(row.id); });
+            details.append(summary, element('p', row.event.body));
+            if (row.event.details) details.append(element('p', row.event.details));
+            if ((row.event.details || row.event.body.length > summaryLength) && (row.event.layout?.expandable !== false || !mainLink)) item.append(details);
+            for (const action of row.event.actions || []) {
+                const link = element('a', action.label); link.className = 'emby-button button-flat notificationAction'; link.dataset.size = action.size === 'normal' ? 'normal' : 'compact';
+                link.href = resolveLink(action.link); item.append(link);
+            }
+            const options = element('details'), trigger = element('summary'), menu = element('div'); options.className = 'notificationOptions'; trigger.setAttribute('aria-label', 'Notification options');
+            const icon = element('span', 'more_vert'); icon.className = 'material-icons'; icon.setAttribute('aria-hidden', 'true'); trigger.append(icon); menu.className = 'dialog paperList notificationOptionsMenu'; menu.setAttribute('role', 'menu'); options.append(trigger, menu); item.append(options);
+            options.addEventListener('toggle', () => { if (options.open) for (const other of panel.querySelectorAll?.('.notificationOptions[open]') || []) if (other !== options) other.open = false; });
+            options.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); options.open = false; trigger.focus(); }
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault(); options.open = true;
+                    const controls = [...menu.querySelectorAll('button:not(:disabled)')], index = controls.indexOf(document.activeElement);
+                    controls[(index + (event.key === 'ArrowDown' ? 1 : controls.length - 1) + controls.length) % controls.length]?.focus();
+                }
+            });
             for (const action of ['read', 'dismiss']) {
-                const control = element('button', action === 'read' ? 'Mark read' : 'Dismiss');
+                if (action === 'read' && row.read) continue;
+                const control = element('button', action === 'read' ? 'Mark read' : 'Hide notification'); control.setAttribute('role', 'menuitem');
                 control.onclick = async () => { await request('notifications/' + row.id + '/' + action, 'POST'); etag = undefined; poll(); };
-                item.append(control);
+                if (row.local) control.onclick = () => { if (action === 'dismiss') localRows = localRows.filter(item => item.id !== row.id); else row.read = true; render(); paintCount(unreadCount); };
+                menu.append(control);
+            }
+            if (row.event.source && !row.local && !row.event.adminOnly && row.event.severity !== 'critical') for (const [label, type] of [['Show fewer like this', row.event.type], ['Mute ' + ({ 'deletion-queue': 'removal notifications', 'private-syncplay': 'watch-party notifications', 'account-hub': 'account notifications' }[row.event.source] || row.event.source), '*']]) {
+                const control = element('button', label); control.setAttribute('role', 'menuitem');
+                control.onclick = async () => {
+                    control.disabled = true;
+                    try {
+                        await request('notifications/preferences/rule', 'PUT', { source: row.event.source, type, channel: 'in-app', enabled: false }); options.open = false;
+                    } catch { const status = element('p', 'Could not save. Try again.'); status.setAttribute('role', 'status'); menu.append(status); }
+                    finally { control.disabled = false; }
+                }; menu.append(control);
             }
             panel.append(item);
+        } }
+        const next = element('button', 'Older notifications'); next.disabled = !hasMore; next.hidden = !hasMore;
+        moreSentinel = next;
+        next.onclick = () => { if (inFlight || !hasMore) return; skip += 100; loadMoreRequested = true; etag = undefined; void poll(); }; panel.append(next);
+        if (hasMore && !panel.hidden && typeof IntersectionObserver !== 'undefined') {
+            moreObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) next.onclick(); }, { root: panel, rootMargin: '80px' });
+            moreObserver.observe(next);
         }
-        const previous = element('button', 'Newer notifications'); previous.disabled = skip === 0;
-        previous.onclick = () => { skip = Math.max(0, skip - 100); etag = undefined; poll(); };
-        const next = element('button', 'Older notifications'); next.disabled = !hasMore;
-        next.onclick = () => { skip += 100; etag = undefined; poll(); }; panel.append(previous, next);
-        const dismiss = element('button', 'Close notifications'); dismiss.onclick = close; panel.append(dismiss);
+        const dismiss = element('button', 'Close notifications'); dismiss.onclick = () => close(); panel.append(dismiss);
     }
     function renderSettings() {
         panel.replaceChildren(element('h2', 'Notification settings'));
         const back = element('button', 'Back to notifications'); back.onclick = () => { settingsView = false; render(); }; panel.append(back);
-        for (const channel of ['discord', 'in-app']) for (const enabled of [true, false]) {
-            const prefs = element('button', (enabled ? 'Enable' : 'Mute') + ' non-critical ' + channel + ' notifications');
-            prefs.onclick = async () => {
-                try {
-                    const current = await request('notifications/preferences');
-                    const values = current.preferences.filter(p => !(p.source === '*' && p.type === '*' && p.channel === channel));
-                    values.push({ source: '*', type: '*', channel, enabled });
-                    await request('notifications/preferences', 'PUT', values);
-                    prefs.textContent = 'Preference saved';
-                } catch { prefs.textContent = 'Preference could not be saved'; }
-            }; panel.append(prefs);
+        const view = element('div'), status = element('p'); status.className = 'notificationSettingsStatus'; status.setAttribute('role', 'status'); status.textContent = 'Loading preferences…';
+        settingsElement = view;
+        panel.append(status, view); const started = generation, controls = [], busy = new Set(); let rules = [], loading = true;
+        const active = () => settingsView && generation === started && view.isConnected;
+        const same = (a, b) => a.source === b.source && a.type === b.type && a.channel === b.channel;
+        const key = rule => JSON.stringify([rule.source, rule.type, rule.channel]);
+        const paint = () => { for (const entry of controls) { const enabled = rules.find(rule => same(rule, entry.rule))?.enabled ?? entry.rule.channel === 'in-app'; entry.button.disabled = loading || busy.has(key(entry.rule)); entry.button.setAttribute('aria-pressed', String(enabled === entry.rule.enabled)); } };
+        async function save(rule) {
+            if (loading || busy.has(key(rule))) return;
+            busy.add(key(rule)); paint();
+            try {
+                await request('notifications/preferences/rule', 'PUT', rule); if (!active()) return;
+                rules = rules.filter(value => !same(value, rule)); rules.push(rule); status.textContent = 'Saved'; renderMuted();
+            } catch { if (active()) status.textContent = 'Could not save. Try again.'; }
+            finally { busy.delete(key(rule)); if (active()) paint(); }
         }
-        const library = element('details'); library.append(element('summary', 'New episodes and movies: personal preferences'));
-        for (const [kind, label] of [['episode', 'new episodes'], ['movie', 'new movies']]) for (const channel of ['in-app', 'discord']) for (const enabled of [true, false]) {
-            const prefs = element('button', (enabled ? 'Enable ' : 'Mute ') + label + ' on ' + channel);
-            prefs.onclick = async () => {
-                try {
-                    const current = await request('notifications/preferences'), type = 'library.' + kind + '.added';
-                    const values = current.preferences.filter(p => !(p.source === 'account-hub' && p.type === type && p.channel === channel));
-                    values.push({ source: 'account-hub', type, channel, enabled });
-                    await request('notifications/preferences', 'PUT', values); prefs.textContent = 'Preference saved';
-                } catch { prefs.textContent = 'Preference could not be saved'; }
-            }; library.append(prefs);
+        function preferenceRow(label, source, type, channel, actionName, parent) {
+            const row = element('div'); row.className = 'notificationPreference'; row.append(element('span', label));
+            for (const enabled of [true, false]) {
+                const control = element('button', enabled ? 'On' : 'Muted'); control.className = 'emby-button button-flat'; control.disabled = true;
+                control.setAttribute('aria-label', (enabled ? 'Enable ' : 'Mute ') + actionName);
+                const rule = { source, type, channel, enabled }; controls.push({ button: control, rule }); control.onclick = () => save(rule); row.append(control);
+            }
+            parent.append(row);
         }
-        library.append(element('p', 'Applies to future personal inbox/DM notifications when enabled by your administrator. Shared Discord announcements are managed separately by administrators.'));
-        panel.append(library);
+        for (const channel of ['in-app', 'discord']) preferenceRow(channel === 'in-app' ? 'In-app notifications' : 'Discord notifications', '*', '*', channel, 'non-critical ' + channel + ' notifications', view);
+        const library = element('details'); library.append(element('summary', 'New episodes and movies'));
+        for (const [kind, label] of [['episode', 'new episodes'], ['movie', 'new movies']]) for (const channel of ['in-app', 'discord'])
+            preferenceRow(label[0].toUpperCase() + label.slice(1) + ' · ' + (channel === 'in-app' ? 'In-app' : 'Discord'), 'account-hub', 'library.' + kind + '.added', channel, label + ' on ' + channel, library);
+        view.append(library);
+        const muted = element('details'), mutedList = element('div'); muted.append(element('summary', 'Muted sources and types'), mutedList); view.append(muted);
+        function renderMuted() {
+            mutedList.replaceChildren();
+            for (const rule of rules.filter(rule => !rule.enabled)) {
+                const sourceName = { '*': 'All sources', 'account-hub': 'Accounts', 'deletion-queue': 'Removal requests', 'private-syncplay': 'Watch parties', 'discord-bridge': 'Discord Bridge', 'jellyfin-security': 'Security' }[rule.source] || rule.source;
+                const typeName = { '*': 'All types', 'library.episode.added': 'New episodes', 'library.movie.added': 'New movies' }[rule.type] || rule.type;
+                const row = element('div'); row.className = 'notificationPreference'; row.append(element('span', sourceName + ' · ' + typeName + ' · ' + (rule.channel === 'in-app' ? 'In-app' : 'Discord')));
+                const enable = element('button', 'Enable'); enable.setAttribute('aria-label', 'Unmute ' + rule.source + ' · ' + rule.type + ' · ' + rule.channel);
+                enable.onclick = async () => { enable.disabled = true; await save({ ...rule, enabled: true }); if (enable.isConnected) enable.disabled = false; }; row.append(enable); mutedList.append(row);
+            }
+            if (!mutedList.children.length) mutedList.append(element('p', 'No muted sources or types.'));
+        }
+        void request('notifications/preferences').then(current => {
+            if (!active()) return; rules = current.preferences; loading = false; status.textContent = ''; paint(); renderMuted();
+        }).catch(() => { if (active()) status.textContent = 'Could not load preferences. Reopen settings to try again.'; });
         // Do not hide or delete DeletionQueue's fallback bell. Expose its inbox through this surface
         // only when its adapter explicitly registers a reachable link and agrees to hand off mounting.
         const fallback = window.AccountHubLocalInbox;
         if (fallback && typeof fallback.href === 'string' && fallback.href.startsWith('#/')) {
             const link = element('a', 'DeletionQueue local notices'); link.href = fallback.href; panel.append(link);
         }
-        const dismiss = element('button', 'Close notifications'); dismiss.onclick = close; panel.append(dismiss);
+        const dismiss = element('button', 'Close notifications'); dismiss.onclick = () => close(); panel.append(dismiss);
     }
     function mount() {
-        if (forbidden() || !client()?.accessToken?.() || !client()?.getCurrentUserId?.()) { clear(); return false; }
+        if (forbidden() || !client()?.accessToken?.() || !client()?.getCurrentUserId?.()) { clear(true); return false; }
         const nextIdentity = url('notifications') + ':' + client().getCurrentUserId();
-        if (identity !== nextIdentity) { clear(); paused = false; identity = nextIdentity; }
+        if (identity !== nextIdentity) { clear(true); paused = false; identity = nextIdentity; }
         const anchor = [...document.querySelectorAll('.headerUserButton, [aria-controls="app-user-menu"]')].find(node => node.getClientRects().length && !node.closest('.videoOsdBottom'));
         if (button?.isConnected && anchor?.parentElement) {
             if (button.parentElement !== anchor.parentElement) anchor.parentElement.insertBefore(button, anchor);
@@ -131,8 +221,10 @@
                 const rect = button.getBoundingClientRect();
                 panel.style.top = Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) + 'px';
                 panel.style.right = innerWidth <= 600 ? '0' : Math.max(8, innerWidth - rect.right) + 'px';
-                panel.style.width = innerWidth <= 600 ? '100vw' : 'min(26rem, calc(100vw - 2rem))';
-                etag = undefined; render(); panel.focus(); void poll();
+                panel.style.width = innerWidth <= 600 ? 'calc(100vw - 1rem)' : 'min(26rem, calc(100vw - 2rem))';
+                panel.style.right = innerWidth <= 600 ? '.5rem' : Math.max(8, innerWidth - rect.right) + 'px';
+                panel.style.maxHeight = Math.max(100, innerHeight - Math.max(8, Math.min(rect.bottom + 8, innerHeight - 100)) - 8) + 'px';
+                skip = 0; loadMoreRequested = false; etag = undefined; render(); panel.focus(); void poll();
             }
         };
         anchor.parentElement.insertBefore(button, anchor); document.body.append(panel); paintCount(unreadCount); render();
@@ -140,6 +232,7 @@
     }
     function paintCount(count) {
         if (!button) return;
+        count += localRows.filter(row => !row.read).length;
         const icon = element('span', 'notifications'); icon.className = 'material-icons'; icon.setAttribute('aria-hidden', 'true');
         const badge = element('span', count > 99 ? '99+' : String(count)); badge.className = 'notificationBadge'; badge.hidden = !count;
         badge.setAttribute('aria-hidden', 'true'); button.replaceChildren(icon, badge); button.setAttribute('aria-label', count + ' unread notifications');
@@ -150,17 +243,32 @@
         if (document.hidden || !mount() || paused || inFlight) return;
         const activeIdentity = identity;
         const activeGeneration = generation;
+        const append = loadMoreRequested; loadMoreRequested = false;
         inFlight = true;
         try {
-            const response = await request('notifications?skip=' + skip + '&limit=100', 'GET', undefined, etag ? { 'If-None-Match': etag } : {});
+            let response;
+            if (!append && skip > 0) {
+                // Revalidate every loaded page: do not retain admin/media rows
+                // from an earlier page after the user's permissions change.
+                const collected = [];
+                for (let offset = 0; offset <= skip; offset += 100) {
+                    const page = await request('notifications?skip=' + offset + '&limit=100'); collected.push(...page.notifications);
+                    response = { ...page, notifications: collected, etag: undefined };
+                    if (!page.hasMore) { skip = offset; break; }
+                }
+            } else response = await request('notifications?skip=' + skip + '&limit=100', 'GET', undefined, etag ? { 'If-None-Match': etag } : {});
             if (identity !== activeIdentity || generation !== activeGeneration || forbidden()) return;
-            if (!response.unchanged) { rows = response.notifications; hasMore = response.hasMore ?? rows.length === 100; etag = response.etag; render(); }
+            if (!response.unchanged) {
+                rows = append ? [...new Map([...rows, ...response.notifications].map(row => [row.id, row])).values()] : response.notifications;
+                hasMore = response.hasMore ?? response.notifications.length === 100; etag = append ? undefined : response.etag; render();
+            }
             const count = await request('notifications/unread-count');
             unreadCount = count.count; paintCount(unreadCount);
             delay = 30000;
-        } catch { delay = Math.min(delay * 2, 300000); }
+        } catch { if (append) skip = Math.max(0, skip - 100); delay = Math.min(delay * 2, 300000); }
         finally {
             inFlight = false;
+            if (moreObserver && moreSentinel && hasMore && !panel?.hidden && !settingsView) { moreObserver.disconnect(); moreObserver.observe(moreSentinel); }
             // Navigation can occur while a request is in flight; don't strand the new view.
             if (generation !== activeGeneration && !paused) timer = setTimeout(poll, 0);
         }
@@ -168,9 +276,20 @@
     }
     const resume = () => { paused = false; poll(); };
     document.addEventListener('pointerdown', event => {
-        if (panel && !panel.hidden && !panel.contains(event.target) && !button?.contains(event.target)) close();
+        for (const menu of panel?.querySelectorAll?.('.notificationOptions[open]') || []) if (!menu.contains(event.target)) menu.open = false;
+        if (panel && !panel.hidden && !panel.contains(event.target) && !button?.contains(event.target)) close(false);
     }, true);
     window.addEventListener('focus', resume);
+    window.addEventListener('suite-notification-dismiss', () => close(false));
+    window.addEventListener('suite-notification-message', event => {
+        // Transient UI feedback only. Never accepted as a server publication,
+        // never persisted, and never shown across account/auth boundaries.
+        if (!mount() || paused) return;
+        const data = event.detail, user = String(client().getCurrentUserId()).replaceAll('-', '').toLowerCase();
+        if (!data || String(data.userId).replaceAll('-', '').toLowerCase() !== user || typeof data.body !== 'string') return;
+        localRows.unshift({ id: 'ui-' + (++localSequence), local: true, read: false, event: { title: String(data.title || 'Update').slice(0, 200), body: data.body.slice(0, 4000), occurredAt: new Date().toISOString() } });
+        localRows = localRows.slice(0, 50); render(); paintCount(unreadCount);
+    });
     window.addEventListener('hashchange', () => { clear(); resume(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(timer); else resume(); });
     // Coalesce DOM remounts without network traffic on every mutation.

@@ -1,4 +1,25 @@
-# Consolidation and review — 2026-10-24
+# Consolidation and review — 2026-10-25
+
+## Current Notifications interface checkpoint
+
+Notifications owns the producer registry, layout overrides, inbox and administrator-alert recipient resolution. Other plugins register declarative types, trigger descriptions, allowed navigation actions and recipient policies through `NotificationsClient` / `NotificationIntegration`. Registrations and revisioned layout overrides persist independently of producer restarts. Domain access requirements persist and fail closed when callbacks disappear. Administrator alerts use current native administrators; private notifications are not copied to them. Deletion Queue now uses a distinct `alert.removal_uncertain` administrator type while retaining legacy `proposal.uncertain` compatibility.
+
+Personal preferences use atomic per-rule writes, show On/Muted state, allow restoring muted sources, and retain an active editor during silent refresh. Inbox projections withhold other recipients' identities. New removal requests require standalone Notifications with `registered-types` and `scoped-access`; existing consent, Undo and history remain available when that dependency fails.
+
+### Latest local evidence
+
+- Full root tests passed: `artifacts/notification-interface-hardened-root-tests.log`.
+- Both updated isolated gates passed: `artifacts/notification-interface-hardened-notifications-tests.log` and `artifacts/notification-interface-hardened-deletion-queue-tests.log`. Coverage includes **81 notification backend**, **22 bell frontend** and **154 Deletion Queue** tests. Workflow lint passed. The common jsdom harness is now installed for every selected plugin; the notification test-name filter avoids Windows shell pipe interpretation.
+- Fresh five-plugin Linux x64 packages: `artifacts/notification-interface-hardened-suite`, local test version `0.2.6.0`. No release/tag/publication was performed.
+- Installed all-five browser/API checks passed on disposable Jellyfin 12.3 Linux amd64: `suite-integration-fdb08e4a-699b-4f4c-ae8c-ee4cf7ddc40a` in the approved temporary folder. Includes real preference mute/restore, real revisioned layout save, four read-only removal menu contracts, compact grouped notification scrolling/options and shared admin/help/theme checks. Mobile menu screenshot reviewed under `admin-screenshots/notifications-menu-320.png`.
+- Fresh Deletion Queue + Notifications + pinned Security passed: `suite-integration-7541ea94-a7e0-45e5-935a-1269ee15113d`. Fresh Deletion Queue without Notifications passed its dependency-failure checks: `suite-integration-95a6a917-5eb4-4fe9-9728-5a522f31a83f`.
+- The **64/64** combination matrix in `artifacts/notification-interface-combinations` used the older `artifacts/notification-interface-suite`. It predates final preference/privacy/access/UI hardening; it is not a matrix run of the newest packages. The newer focused installed checks above do not replace exhaustive version-skew certification.
+
+### Still not release ready
+
+Account Invitations extraction/owner-profile migration and the authoritative shared connection registry remain incomplete. Actual Enhanced 12.13/custom-skin right-click markup, real Seerr/Arr removal, human Discord commands/DM/Activity, two-player visual synchronization, installed Windows and physical ARM remain unverified. Rich images/media, executable/custom-command actions and audio/toast preferences are follow-ups. Retained constructor ABI does not certify arbitrary independently versioned DLL combinations. Some older admin/help copy still uses “proposal”; integrated removal actions use **Request removal**, while backend identifiers remain compatible. No production data was tested and no native Jellyfin schema/index was changed.
+
+The sections below are historical checkpoints; newer evidence and scope statements above supersede conflicting descriptions of embedded Notifications or four-plugin architecture.
 
 ## Preserved work
 

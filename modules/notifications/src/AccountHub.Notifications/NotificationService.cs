@@ -7,7 +7,27 @@ namespace AccountHub.Notifications;
 
 public sealed class NotificationService(NotificationStore store, INotificationHost host, NotificationOptions options)
 {
-    public static readonly string[] Operations = ["hello", "health", "notifications.publish", "notifications.publishBatch", "audit.publish"];
+    public static readonly string[] Operations = ["hello", "health", "notifications.register", "notifications.publish", "notifications.publishBatch", "audit.publish"];
+    public NotificationCatalogEntry[] Catalog()
+    {
+        foreach (var registration in host.NotificationRegistrations) {
+            try { Register(registration); }
+            catch (NotificationException) { /* An invalid optional descriptor must not hide other producers' inboxes. Publication for that producer still fails validation. */ }
+        }
+        return store.NotificationTypes();
+    }
+    public void Register(NotificationRegistration registration) {
+        Validation.Registration(registration, options);
+        var catalogs = store.NotificationTypes();
+        Validation.Require(catalogs.Length < 100 || catalogs.Any(catalog => catalog.Source == registration.Source), "Producer registry capacity reached");
+        if (catalogs.Any(catalog => catalog.Source == registration.Source && catalog.RequireAccess)) registration = registration with { RequireAccess = true };
+        store.RegisterTypes(registration);
+    }
+    public void SaveLayout(NotificationLayoutUpdate update) { Validation.Layout(update.Layout); store.SaveNotificationLayout(update); }
+    private static NotificationTypeDefinition? Definition(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => catalogs.FirstOrDefault(catalog => catalog.Source == entry.Source)?.Types
+        .Where(type => type.Type == entry.Type || type.Type == "*" || type.Type.EndsWith(".*", StringComparison.Ordinal) && entry.Type.StartsWith(type.Type[..^1], StringComparison.Ordinal))
+        .OrderByDescending(type => type.Type == entry.Type ? int.MaxValue : type.Type.Length).FirstOrDefault();
+    public static NotificationEvent Present(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => Definition(entry, catalogs) is { } definition ? entry with { Layout = definition.Layout } : entry;
 
     public async Task<string> DispatchAsync(string json, CancellationToken ct, ProducerIdentity? producer = null, string? requiredOperation = null)
     {
@@ -23,7 +43,11 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             switch (request.Operation)
             {
                 case "hello": data = new { hostVersion = "0.1.0", apiVersion = "1", operations = Operations }; break;
-                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook" } }; break;
+                case "health": data = new { ready = store.Ready, hostVersion = "0.1.0", schemaVersion = 1, features = new[] { "inbox", "discord", "webhook", "registered-types", "layouts", "admin-alerts", "scoped-access" } }; break;
+                case "notifications.register":
+                    if (producer is not null) throw new NotificationException("unauthorized", "Only internal plugins can register types", 403);
+                    Register(request.Payload.Deserialize<NotificationRegistration>(Contract.Json) ?? throw new NotificationException("invalid_request", "Missing registration"));
+                    data = new { status = "registered" }; break;
                 case "notifications.publish": data = await PublishAsync(request.Payload, ct, producer); break;
                 case "notifications.publishBatch":
                     if (!request.Payload.TryGetProperty("events", out var events) || events.ValueKind != JsonValueKind.Array || events.GetArrayLength() is < 1 or > 50)
@@ -62,9 +86,25 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
 
     public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null)
     {
-        Validation.Event(entry, options, producer);
+        var registrations = host.NotificationRegistrations.Where(registration => registration.Source == entry.Source).ToArray();
+        var registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
+        Validation.Event(entry, options, producer, registered is not null || registrations.Length > 0);
         // Acknowledged events do not depend on today's directory/link/preferences availability.
         if (store.TryDuplicate(entry, hash) is { } duplicate) return duplicate;
+        foreach (var registration in registrations) Register(registration);
+        registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
+        var definition = Definition(entry, registered is null ? [] : [registered]);
+        Validation.Require(registered is null ? options.Sources.Contains(entry.Source) : definition is not null, "Unregistered notification type");
+        if (definition is not null) {
+            Validation.Require(definition.Recipients == "event" || entry.AdminOnly == (definition.Recipients == "administrators"), "Registered recipient policy denied");
+            Validation.Require(entry.Actions is null || entry.Actions.All(action => definition.Actions.Any(allowed => allowed.Label == action.Label)), "Undeclared notification action");
+            entry = entry with { Layout = definition.Layout, Actions = entry.Actions?.Select(action => action with { Size = definition.Actions.First(allowed => allowed.Label == action.Label).Size }).ToArray() };
+        }
+        if (registered?.RequireAccess == true && !entry.AdminOnly) {
+            if (!host.NotificationAccessAvailable(entry.Source)) throw new NotificationException("unavailable", "Producer permission provider unavailable", 503);
+            var metadata = new Dictionary<string, string>(entry.Metadata ?? []) { ["notificationAccess"] = "required" };
+            entry = entry with { Metadata = metadata };
+        }
         var audience = (entry.AdminOnly ? await host.AdministratorsAsync(ct) : entry.Audience).Distinct().ToArray();
         Validation.Require(audience.Length <= options.MaxAudience, "Audience exceeds host limit");
         var routes = store.Settings(false).Routes;

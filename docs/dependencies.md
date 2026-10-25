@@ -1,5 +1,9 @@
 # Independent plugins and optional features
 
+Deletion Queue now requires the standalone Notifications plugin to accept new removal requests and previews. Missing or unready Notifications blocks new intake with a repair message, not a local second inbox. Existing consent, Undo and history remain accessible for recovery. Install Notifications explicitly; no automatic Jellyfin dependency installation is claimed.
+
+Required readiness includes the standalone owner marker and health capabilities `registered-types` and `scoped-access`; older providers require an update. Other producers register notification types/layouts/actions/recipient rules through the portable `AccountHub.Api` SDK without installing Hub. Administrator alerts resolve current native administrators; domain access callbacks remain mandatory where registered. Initial extraction requires coordinated consumer updates; arbitrary old/new package combinations are not certified.
+
 > **Superseded target:** the owner selected a five-plugin architecture on 2026-10-25. [Product requirements](product-requirements.md) now govern the migration, standalone Notifications, shared settings and invitation-to-Discord dependency. The tables below describe the earlier implementation only, not the new target or proof of automatic dependency installation.
 
 **Notifications** is now a fifth installable plugin alongside Account Hub, Discord Bridge, Deletion Queue and Private SyncPlay. It owns the shared inbox, preferences, server delivery settings and worker, without requiring Hub. Hub's old routes/backend registration remain compatibility adapters when upgrading; the standalone owner suppresses the old bell and delivery worker. Its one-time migration moves notification tables and re-protects their secrets into its own database/key ring, then retires the source tables. See [upgrade and migration](../plugins/notifications/README.md). Security/Lifecycle remain implementation modules. Jellyfin Security and Seerr are separate external integrations.
@@ -34,7 +38,7 @@ Installed/enabled metadata is not a claim that an external service or bot is con
 
 ## Combination tests
 
-`scripts/test-combinations.mjs` exercises all 16 subsets of the four plugins, including the no-plugin baseline, on new isolated Jellyfin servers. Supplying `--security=<pinned-jf12-zip>` runs all 16 again with native Security (32 cases). Cases verify actual installed startup, standalone settings writes, rejected invalid confirmation/origin/JSON, and per-feature dependency reports. Live Discord messaging still needs disposable bot/guild credentials. These checks do not certify unfinished onboarding, group intent or Seerr job features.
+`scripts/test-combinations.mjs` exercises all 32 subsets of the five currently packaged plugins, including the no-plugin baseline, on new isolated Jellyfin servers. Supplying `--security=<pinned-jf12-zip>` runs all 32 again with native Security (64 cases). Cases verify actual installed startup, standalone settings writes, rejected invalid confirmation/origin/JSON, and per-feature dependency reports. The interface matrix passed 64/64 on an earlier coordinated package set; see [current evidence and its limits](review-status.md) for newer focused checks. Live Discord messaging still needs disposable bot/guild credentials. These checks do not certify unfinished onboarding, group intent, Seerr job features or arbitrary independent version skew.
 
 ```powershell
 node scripts/test-combinations.mjs --packages=artifacts/release/v0.2.0/linux-x64 --jobs=2

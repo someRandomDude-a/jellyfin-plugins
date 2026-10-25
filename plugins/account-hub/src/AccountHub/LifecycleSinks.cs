@@ -18,12 +18,11 @@ public sealed class LifecycleAuditSink(HubStore store) : IAuditSink
     }, ct);
 }
 
-public sealed class LifecycleNoticeSink(AccountHub.Notifications.NotificationService notifications) : IAdminNoticeSink
+public sealed class LifecycleNoticeSink(AccountHub.Api.NotificationsClient notifications) : IAdminNoticeSink
 {
     public async Task PublishAsync(CancellationToken ct)
     {
         var entry = new AccountHub.Api.NotificationEvent(1, Guid.NewGuid(), "account-hub", "account.updated", "info", "Account activity", "Review Account Hub audit for account activity.", [], true, DateTimeOffset.UtcNow);
-        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(AccountHub.Api.Contract.Serialize(entry))));
-        await notifications.PublishAsync(entry, hash, ct);
+        await notifications.PublishRequiredAsync(entry, ct);
     }
 }

@@ -44,6 +44,9 @@ public sealed class Registrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("notifications", "1", [
+            new("notifications.*", "Notification alerts", "Delivery or notification configuration needs review", "administrators", new(), [])
+        ]));
         services.AddSingleton<Storage>();
         services.AddKeyedSingleton<Func<bool>>("Notifications.Owner.1", (_, _) => () => true);
         services.RemoveAll<NotificationOptions>();

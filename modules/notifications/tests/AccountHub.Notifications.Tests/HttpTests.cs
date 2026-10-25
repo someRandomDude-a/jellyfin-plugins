@@ -33,6 +33,72 @@ public sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptio
 public sealed class HttpTests
 {
     [Fact]
+    public async Task InboxDoesNotExposeOtherRecipientsOfTheSameEvent()
+    {
+        var f = new Fixture(); await f.Publish(f.Event() with { Audience = [f.Host.Alice, f.Host.Bob] });
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob);
+        var a = await alice.GetStringAsync(Base + "/notifications");
+        var b = await bob.GetStringAsync(Base + "/notifications");
+        Assert.DoesNotContain(f.Host.Bob.ToString(), a); Assert.DoesNotContain(f.Host.Alice.ToString(), b);
+        Assert.Single(f.Store.Inbox(f.Host.Alice, 0, 25, null, false));
+        Assert.Single(f.Store.Inbox(f.Host.Bob, 0, 25, null, false));
+    }
+    [Fact]
+    public async Task ConcurrentPersonalRuleChangesPreserveOtherPreferencesAndCannotChangeAnotherUser()
+    {
+        var f = new Fixture(); var global = new Preference("*", "*", "discord", true); f.Store.Preferences(f.Host.Alice, [global]);
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob);
+        HttpContent Body(Preference rule) => new StringContent(Contract.Serialize(rule), Encoding.UTF8, "application/json");
+        var responses = await Task.WhenAll(
+            alice.PutAsync(Base + "/notifications/preferences/rule", Body(new("account-hub", "library.episode.added", "in-app", false))),
+            alice.PutAsync(Base + "/notifications/preferences/rule", Body(new("deletion-queue", "*", "in-app", false))));
+        foreach (var response in responses) { Assert.Equal(HttpStatusCode.OK, response.StatusCode); response.Dispose(); }
+        Assert.Equal(3, f.Store.Preferences(f.Host.Alice).Length); Assert.Contains(global, f.Store.Preferences(f.Host.Alice)); Assert.Empty(f.Store.Preferences(f.Host.Bob));
+        await bob.PutAsync(Base + "/notifications/preferences/rule", Body(new("example", "*", "in-app", false)));
+        Assert.Equal(3, f.Store.Preferences(f.Host.Alice).Length); Assert.Single(f.Store.Preferences(f.Host.Bob));
+    }
+    [Fact]
+    public async Task OnlyAdministratorsCanReviewTypesAndChangeRevisionedLayouts()
+    {
+        var f = new Fixture();
+        f.Service.Register(new("deletion-queue", "1", [new("proposal.updated", "Removal requests", "Status changes", "explicit-users", new(), [])]));
+        await f.Publish(f.Event());
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob);
+        var initial = await alice.GetAsync(Base + "/notifications"); alice.DefaultRequestHeaders.IfNoneMatch.Add(initial.Headers.ETag!);
+        Assert.Equal(HttpStatusCode.Forbidden, (await alice.GetAsync(Base + "/settings/notifications/types")).StatusCode);
+        Assert.Contains("Removal requests", await bob.GetStringAsync(Base + "/settings/notifications/types"));
+        var update = new NotificationLayoutUpdate("deletion-queue", "proposal.updated", 1, new("standard", 180));
+        HttpContent Body() => new StringContent(Contract.Serialize(update), Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.Forbidden, (await alice.PutAsync(Base + "/settings/notifications/types/layout", Body())).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await bob.PutAsync(Base + "/settings/notifications/types/layout", Body())).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await bob.PutAsync(Base + "/settings/notifications/types/layout", Body())).StatusCode);
+        var updated = await alice.GetAsync(Base + "/notifications"); Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.Contains("\"summaryLength\":180", await updated.Content.ReadAsStringAsync());
+        Assert.Equal(140, f.Store.Inbox(f.Host.Alice, 0, 25, null, false).Single().Event.Layout!.SummaryLength);
+    }
+    [Fact]
+    public async Task Administrator_details_and_actions_are_not_visible_to_ordinary_or_demoted_users()
+    {
+        var f = new Fixture();
+        await f.Publish(f.Event(admin: true) with { Title = "Admin-only incident", Details = "Private diagnostic detail", Actions = [new("Review", "#/dashboard", "compact")] });
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob);
+        var ordinary = await alice.GetStringAsync(Base + "/notifications"); Assert.DoesNotContain("Admin-only incident", ordinary); Assert.DoesNotContain("Private diagnostic detail", ordinary);
+        var first = await bob.GetAsync(Base + "/notifications"); Assert.Contains("Private diagnostic detail", await first.Content.ReadAsStringAsync());
+        bob.DefaultRequestHeaders.IfNoneMatch.Add(first.Headers.ETag!); f.Host.Admins.Remove(f.Host.Bob);
+        var demoted = await bob.GetAsync(Base + "/notifications"); Assert.Equal(HttpStatusCode.OK, demoted.StatusCode);
+        var text = await demoted.Content.ReadAsStringAsync(); Assert.DoesNotContain("Admin-only incident", text); Assert.DoesNotContain("Private diagnostic detail", text); Assert.DoesNotContain("#/dashboard", text);
+        Assert.Contains("\"count\":0", await bob.GetStringAsync(Base + "/notifications/unread-count"));
+    }
+    [Theory]
+    [InlineData("javascript:alert(1)", "compact")]
+    [InlineData("#/home", "giant")]
+    public async Task Rich_actions_reject_executable_links_and_arbitrary_sizes(string link, string size)
+    {
+        var f = new Fixture(); var reply = await f.Dispatch("notifications.publish", f.Event() with { Actions = [new("Review", link, size)] });
+        Fixture.Ok(reply, expected: false);
+        Assert.Empty(f.Store.Inbox(f.Host.Alice, 0, 25, null, false));
+    }
+    [Fact]
     public async Task Library_permission_revocation_invalidates_cached_inbox_and_unread_count()
     {
         var f = new Fixture(); await f.Publish(f.Event() with { Type = "library.episode.added", Title = "Private episode" });

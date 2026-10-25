@@ -11,7 +11,9 @@ const http = require('node:http');
     // secure context without disabling browser security or changing plugin code.
     const upstream = base;
     const relay = http.createServer((req, res) => {
-        const outgoing = http.request(new URL(req.url, upstream.origin), { method: req.method, headers: { ...req.headers, host: upstream.host } }, incoming => {
+        // Preserve the browser Host as well as Origin. Replacing Host with the
+        // upstream port makes native same-origin checks reject legitimate writes.
+        const outgoing = http.request(new URL(req.url, upstream.origin), { method: req.method, headers: { ...req.headers } }, incoming => {
             res.writeHead(incoming.statusCode, incoming.headers); incoming.pipe(res);
         });
         outgoing.on('error', () => { res.writeHead(502); res.end(); }); req.pipe(outgoing);
@@ -19,6 +21,7 @@ const http = require('node:http');
     await new Promise(resolve => relay.listen(0, '127.0.0.1', resolve));
     base = new URL(base.pathname, `http://127.0.0.1:${relay.address().port}`);
     const browser = await chromium.launch({ headless: true });
+    let phase = 'login';
     try {
         const page = await browser.newPage();
         await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=AccountHub');
@@ -37,6 +40,7 @@ const http = require('node:http');
             for (const width of [320, 390, 1280]) {
                 await page.setViewportSize({ width, height: 900 });
                 for (const name of ['People', 'Groups', 'Invites', 'Library', 'Notifications', 'Settings']) {
+                    phase = `workspace/${theme}/${width}/${name}`;
                     const tab = page.getByRole('tab', { name, exact: true });
                     await tab.click();
                     const panel = page.getByRole('tabpanel', { name, exact: true });
@@ -90,13 +94,62 @@ const http = require('node:http');
             await page.locator('#account-hub-inbox').waitFor({ state: 'visible' });
             await page.getByRole('button', { name: 'Notification settings', exact: true }).click();
             await page.getByRole('heading', { name: 'Notification settings', exact: true }).waitFor();
+            const muteInApp = page.getByRole('button', { name: 'Mute non-critical in-app notifications', exact: true });
+            await muteInApp.click();
+            await page.waitForFunction(() => document.querySelector('[aria-label="Mute non-critical in-app notifications"]')?.getAttribute('aria-pressed') === 'true');
+            await page.getByText('Muted sources and types', { exact: true }).click();
+            await page.getByRole('button', { name: 'Unmute * · * · in-app', exact: true }).click();
+            await page.waitForFunction(() => document.querySelector('[aria-label="Enable non-critical in-app notifications"]')?.getAttribute('aria-pressed') === 'true');
             await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
+            const inboxPattern = '**/Notifications/api/v1/notifications?*';
+            await page.route(inboxPattern, route => {
+                const skip = Number(new URL(route.request().url()).searchParams.get('skip') || 0);
+                return route.fulfill({ json: { ok: true, data: { hasMore: skip === 0, notifications: Array.from({ length: 20 }, (_, i) => ({ id: 'fixture-' + (skip + i), read: false, event: {
+                    title: 'Compact notification ' + (skip + i), body: 'A short summary of the update.', details: 'Expanded details stay inside the notification menu.',
+                    occurredAt: new Date(Date.now() - (i === 19 ? 8 * 86400000 : 2 * 3600000)).toISOString(), severity: i % 10 === 0 ? 'warning' : 'info',
+                    actions: [{ label: 'Small action', link: '#/home', size: 'compact' }, { label: 'Normal action', link: '#/home', size: 'normal' }]
+                } })) } } });
+            });
+            for (const width of [320, 1280]) {
+                phase = 'notification-scroll/' + width;
+                await page.setViewportSize({ width, height: 900 });
+                await page.locator('[data-notifications-bell]').click();
+                await page.locator('#account-hub-inbox section').filter({ hasText: 'Compact notification 0' }).waitFor();
+                const inbox = page.locator('#account-hub-inbox');
+                assert(await inbox.evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight; }), 'Notification menu must fit the viewport');
+                assert(await page.locator('[data-notifications-bell]').evaluate(e => { const badge = e.querySelector('.notificationBadge'); if (!badge) return false; const b = badge.getBoundingClientRect(), p = e.getBoundingClientRect(); return b.top >= p.top && b.right <= p.right + 1; }), 'Badge must stay inside header button bounds');
+                const first = inbox.locator('section').first();
+                assert(await first.locator('time').getAttribute('datetime'), 'Notification must expose an exact timestamp');
+                assert.match(await first.locator('time').textContent(), /hours? ago/);
+                assert.equal(await first.locator('.notificationMain').getAttribute('href'), '#/home');
+                await first.locator('.notificationOptions > summary').click();
+                await first.getByRole('menuitem', { name: 'Hide notification', exact: true }).waitFor();
+                await inbox.getByRole('heading', { name: 'Notifications', exact: true }).click();
+                assert.equal(await first.locator('.notificationOptions').evaluate(e => e.open), false);
+                if (!await first.locator('.notificationDetails').evaluate(e => e.open)) await first.locator('.notificationDetails > summary').click();
+                assert(await first.locator('.notificationDetails').evaluate(e => e.open), 'Notification details did not expand at ' + width);
+                const actionSizes = await first.evaluate(e => ['compact','normal'].map(size => { const action = e.querySelector('[data-size=' + size + ']'); return { height: action.getBoundingClientRect().height, font: getComputedStyle(action).fontSize }; }));
+                assert(actionSizes[0].height < actionSizes[1].height, 'Producer action sizes must differ: ' + JSON.stringify(actionSizes));
+                await inbox.getByRole('button', { name: 'Older notifications', exact: true }).scrollIntoViewIfNeeded();
+                await page.waitForFunction(() => document.querySelectorAll('#account-hub-inbox section').length === 40);
+                assert.equal(await inbox.getByRole('heading', { name: 'Compact notification 0', exact: true }).count(), 1, 'Scrolling must retain earlier notifications without duplication');
+                for (const group of ['Important', 'Other', 'Older']) assert.equal(await inbox.getByRole('heading', { name: group, exact: true }).count(), 1);
+                if (process.env.ADMIN_SCREENSHOTS) {
+                    await inbox.evaluate(e => { e.scrollTop = 0; });
+                    await inbox.locator('section').first().locator('.notificationOptions > summary').click();
+                    await inbox.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/notifications-menu-' + width + '.png' });
+                }
+                await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
+            }
+            await page.unroute(inboxPattern);
         }
         // Installed injection + bounded DOM/API contracts; no deletion or real media access.
         const deletionItem = '11111111111111111111111111111111';
         let deletionPreviews = 0;
         await page.route('**/DeletionQueue/targets/items/*/capabilities', route => route.fulfill({ json: { canPropose: true } }));
         await page.route('**/DeletionQueue/targets/items/*/preview', route => {
+            assert.equal(route.request().method(), 'POST');
+            assert.deepEqual(route.request().postDataJSON(), {}, 'Removal preview must send valid JSON');
             deletionPreviews++;
             return route.fulfill({ json: { title: 'Deletion UI fixture', kind: 'Movie', executionAvailable: false } });
         });
@@ -116,21 +169,47 @@ const http = require('node:http');
         await page.evaluate(() => {
             const menu = document.createElement('div'); menu.className = 'actionSheet';
             menu.innerHTML = '<div class="actionSheetScroller"></div>';
-            menu.addEventListener('click', () => { menu.dispatchEvent(new Event('close')); menu.remove(); });
+            menu.addEventListener('click', () => { menu.remove(); });
             document.body.append(menu);
         });
         await page.locator('.dq-context-action').waitFor({ state: 'attached' });
         await page.locator('.dq-context-action').dispatchEvent('click');
         await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
         await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
-        assert.equal(deletionPreviews, 3, 'Detail, Enhanced request and right-click must each open a preview without proposing deletion');
+        phase = 'removal-context-native-dialog';
+        await page.evaluate(() => {
+            const menu = document.createElement('dialog'); menu.className = 'dialog actionSheet'; menu.id = 'dq-native-menu-fixture';
+            menu.innerHTML = '<div class="actionSheetScroller"></div>'; document.body.append(menu);
+            document.querySelector('#dq-installed-contract .card').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+            menu.showModal();
+        });
+        await page.locator('#dq-native-menu-fixture').getByRole('button', { name: 'Request removal', exact: true }).click();
+        await page.getByRole('heading', { name: 'Deletion UI fixture', exact: true }).waitFor();
+        assert.equal(await page.locator('#dq-native-menu-fixture').evaluate(e => e.open), false, 'Native menu must dismiss before the request preview');
+        await page.locator('dialog.dq-panel').getByRole('button', { name: 'Close', exact: true }).click();
+        await page.locator('#dq-native-menu-fixture').evaluate(e => e.remove());
+        assert.equal(deletionPreviews, 4, 'Detail, Enhanced request, removed menu and native dialog must each open a read-only preview');
         await page.evaluate(() => document.querySelector('#dq-installed-contract')?.remove());
         const adminPages = [];
         for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
+            phase = 'admin/' + name;
             await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=' + name);
             await page.locator(ready).first().waitFor();
             await page.waitForLoadState('networkidle');
             if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+            if (name === 'Notifications') {
+                const catalog = page.locator('[data-notification-settings] > details');
+                await catalog.locator(':scope > summary').click();
+                const type = catalog.locator('fieldset').filter({ has: page.locator('legend', { hasText: 'Account notifications' }) }).first();
+                await type.waitFor();
+                await type.getByLabel('Layout', { exact: true }).selectOption('standard');
+                await type.getByLabel('Summary length', { exact: true }).fill('180');
+                await type.getByRole('button', { name: 'Save layout', exact: true }).click();
+                await page.waitForFunction(() => [...document.querySelectorAll('[data-notification-settings] [role=status]')].some(node => node.textContent.length));
+                assert(await page.locator('[data-notification-settings]').evaluate(e => [...e.querySelectorAll('[role=status]')].some(node => node.textContent === 'Saved / refreshed.')), 'Layout save failed: ' + await page.locator('[data-notification-settings] [role=status]').allTextContents());
+                assert.equal(await type.getByLabel('Layout', { exact: true }).inputValue(), 'standard');
+                await catalog.locator(':scope > summary').click();
+            }
             if (name === 'privateSyncPlay') {
                 await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
                 // Hold an actual refresh at dependency loading: network-idle or
@@ -184,5 +263,6 @@ const http = require('node:http');
             activity.push({ width, unavailableFailsClosed: true, nativeLabels: true });
         }
         console.log(JSON.stringify({ checks: results, customThemeOverride: true, keyboardTabNavigation: true, syncplaySettings: true, adminPages, activity }));
-    } finally { await browser.close(); relay.closeAllConnections(); await new Promise(resolve => relay.close(resolve)); }
+    } catch (error) { throw new Error(phase + ': ' + error.message); }
+    finally { await browser.close(); relay.closeAllConnections(); await new Promise(resolve => relay.close(resolve)); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -26,16 +26,17 @@
         return { root, input, value: () => input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value };
     }
     window.AccountHubNotificationSettings = {
-        async mount(root, request, { discordAvailable = true } = {}) {
+        async mount(root, request, { discordAvailable = true, signal } = {}) {
             root.classList.add('suiteCard');
             let revision, skip = 0, disposed = false; const routes = [], list = make('div'), deliveries = make('div'), status = make('p'); status.setAttribute('role', 'status');
+            let sourceChoices = ['*', 'account-hub', 'deletion-queue', 'private-syncplay', 'jellyfin-security', 'discord-bridge', 'notifications'];
             const retention = control('Keep notifications (days)', 90, null, 'Keep inbox history for 7–365 days.'); retention.input.min = 7; retention.input.max = 365;
-            const button = (text, work) => { const node = make('button', text); node.onclick = async () => { node.disabled = true; try { await work(); if (!disposed) status.textContent = 'Saved / refreshed.'; } catch (error) { if (!disposed) status.textContent = error.message || 'Request failed. Reload revision and check authorization or delivery health.'; } finally { node.disabled = false; } }; return node; };
+            const button = (text, work) => { const node = make('button', text); node.onclick = async () => { if (disposed) return; node.disabled = true; try { await work(); if (!disposed) status.textContent = 'Saved / refreshed.'; } catch (error) { if (!disposed) status.textContent = error.message || 'Request failed. Reload revision and check authorization or delivery health.'; } finally { node.disabled = false; } }; return node; };
             function addRoute(route = { id: crypto.randomUUID(), source: '*', type: '*', channel: 'discord', destination: '', adminOnly: true, directMessage: false, allowHttp: false, allowPrivate: false }) {
                 if (routes.length >= 50) throw Error('At most 50 routes are supported.');
                 const section = make('fieldset'), legend = make('legend', 'Delivery route'), grid = make('div'); grid.className = 'hubGrid';
                 const fields = {
-                    source: control('Source', route.source, ['*', 'account-hub', 'deletion-queue', 'private-syncplay', 'jellyfin-security'], 'Choose a producer, or * for all producers.'),
+                    source: control('Source', route.source, [...new Set([...sourceChoices, route.source])], 'Choose a producer, or * for all producers. Registered plugins appear automatically.'),
                     type: control('Event type', route.type, null, 'Use an exact event type, or * for all events.'), channel: control('Channel', route.channel, ['discord', 'webhook'], 'Discord channels must be approved in Discord Bridge. Webhooks receive signed HTTP requests.'),
                     destination: control('Destination', route.destination, null, 'Discord channel ID or webhook URL. Leave [configured] unchanged to keep the saved destination.'), adminOnly: control('Administrator-only summary', route.adminOnly, null, 'Limit shared delivery to administrator summaries. Invite and reset credentials are never included.'),
                     directMessage: control('Send Discord DMs', route.directMessage, null, 'Send to opted-in users with verified Discord links.'), allowHttp: control('Allow HTTP webhook', route.allowHttp, null, 'Allow an unencrypted connection. Enable only for a trusted network.'),
@@ -56,11 +57,13 @@
             }
             const eraseSecrets = () => { for (const entry of routes) entry.fields.secret.input.value = ''; };
             async function loadSettings() {
+                if (disposed) return;
                 const data = await request('settings/notifications', 'GET'); if (disposed) return;
                 eraseSecrets(); routes.length = 0; list.replaceChildren(); revision = data.revision; retention.input.value = data.notificationDays;
                 for (const route of data.routes) addRoute(route);
             }
             async function loadDeliveries() {
+                if (disposed) return;
                 const data = await request('settings/notifications/deliveries?skip=' + skip + '&limit=25', 'GET'); if (disposed) return;
                 deliveries.replaceChildren(make('h3', 'Recent deliveries'));
                 if (!data.deliveries.length) deliveries.append(make('p', 'No deliveries yet.'));
@@ -76,12 +79,41 @@
                 finally { eraseSecrets(); for (const route of input.routes) route.secret = null; }
                 await loadSettings();
             });
+            const catalogPanel = make('details'); catalogPanel.className = 'suiteCard'; catalogPanel.append(make('summary', 'Registered notification types'));
+            const catalogList = make('div'); catalogPanel.append(catalogList);
+            let typesLoading;
+            function loadTypes() {
+                if (disposed) return Promise.resolve();
+                return typesLoading ||= readTypes().finally(() => { typesLoading = null; });
+            }
+            async function readTypes() {
+                const data = await request('settings/notifications/types', 'GET'); if (disposed) return;
+                sourceChoices = [...new Set([...sourceChoices, ...(data.catalogs || []).map(catalog => catalog.source)])];
+                for (const route of routes) for (const source of sourceChoices) if (![...route.fields.source.input.options].some(option => option.value === source)) { const option = make('option', source); option.value = source; route.fields.source.input.append(option); }
+                catalogList.replaceChildren();
+                for (const catalog of data.catalogs || []) for (const type of catalog.types) {
+                    const section = make('fieldset'); section.append(make('legend', type.name)); section.dataset.help = type.trigger + '. Recipients: ' + type.recipients + '. Source: ' + catalog.source + '. Registered actions: ' + (type.actions.map(action => action.label).join(', ') || 'none') + '.';
+                    const density = control('Layout', type.layout.density, ['compact', 'standard']);
+                    const length = control('Summary length', type.layout.summaryLength, null, '60–300 characters. Full details remain available when expansion is enabled.'); length.input.min = 60; length.input.max = 300;
+                    const expand = control('Expandable details', type.layout.expandable);
+                    section.append(density.root, length.root, expand.root, button('Save layout', async () => {
+                        if (!length.input.reportValidity()) throw Error('Choose a summary length from 60 to 300.');
+                        await request('settings/notifications/types/layout', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, layout: { density: density.value(), summaryLength: length.value(), expandable: expand.value() } }); catalog.revision++;
+                    })); catalogList.append(section);
+                }
+                if (!catalogList.children.length) catalogList.append(make('p', 'No plugin notification types registered yet.'));
+            }
+            catalogPanel.addEventListener('toggle', () => { if (catalogPanel.open && !catalogList.children.length) void loadTypes().catch(() => { if (!disposed) catalogList.textContent = 'Could not load notification types. Reload to try again.'; }); });
             root.replaceChildren(make('h2', 'Delivery routes'), retention.root, list,
-                button('Add route', async () => addRoute()), save, button('Reload', async () => { await loadSettings(); await loadDeliveries(); }),
-                button('Send sanitized test', async () => { await request('settings/notifications/test', 'POST', {}); await loadDeliveries(); }), status, deliveries,
+                button('Add route', async () => addRoute()), save, button('Reload', async () => { await loadSettings(); await loadDeliveries(); if (catalogPanel.open) await loadTypes(); }),
+                button('Send sanitized test', async () => { await request('settings/notifications/test', 'POST', {}); await loadDeliveries(); }), status, catalogPanel, deliveries,
                 button('Previous deliveries', async () => { skip = Math.max(0, skip - 25); await loadDeliveries(); }), button('Next deliveries', async () => { skip += 25; await loadDeliveries(); }));
+            const cleanup = () => { if (disposed) return; disposed = true; signal?.removeEventListener('abort', cleanup); eraseSecrets(); root.replaceChildren(); };
+            signal?.addEventListener('abort', cleanup, { once: true });
+            if (signal?.aborted) cleanup();
             try { await loadSettings(); await loadDeliveries(); } catch (error) { if (!disposed) status.textContent = error.message; }
-            return () => { disposed = true; eraseSecrets(); root.replaceChildren(); };
+            try { await loadTypes(); } catch { /* Older compatibility hosts need not expose a registry. */ }
+            return cleanup;
         }
     };
 })();

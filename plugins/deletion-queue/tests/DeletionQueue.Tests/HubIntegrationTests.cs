@@ -63,6 +63,20 @@ public sealed class HubIntegrationTests
         var root = JsonDocument.Parse(alert.PayloadJson).RootElement;
         Assert.True(root.GetProperty("adminOnly").GetBoolean()); Assert.Equal("critical", root.GetProperty("severity").GetString());
         Assert.Equal(0, root.GetProperty("audience").GetArrayLength());
+        Assert.Equal("alert.removal_uncertain", root.GetProperty("type").GetString());
+        Assert.Equal("normal", root.GetProperty("actions")[0].GetProperty("size").GetString());
+    }
+    [Fact] public void UserOutcomeUpdatesAndAdministratorAlertsUseSeparateRecipientTypes()
+    {
+        var s = Routed(); s.Outbox.Clear(); s.Hub.PublishAudit = false;
+        s.Notices.Clear(); // Allow a fresh user notice rather than coalescing the existing unread one.
+        var before = s.Notices.Select(n => n.Id).ToHashSet(); var p = s.Proposals[0]; var oldRevision = p.Revision;
+        p.Status = ProposalStatus.Uncertain; p.Revision++;
+        NoticeRules.Publish(s, [p], QueueRulesTests.Now.AddMinutes(1));
+        HubIntegration.Capture(s, new Dictionary<Guid, long> { [p.Id] = oldRevision }, before, "executor", "ExecutionUncertain", QueueRulesTests.Now.AddMinutes(1), true);
+        var entries = s.Outbox.Where(entry => entry.Kind == "notification").Select(entry => JsonDocument.Parse(entry.PayloadJson).RootElement).ToArray();
+        Assert.Contains(entries, entry => !entry.GetProperty("adminOnly").GetBoolean() && entry.GetProperty("type").GetString() == "proposal.uncertain");
+        Assert.Contains(entries, entry => entry.GetProperty("adminOnly").GetBoolean() && entry.GetProperty("type").GetString() == "alert.removal_uncertain");
     }
 
     [Fact] public async Task UnsupportedOrThrowingHostsAreUnavailableNotDomainFailures()

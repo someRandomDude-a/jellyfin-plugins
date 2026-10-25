@@ -12,6 +12,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost host)
     {
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("discord-bridge", "1", [
+            new("transport.*", "Discord alerts", "Discord transport needs administrator attention", "administrators", new(), [new("Open Discord settings")])
+        ]));
         services.AddSingleton(sp => new BridgeStore(Path.Combine(sp.GetRequiredService<IApplicationPaths>().PluginConfigurationsPath, "DiscordBridge")));
         services.AddSingleton<BridgeRuntime>();
         services.AddSingleton<Jellyfin.Plugin.PrivateSyncPlay.NativeWebStyles>();

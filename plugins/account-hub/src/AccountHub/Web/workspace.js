@@ -172,7 +172,7 @@ export function mountWorkspace(root, client) {
                 const result = await request(path, method, payload, !['GET'].includes(method));
                 if (!current()) throw new DOMException('View closed', 'AbortError');
                 return result;
-            }, { discordAvailable: dependencies.find(item => item.id === 'discord')?.available === true });
+            }, { discordAvailable: dependencies.find(item => item.id === 'discord')?.available === true, signal });
             if (!current()) unmount();
         } catch (error) { unmount(); throw error; }
     }

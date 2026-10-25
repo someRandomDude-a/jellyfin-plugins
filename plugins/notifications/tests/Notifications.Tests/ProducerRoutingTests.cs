@@ -7,6 +7,38 @@ namespace Notifications.Tests;
 
 public sealed class ProducerRoutingTests
 {
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public async Task RequiredConsumersRejectMissingOrOlderUnscopedProviders(bool owner, bool scoped, bool expected)
+    {
+        var services = new ServiceCollection();
+        services.AddKeyedSingleton<Func<bool>>("Notifications.Owner.1", (_, _) => () => owner);
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>("Notifications.Api.1", (_, _) => (json, _) => {
+            using var request = JsonDocument.Parse(json);
+            object data = request.RootElement.GetProperty("operation").GetString() == "hello"
+                ? new { apiVersion = "1", operations = new[] { "notifications.publish" } }
+                : new { ready = true, features = scoped ? new[] { "registered-types", "scoped-access" } : [] };
+            return Task.FromResult(Contract.Serialize(Contract.Success(data)));
+        });
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(expected, await new NotificationsClient(provider).ReadyForRegisteredTypesAsync());
+    }
+    [Fact] public async Task InternalClientRegistersTypesAndBuildsAdministratorAlertsWithoutCallerChosenRecipients()
+    {
+        var requests = new List<JsonElement>(); var services = new ServiceCollection();
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>("Notifications.Api.1", (_, _) => (json, _) => {
+            using var document = JsonDocument.Parse(json); requests.Add(document.RootElement.Clone());
+            return Task.FromResult(Contract.Serialize(Contract.Success(new { status = "accepted" })));
+        });
+        using var provider = services.BuildServiceProvider(); var client = new NotificationsClient(provider);
+        await client.RegisterAsync(new("example-plugin", "1", [new("system.alert", "Example alert", "A service fails", "administrators", new(), [])]));
+        await client.AlertAdministratorsAsync("example-plugin", "system.alert", "Service needs attention", "Check the saved connection.", dedupeKey: "connection:1");
+        Assert.Equal("notifications.register", requests[0].GetProperty("operation").GetString());
+        var entry = requests[1].GetProperty("payload"); Assert.True(entry.GetProperty("adminOnly").GetBoolean()); Assert.Equal(0, entry.GetProperty("audience").GetArrayLength());
+        Assert.Equal("connection:1", entry.GetProperty("dedupeKey").GetString());
+    }
     [Fact] public async Task NotificationReadinessAndPublicationDoNotDependOnHubHealth()
     {
         var calls=new List<string>();var services=new ServiceCollection();

@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 namespace AccountHub.Notifications;
 
 /// <summary>Module-owned tables in the Hub database. Never use a second audit writer.</summary>
-public sealed class NotificationStore
+public sealed partial class NotificationStore
 {
     private readonly string connectionString;
     private readonly IDataProtector protector;
@@ -176,6 +176,18 @@ public sealed class NotificationStore
     {
         Validation.Require(preferences.Length <= 100 && preferences.All(p => p is not null && p.Source?.Length is > 0 and <= 100 && p.Type?.Length is > 0 and <= 100 && p.Channel is "in-app" or "discord"), "Invalid preferences");
         Run(c => Execute(c, "INSERT INTO nh_preferences VALUES($0,$1) ON CONFLICT(user_id) DO UPDATE SET json=excluded.json", user, Contract.Serialize(preferences)));
+    }
+    public void SetPreference(Guid user, Preference rule)
+    {
+        Validation.Require(rule is not null && rule.Source?.Length is > 0 and <= 100 && rule.Type?.Length is > 0 and <= 100 && rule.Channel is "in-app" or "discord", "Invalid preference");
+        Run(db => {
+            using var tx = db.BeginTransaction(deferred: false);
+            var current = JsonSerializer.Deserialize<Preference[]>(Scalar(db, "SELECT json FROM nh_preferences WHERE user_id=$0", user) ?? "[]", Contract.Json)!;
+            var updated = current.Where(p => !(p.Source == rule.Source && p.Type == rule.Type && p.Channel == rule.Channel)).Append(rule).ToArray();
+            Validation.Require(updated.Length <= 100, "Too many preferences");
+            Execute(db, "INSERT INTO nh_preferences VALUES($0,$1) ON CONFLICT(user_id) DO UPDATE SET json=excluded.json", user, Contract.Serialize(updated));
+            tx.Commit(); return 0;
+        });
     }
     public Settings Settings(bool redacted = true) => Run(c =>
     {

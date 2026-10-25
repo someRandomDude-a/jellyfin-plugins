@@ -12,6 +12,18 @@ namespace Jellyfin.Plugin.DiscordBridge;
 public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRuntime> logger) : BackgroundService
 {
     private DiscordSocketClient? client;
+    private DateTimeOffset nextAlert;
+    private async Task ReportAlertAsync(string type, long revision, CancellationToken ct)
+    {
+        if (DateTimeOffset.UtcNow < nextAlert) return;
+        nextAlert = DateTimeOffset.UtcNow.AddMinutes(5);
+        try {
+            await services.GetRequiredService<AccountHub.Api.NotificationsClient>().AlertAdministratorsAsync("discord-bridge", type, "Discord needs attention",
+                "Check the saved bot settings and test the Discord connection.", link: "#/configurationpage?name=DiscordBridge",
+                actions: [new("Open Discord settings", "#/configurationpage?name=DiscordBridge")],
+                dedupeKey: $"discord-alert:{type}:{revision}:{DateTimeOffset.UtcNow:yyyy-MM-dd}", ct: ct);
+        } catch { /* Optional reporting must not disrupt transport recovery. */ }
+    }
     public string? ApplicationId => client?.CurrentUser?.Id.ToString();
     public async Task TestConnectionAsync(CancellationToken ct)
     {
@@ -32,10 +44,16 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            long revision = 0;
             try
             {
                 var snapshot = Store.Read();
-                if (!snapshot.Settings.Enabled || string.IsNullOrEmpty(snapshot.Token)) { State = "disabled"; await Task.Delay(5000, stoppingToken); continue; }
+                revision = snapshot.Revision;
+                if (!snapshot.Settings.Enabled) { State = "disabled"; await Task.Delay(5000, stoppingToken); continue; }
+                if (string.IsNullOrEmpty(snapshot.Token)) {
+                    State = "token_required"; await ReportAlertAsync("transport.token_missing", snapshot.Revision, stoppingToken);
+                    await Task.Delay(5000, stoppingToken); continue;
+                }
                 using var socket = new DiscordSocketClient(new DiscordSocketConfig { GatewayIntents = GatewayIntents.Guilds, AlwaysDownloadUsers = false, MessageCacheSize = 0 });
                 using var interactions = new InteractionService(socket.Rest);
                 client = socket; State = "connecting";
@@ -43,7 +61,7 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
                 socket.Ready += async () =>
                 {
                     try { await interactions.RegisterCommandsToGuildAsync(ulong.Parse(snapshot.Settings.GuildId)); State = "connected"; }
-                    catch { State = "command_registration_failed"; }
+                    catch { State = "command_registration_failed"; await ReportAlertAsync("transport.commands_failed", snapshot.Revision, stoppingToken); }
                 };
                 socket.InteractionCreated += async interaction =>
                 {
@@ -63,7 +81,7 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
                 await socket.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch { State = "unavailable"; logger.LogWarning("Discord Bridge work deferred. Inspect configuration/credential and key health; no message, URL or credential is logged."); }
+            catch { State = "unavailable"; logger.LogWarning("Discord Bridge work deferred. Inspect configuration/credential and key health; no message, URL or credential is logged."); await ReportAlertAsync("transport.unavailable", revision, stoppingToken); }
             finally { client = null; }
             try { await Task.Delay(5000, stoppingToken); } catch (OperationCanceledException) { break; }
         }

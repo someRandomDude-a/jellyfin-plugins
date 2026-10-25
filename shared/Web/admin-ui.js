@@ -9,6 +9,8 @@
     .suiteAdmin h1, .suiteAdmin .sectionTitle { letter-spacing: -.025em; }
     .suiteAdmin h2 { margin-block: 1.7rem 1rem; font-size: 1.3em; }
     .suiteAdmin h3 { font-size: 1.08em; }
+    .suiteAdmin fieldset { min-width: 0; }
+    .suiteAdmin legend { max-width: 100%; overflow-wrap: anywhere; }
     .suiteAdmin form, .suiteAdmin [data-notification-settings] > div > fieldset, .suiteAdmin .suiteCard { border: 1px solid var(--suite-line); border-radius: 1rem; padding: clamp(1rem, 3vw, 1.75rem); margin-block: 1rem; background: var(--suite-surface); min-width: 0; }
     .suiteAdmin form form { border: 0; padding: 0; background: none; }
     .suiteAdmin .inputContainer, .suiteAdmin .selectContainer { position: relative; margin-block: 1rem 1.5rem; }
@@ -19,7 +21,7 @@
     .suiteAdmin .emby-checkbox-label { height: auto; min-height: 1.8em; white-space: normal; }
     .suiteAdmin .checkboxContainer .fieldDescription { margin-block: .5rem; }
     .suiteAdmin .hubGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .5rem 1.5rem; }
-    .suiteAdmin button.raised { border-radius: .55rem; margin-block: .3rem; }
+    .suiteAdmin button.raised { border-radius: .45rem; margin: .25rem; min-width: 0; padding: .55em .9em; font-size: .9em; }
     .suiteAdmin [role=status]:empty, .suiteAdmin [role=alert]:empty { display: none; }
     .suiteAdmin [role=status], .suiteAdmin [role=alert] { overflow-wrap: anywhere; }
     .suiteAdmin .hubTabs { display: flex; flex-wrap: wrap; gap: .4rem; border-bottom: 1px solid var(--suite-line); padding-bottom: .8rem; }

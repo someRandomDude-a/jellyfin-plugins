@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.DeletionQueue;
 
 public sealed class HubDispatcher(QueueRuntime runtime, AccountHubClient client, HubAvailability availability,
-    TimeProvider clock, ILogger<HubDispatcher> logger) : BackgroundService
+    TimeProvider clock, ILogger<HubDispatcher> logger, NotificationsClient notifications) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -16,9 +16,9 @@ public sealed class HubDispatcher(QueueRuntime runtime, AccountHubClient client,
             try
             {
                 var settings = runtime.Read().Hub;
-                availability.Set(settings.HubIntegrationEnabled && await client.ReadyAsync(stoppingToken));
+                availability.Set(settings.HubIntegrationEnabled && await notifications.ReadyForRegisteredTypesAsync(stoppingToken));
                 if (!availability.Ready && !warned)
-                { logger.LogInformation("Account Hub absent, unavailable or incompatible; local deletion workflow remains available."); warned = true; }
+                { logger.LogInformation("Notifications absent, outdated or unavailable; existing requests remain accessible through the queue."); warned = true; }
                 if (availability.Ready) warned = false;
                 var now = clock.GetUtcNow();
                 var due = runtime.Read().Outbox.Where(e => e.Status == "pending" && e.NextAttemptAt <= now ||

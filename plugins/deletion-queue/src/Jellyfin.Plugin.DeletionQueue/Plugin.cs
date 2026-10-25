@@ -40,12 +40,27 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("deletion-queue", "1", [
+            new("proposal.*", "Removal requests", "A removal request changes or needs consent", "explicit-users", new(), [new("Review request")]),
+            new("proposal.uncertain", "Removal outcome updates", "Compatibility updates about an uncertain removal", "event", new(), [new("Review request")]),
+            new("alert.removal_uncertain", "Removal needs administrator review", "The deletion outcome cannot be confirmed", "administrators", new("standard", 180), [new("Review deletion", "normal")])
+        ]));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<HubAvailability>();
         services.AddSingleton<AccountHub.Api.AccountHubClient>();
         services.AddSingleton<QueueRuntime>();
         services.AddSingleton<LiveIdentity>();
         services.AddSingleton<TargetResolver>();
+        AccountHub.Api.NotificationIntegration.RegisterNotificationAccess(services, "deletion-queue", sp => (user, json, _) =>
+        {
+            try {
+                var entry = System.Text.Json.JsonSerializer.Deserialize<AccountHub.Api.NotificationEvent>(json, AccountHub.Api.Contract.Json);
+                var raw = entry?.Metadata?.GetValueOrDefault("proposalId");
+                if (!Guid.TryParse(raw, out var id)) return Task.FromResult(false);
+                var request = sp.GetRequiredService<QueueRuntime>().Read().Proposals.FirstOrDefault(p => p.Id == id);
+                return Task.FromResult(request is not null && sp.GetRequiredService<TargetResolver>().Accessible(user, request.Target.JellyfinItemId));
+            } catch { return Task.FromResult(false); }
+        });
         services.AddSingleton<EnhancedConnection>();
         services.AddSingleton<ISeerrClientFactory, SeerrClientFactory>();
         services.AddSingleton<ActivityFence>();

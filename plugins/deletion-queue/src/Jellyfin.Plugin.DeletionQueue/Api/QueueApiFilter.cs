@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
+using AccountHub.Api;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.DeletionQueue.Api;
 
@@ -42,6 +44,15 @@ public sealed class QueueApiFilter : IAsyncResourceFilter, IAsyncActionFilter
                 using var json = await JsonDocument.ParseAsync(request.Body, new JsonDocumentOptions { MaxDepth = 16 }, timeout.Token);
                 if (!UniqueProperties(json.RootElement)) { context.Result = new BadRequestObjectResult(new { code = "AmbiguousJson" }); return; }
                 request.Body.Position = 0;
+            }
+            // Existing consent/Undo/history remain reachable when a dependency
+            // fails. Only new intake requires the shared notification owner.
+            if (request.Method == "POST" && (request.Path == "/DeletionQueue/proposals" ||
+                request.Path.StartsWithSegments("/DeletionQueue/targets") && request.Path.Value!.EndsWith("/preview", StringComparison.Ordinal)))
+            {
+                var services = context.HttpContext.RequestServices;
+                if (!await new NotificationsClient(services).ReadyForRegisteredTypesAsync(context.HttpContext.RequestAborted))
+                { context.Result = new ObjectResult(new { code = "NotificationsRequired" }) { StatusCode = 503 }; return; }
             }
             invokedNext = true;
             var executed = await next();

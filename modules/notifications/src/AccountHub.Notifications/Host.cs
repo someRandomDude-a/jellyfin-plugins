@@ -7,6 +7,8 @@ namespace AccountHub.Notifications;
 // No default implementation: installing a module must never introduce an auth bypass.
 public interface INotificationHost
 {
+    IReadOnlyList<NotificationRegistration> NotificationRegistrations => [];
+    bool NotificationAccessAvailable(string source) => true;
     Task<Guid?> CurrentUserAsync(HttpContext context, CancellationToken ct);
     Task<bool> IsAdministratorAsync(Guid userId, CancellationToken ct);
     Task<bool> UserExistsAsync(Guid userId, CancellationToken ct);
@@ -49,7 +51,7 @@ public sealed class NotificationOptions
 {
     public required string DatabasePath { get; init; }
     public bool RequireExistingDatabase { get; init; }
-    public HashSet<string> Sources { get; init; } = ["account-hub", "deletion-queue", "private-syncplay", "jellyfin-security"];
+    public HashSet<string> Sources { get; init; } = ["account-hub", "deletion-queue", "private-syncplay", "jellyfin-security", "discord-bridge", "notifications"];
     public HashSet<string> AllowedLinkHosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public int MaxAudience { get; init; } = 1000;
 }

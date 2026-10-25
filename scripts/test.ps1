@@ -17,6 +17,7 @@ Invoke-Checked 'modules/security' node @('--test','web/security-client.test.mjs'
 Invoke-Checked 'modules/security' node @('--check','web/security-panel.mjs')
 Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/workspace.js')
 Invoke-Checked '.' node @('--test','scripts/admin-ui.test.mjs')
+Invoke-Checked '.' node @('--test','scripts/removal-ui.test.mjs')
 Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/public.js')
 Invoke-Checked '.' node @('--check','modules/notifications/src/AccountHub.Notifications/Web/settings.js')
 Invoke-Checked '.' node @('--check','scripts/integration.mjs')

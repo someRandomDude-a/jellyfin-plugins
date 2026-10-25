@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('src/AccountHub.Notifications/Web/bell.js', 'utf8');
 
-function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink } = {}) {
+function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink, inbox, read = false } = {}) {
     const listeners = {}, calls = [], timers = [];
     let focused;
     class Element {
@@ -46,8 +46,8 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
             calls.push({ url, options });
             return { status, ok: status === 200, headers: { get: () => '"tag"' }, json: async () => status !== 200
                 ? (blocked ? { twoFactorRequired: true } : {})
-                : { ok: true, data: url.endsWith('/preferences') ? { preferences } : url.endsWith('unread-count') ? { count: 1 } : { hasMore, notifications: [
-                    { id: 'one', event: { title: '<img src=x onerror=alert(1)>', body: 'plain text', link: noticeLink }, read: false }
+                : { ok: true, data: url.endsWith('/preferences') ? { preferences } : url.endsWith('unread-count') ? { count: 1 } : inbox ? inbox(Number(new URL(url).searchParams.get('skip') || 0)) : { hasMore, notifications: [
+                    { id: 'one', event: { title: '<img src=x onerror=alert(1)>', body: 'plain text', link: noticeLink }, read }
                 ] } }
             };
         }
@@ -56,6 +56,53 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
     return { calls, timers, all, window, listeners, rerun: () => vm.runInContext(source, context), get focused() { return focused; } };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+test('routine UI feedback stays in the closed inbox and rejects another user', async () => {
+    const h = harness(); await settle();
+    const panel = h.all().find(e => e.id === 'account-hub-inbox');
+    h.listeners['suite-notification-message']({ detail: { userId: 'bob', title: 'Other user', body: 'private' } });
+    assert(!h.all().some(e => e.textContent === 'Other user'));
+    h.listeners['suite-notification-message']({ detail: { userId: 'alice', title: 'Connection issue', body: 'Try again later.' } });
+    assert.equal(panel.hidden, true); assert(h.all().some(e => e.tag === 'h3' && e.textContent === 'Connection issue'));
+    assert(h.all().some(e => e.tag === 'details')); assert(h.all().some(e => e.dataset.accountHubBell && e.attrs['aria-label'] === '2 unread notifications'));
+});
+test('server read state removes redundant read actions and unread highlighting', async () => {
+    const h = harness({ read: true }); await settle();
+    assert(!h.all().some(e => e.tag === 'button' && e.textContent === 'Mark read'));
+    assert(h.all().some(e => e.tag === 'section' && e.dataset.unread === 'false'));
+});
+test('groups by importance and age, shows exact and relative time, and keeps source links on the notification', async () => {
+    const now = Date.now();
+    const entry = (id, age, severity = 'info', adminOnly = false) => ({ id, read: false, event: { title: id, body: 'Summary', source: 'deletion-queue', type: 'proposal.updated', link: '#/details?id=media', occurredAt: new Date(now - age).toISOString(), severity, adminOnly } });
+    const h = harness({ inbox: () => ({ hasMore: false, notifications: [entry('Routine', 2 * 3600000), entry('Priority', 3600000, 'high'), entry('Old', 10 * 86400000), entry('Administrator', 1000, 'info', true)] }) }); await settle();
+    for (const name of ['Important', 'Other', 'Older']) assert(h.all().some(e => e.tag === 'h2' && e.textContent === name));
+    assert(h.all().some(e => e.tag === 'time' && /hours? ago/.test(e.textContent) && e.title && e.attrs.datetime));
+    assert(h.all().some(e => e.tag === 'a' && e.className === 'notificationMain' && e.href === '#/details?id=media'));
+    assert(h.all().some(e => e.tag === 'summary' && e.attrs['aria-label'] === 'Notification options'));
+    assert(h.all().some(e => e.tag === 'button' && e.textContent === 'Hide notification'));
+});
+test('source mute only changes the current source in-app preference', async () => {
+    const global = { source: '*', type: '*', channel: 'discord', enabled: true };
+    const h = harness({ preferences: [global], inbox: () => ({ hasMore: false, notifications: [{ id: 'request', event: { title: 'Request', body: 'Review', source: 'deletion-queue', type: 'proposal.updated', severity: 'info' } }] }) }); await settle();
+    await h.all().find(e => e.tag === 'button' && e.textContent === 'Mute removal notifications').onclick();
+    const saved = h.calls.find(c => c.options.method === 'PUT');
+    assert(saved.url.endsWith('/preferences/rule'));
+    assert.deepEqual(JSON.parse(saved.options.body), { source: 'deletion-queue', type: '*', channel: 'in-app', enabled: false });
+});
+test('settings show current choices and can restore a previously muted source', async () => {
+    const h = harness({ preferences: [{ source: 'deletion-queue', type: '*', channel: 'in-app', enabled: false }] }); await settle();
+    h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick(); await settle();
+    assert(h.all().some(e => e.tag === 'button' && e.attrs['aria-label'] === 'Enable non-critical in-app notifications' && e.attrs['aria-pressed'] === 'true'));
+    const enable = h.all().find(e => e.attrs['aria-label'] === 'Unmute deletion-queue · * · in-app'); assert(enable); await enable.onclick(); await settle();
+    const saved = h.calls.find(call => call.options.method === 'PUT');
+    assert.deepEqual(JSON.parse(saved.options.body), { source: 'deletion-queue', type: '*', channel: 'in-app', enabled: true });
+});
+test('silent inbox refresh does not rebuild an active preference editor', async () => {
+    const h = harness(); await settle(); h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick(); await settle();
+    const before = h.all().find(e => e.attrs['aria-label'] === 'Enable non-critical in-app notifications');
+    const reads = h.calls.filter(call => call.url.endsWith('/preferences')).length;
+    h.listeners.focus(); await settle();
+    assert(h.all().includes(before)); assert.equal(h.calls.filter(call => call.url.endsWith('/preferences')).length, reads);
+});
 
 test('singleton mounts one bell, uses header auth, and renders hostile titles as text', async () => {
     const h = harness(); await settle(); h.rerun(); await settle();
@@ -92,10 +139,12 @@ test('episode-specific preference saves do not replace unrelated or global choic
     const global = { source: '*', type: '*', channel: 'in-app', enabled: true };
     const h = harness({ preferences: [global] }); await settle();
     h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick();
-    const control = h.all().find(e => e.tag === 'button' && e.textContent === 'Mute new episodes on in-app');
+    await settle();
+    const control = h.all().find(e => e.tag === 'button' && e.attrs['aria-label'] === 'Mute new episodes on in-app');
     assert(control); await control.onclick(); await settle();
     const write = h.calls.find(c => c.options.method === 'PUT'); assert(write);
-    assert.deepEqual(JSON.parse(write.options.body), [global, { source: 'account-hub', type: 'library.episode.added', channel: 'in-app', enabled: false }]);
+    assert(write.url.endsWith('/preferences/rule'));
+    assert.deepEqual(JSON.parse(write.options.body), { source: 'account-hub', type: 'library.episode.added', channel: 'in-app', enabled: false });
 });
 test('opening refreshes silently, outside clicks dismiss and settings stay in the same panel', async () => {
     const h = harness(); await settle();
@@ -107,14 +156,25 @@ test('opening refreshes silently, outside clicks dismiss and settings stay in th
     h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick();
     assert(h.all().some(e => e.tag === 'h2' && e.textContent === 'Notification settings'));
     h.listeners.pointerdown({ target: {} });
-    assert.equal(panel.hidden, true); assert.equal(h.focused, bell);
+    assert.equal(panel.hidden, true);
 });
 test('permission-filtered short pages can still navigate to older notifications', async () => {
     const h = harness({ hasMore: true }); await settle();
     const older = h.all().find(e => e.tag === 'button' && e.textContent === 'Older notifications'); assert.equal(older.disabled, false);
     older.onclick(); await settle(); assert(h.calls.some(c => c.url.includes('skip=100')));
 });
+test('incremental pages append without duplicates and refresh removes revoked older rows', async () => {
+    let revoked = false;
+    const first = { id: 'first', event: { title: 'First', body: 'Summary', details: 'More information' } };
+    const older = { id: 'older', event: { title: 'Admin-only older row', body: 'Private' } };
+    const h = harness({ inbox: skip => ({ notifications: skip === 0 ? [first] : revoked ? [] : [first, older], hasMore: skip === 0 }) }); await settle();
+    h.all().find(e => e.tag === 'button' && e.textContent === 'Older notifications').onclick(); await settle();
+    assert.equal(h.all().filter(e => e.tag === 'h3' && e.textContent === 'First').length, 1);
+    assert(h.all().some(e => e.tag === 'h3' && e.textContent === 'Admin-only older row'));
+    revoked = true; h.listeners.focus(); await settle();
+    assert(!h.all().some(e => e.tag === 'h3' && e.textContent === 'Admin-only older row'));
+});
 test('native item links resolve from the server BaseUrl, not a nested web/web path', async () => {
     const h = harness({ noticeLink: 'web/index.html#/details?id=disposable-item' }); await settle();
-    assert.equal(h.all().find(e => e.tag === 'a' && e.textContent === 'Open').href, 'https://example.test/jellyfin/web/index.html#/details?id=disposable-item');
+    assert.equal(h.all().find(e => e.tag === 'a' && e.className === 'notificationMain').href, 'https://example.test/jellyfin/web/index.html#/details?id=disposable-item');
 });

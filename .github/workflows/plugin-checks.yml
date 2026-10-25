@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - if: inputs.plugin == 'private-syncplay' || inputs.plugin == 'account-hub' || inputs.plugin == 'discord-bridge'
+      - name: Install shared frontend test harness
         run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
       - if: inputs.plugin == 'discord-bridge'
