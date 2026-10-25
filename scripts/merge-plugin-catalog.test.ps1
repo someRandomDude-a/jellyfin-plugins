@@ -34,5 +34,46 @@ try {
     $tree = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/trees' })
     $refs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/refs' })
     if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $refs[0].body.ref -ne 'refs/heads/catalog') { throw 'Platform feeds must publish atomically to the combined branch' }
-    Write-Output 'PASS combined catalog: independent entry merge, preserved history/other plugins, idempotence and immutable version rejection'
+    $suite = @((Entry $a '1.2.0.0'), (Entry $b '2.1.0.0'))
+    foreach ($id in @('e0cb0eb1-93ef-4335-bae4-c729771cbbe7','85679095-3232-4b24-be55-08055a0562cd','c18d78ec-4b70-47cf-a0d2-936d987c37ba')) { $suite += Entry $id '1.0.0.0' }
+    ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content $next
+    & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output
+    $result = @(Get-Content $output -Raw | ConvertFrom-Json)
+    if ($result.Count -ne 5 -or @($result | Where-Object guid -eq $a)[0].versions.Count -ne 3 -or @($result | Where-Object guid -eq $b)[0].versions.Count -ne 2) { throw 'Suite merge lost plugin history' }
+    Copy-Item $output $old -Force
+    & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output
+    if ((Get-Content $old -Raw) -cne (Get-Content $output -Raw)) { throw 'Suite merge not idempotent' }
+    $suite[1].versions[0].checksum = 'changed'
+    ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content $next
+    $rejected = $false
+    try { & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output } catch { $rejected = $true }
+    if (!$rejected) { throw 'Suite immutable version replacement accepted' }
+    $suite[1].versions[0].checksum = 'abc'
+    foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
+        ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content (Join-Path $root "manifest-$runtime.json")
+    }
+    $calls.Clear()
+    & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root -AllPlugins
+    $tree = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/trees' })
+    $refs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/refs' })
+    $blobs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/blobs' })
+    if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $blobs.Count -ne 3) { throw 'Suite catalogs must publish atomically' }
+    foreach ($blob in $blobs) {
+        $entries = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($blob.body.content)) | ConvertFrom-Json)
+        if ($entries.Count -ne 5) { throw 'Published suite catalog lost entries' }
+    }
+    $calls.Clear(); $rejected = $false
+    try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root } catch { $rejected = $true }
+    if (!$rejected -or $calls.Count) { throw 'Selected mode accepted a suite or wrote before validation' }
+    $mismatched = @($suite[0..3]) + @((Entry '1aa06e5f-4760-4397-a547-ae037cd4b722' '1.0.0.0'))
+    ConvertTo-Json -InputObject $mismatched -Depth 10 | Set-Content (Join-Path $root 'manifest-win-x64.json')
+    $rejected = $false
+    try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root -AllPlugins } catch { $rejected = $true }
+    if (!$rejected -or $calls.Count) { throw 'Mismatched suite identities accepted' }
+    $suite[4] = $suite[0]
+    ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content $next
+    $rejected = $false
+    try { & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output } catch { $rejected = $true }
+    if (!$rejected) { throw 'Duplicate incoming identities accepted' }
+    Write-Output 'PASS combined catalog: single/suite publication, preserved history, idempotence, immutable versions and cross-platform identity validation (mocked GitHub only)'
 } finally { Remove-Item -LiteralPath $root -Recurse -Force }

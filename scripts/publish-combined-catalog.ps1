@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')][string]$Repository,
-    [Parameter(Mandatory)][string]$Directory)
+    [Parameter(Mandatory)][string]$Directory, [switch]$AllPlugins)
 $ErrorActionPreference = 'Stop'
 function Api([string]$Path, $Body = $null, [string]$Method = 'POST') {
     if ($null -eq $Body) { $text = gh api "repos/$Repository/$Path" }
@@ -13,9 +13,16 @@ try {
     $identity = $null
     foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
         $incoming = @(Get-Content (Join-Path $Directory "manifest-$runtime.json") -Raw | ConvertFrom-Json)
-        if ($incoming.Count -ne 1) { throw 'Expected selected-plugin platform catalog' }
-        if ($identity -and $identity -ne $incoming[0].guid) { throw 'Platform catalog identities disagree' }
-        $identity = $incoming[0].guid
+        $expectedCount = if ($AllPlugins) { 5 } else { 1 }
+        if ($incoming.Count -ne $expectedCount) { throw "Expected $expectedCount released plugin(s) in each platform catalog" }
+        foreach ($entry in $incoming) {
+            if (![guid]::TryParse([string]$entry.guid, [ref]([guid]::Empty)) -or !$entry.versions.Count) { throw 'Invalid catalog identity/history' }
+        }
+        $identities = @($incoming | ForEach-Object { ([guid]$_.guid).ToString() } | Sort-Object -Unique)
+        if ($identities.Count -ne $expectedCount) { throw 'Duplicate catalog identity' }
+        $platformIdentity = $identities -join ','
+        if ($identity -and $identity -ne $platformIdentity) { throw 'Platform catalog identities disagree' }
+        $identity = $platformIdentity
     }
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
         $refs = @(Api 'git/matching-refs/heads/catalog' | Where-Object ref -eq 'refs/heads/catalog')

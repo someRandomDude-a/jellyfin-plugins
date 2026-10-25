@@ -42,6 +42,7 @@ test('releases depend on selected reusable checks, never the full suite/matrix',
     assert(release.includes('needs: [verify-ref, publish]'));
     const manifest=await read('.github/workflows/update-manifest.yml');
     assert(manifest.includes('publish-combined-catalog.ps1'));
+    assert(manifest.includes("-AllPlugins:($env:PLUGIN -eq 'all')"));
     assert(manifest.includes('validate-release-set.ps1'));
     assert(release.includes("needs.verify-ref.outputs.published == 'true'"));
     assert(release.includes('git merge-base --is-ancestor $existing HEAD'));

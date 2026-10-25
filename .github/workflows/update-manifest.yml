@@ -62,4 +62,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PLUGIN: ${{ inputs.plugin }}
         run: |
-          ./scripts/publish-combined-catalog.ps1 -Repository $env:GH_REPO -Directory release
+          ./scripts/publish-combined-catalog.ps1 -Repository $env:GH_REPO -Directory release -AllPlugins:($env:PLUGIN -eq 'all')

@@ -8,6 +8,8 @@ Run **Actions → Release all plugins → Run workflow**, select the branch and 
 
 One final **Update plugin manifests** job merges the release into the three existing combined architecture catalogs. Existing catalog history and independent releases are preserved; no new installation URL is needed. Individual plugin release actions still work as before. A previously published suite version skips checks/build/publication and only repairs manifests; immutable tags/assets are never overwritten. Partial draft uploads fail closed and require operator review rather than automatic replacement. Older four-plugin suite releases cannot pass the current five-plugin validator.
 
+If a suite release reached publication but manifest update failed with `Expected selected-plugin platform catalog`, use the corrected workflow on a branch containing the catalog fix: run **Update plugin manifests** with `plugin: all` and the existing published `vX.Y.Z`. The publisher now explicitly accepts five matching identities across platforms in suite mode and merges every plugin's history. Single-plugin mode still requires one identity. Do not delete/recreate the release or move its immutable tag to repair manifests.
+
 ### Release a single plugin
 
 - Run the dedicated **Release <plugin>** action on the desired branch and enter `vX.Y.Z`.
