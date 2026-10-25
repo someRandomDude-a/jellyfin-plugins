@@ -1,5 +1,12 @@
 # Consolidation and review — 2026-10-25
 
+## Enhanced Calendar CI readiness follow-up
+
+- The CI `enhanced-12.13-native-calendar: 0 !== 1` failure was a test readiness race: the Deletion Date-only check waited for a native event to disappear, then immediately counted `.dq-calendar-event`. Enhanced's synchronous render can satisfy that absence check before Deletion Queue decorates the retained raw removal event on its next animation frame.
+- Calendar acceptance now also waits for the positively identified, visible deletion-event button before asserting its count. Calendar assertions have specific failure messages. No plugin/runtime behavior was changed.
+- Added a deterministic held-animation-frame regression to the real Enhanced 12.13 renderer/filter acceptance. It verifies that the raw deletion event is retained and native releases are absent while the decorated count is still zero, releases the frame in `finally`, and then verifies positive readiness and the exact decorated count. Pending mounts are drained before the gate is installed; no arbitrary sleeps or weakened event-count expectations were added.
+- Installed all-five Linux amd64 Jellyfin 12.3 browser/API acceptance passed against existing `artifacts/visual-timeline-verified-suite` packages in disposable fixture `suite-integration-38bae4be-2378-404c-892a-84b104b93711`, including the forced race and the remaining calendar/native-theme/Notifications regressions. This is local reproduction/verification, not a claim that GitHub CI has rerun successfully. No rebuild is required for this test-only fix, and no commits or publication were performed.
+
 ## Date-scaled timelines, native removal actions and calendar integration
 
 - Removed thumbnail overlays. Native right-click/More menus have an independently separated Deletion Queue section, proper menu icons, scoped live request status/timeline and revision-checked Allow/Keep/owner-only Undo commands. Keep is consent withholding, not an administrator denial. Detail actions and queued context actions encode status with color, an explicit label and a stage icon; queued detail actions open the existing request. The item-status endpoint rechecks native visibility and returns only matching accessible active user projections.

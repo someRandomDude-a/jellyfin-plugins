@@ -33,22 +33,49 @@ module.exports = async function checkCalendar(page) {
         P.renderPage(document.querySelector('#dq-real-calendar'));
     });
     const calendar = page.locator('#dq-real-calendar');
-    await calendar.getByRole('button', { name: 'Dated removal fixture · Deletion Date (earliest)', exact: true }).waitFor();
-    assert.equal(await calendar.locator('.dq-calendar-removals').count(), 0);
-    assert.equal(await calendar.getByText('Unscheduled removal fixture', { exact: true }).count(), 0);
+    const removal = calendar.getByRole('button', { name: 'Dated removal fixture · Deletion Date (earliest)', exact: true });
+    await removal.waitFor();
+    assert.equal(await calendar.locator('.dq-calendar-removals').count(), 0, 'Calendar must not contain the sidebar queue');
+    assert.equal(await calendar.getByText('Unscheduled removal fixture', { exact: true }).count(), 0, 'Unscheduled removals must not get invented dates');
     for (const view of ['month', 'week', 'day', 'agenda']) for (const display of view === 'agenda' ? ['list'] : ['list', 'cards', 'backdrop']) {
         await page.evaluate(({ view, display }) => { const JE = window.JellyfinEnhanced; JE.internals.calendarPage.state.viewMode = view; JE.internals.calendarPage.state.settings.displayMode = display; JE.calendarPage.renderPage(); }, { view, display });
-        await calendar.getByRole('button', { name: 'Dated removal fixture · Deletion Date (earliest)', exact: true }).waitFor();
+        await removal.waitFor();
         assert.equal(await calendar.locator('[data-event-id="native-calendar-event"]').count(), 1, `${view}/${display}: native releases must remain`);
     }
-    await calendar.getByRole('button', { name: 'Deletion Date', exact: true }).click();
+    // Enhanced renders synchronously; the plugin decorates its events on the
+    // next animation frame. Hold that frame to reproduce the CI race: absence
+    // of a native release is not positive readiness for a deletion entry.
+    await page.evaluate(async () => {
+        // Drain already-scheduled mounts before installing the gate, otherwise
+        // an old frame could still decorate the newly filtered DOM.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        window.__dqCalendarRaf = window.requestAnimationFrame;
+        window.__dqCalendarFrames = [];
+        window.requestAnimationFrame = callback => {
+            window.__dqCalendarFrames.push(callback); return window.__dqCalendarFrames.length;
+        };
+    });
+    try {
+        await calendar.getByRole('button', { name: 'Deletion Date', exact: true }).click();
+        await page.waitForFunction(() => !document.querySelector('#dq-real-calendar [data-event-id="native-calendar-event"]'));
+        assert.equal(await calendar.locator('[data-event-id="dq-removal:' + id + '"]').count(), 1, 'Native filter must retain the raw deletion event before decoration');
+        assert.equal(await calendar.locator('.dq-calendar-event').count(), 0, 'Held frame must expose the native-render/plugin-decoration gap');
+    } finally {
+        await page.evaluate(() => {
+            const raf = window.__dqCalendarRaf, frames = window.__dqCalendarFrames;
+            window.requestAnimationFrame = raf;
+            delete window.__dqCalendarRaf; delete window.__dqCalendarFrames;
+            for (const callback of frames) raf(callback);
+        });
+    }
+    await removal.waitFor();
     await page.waitForFunction(() => !document.querySelector('#dq-real-calendar [data-event-id="native-calendar-event"]'));
-    assert.equal(await calendar.locator('.dq-calendar-event').count(), 1);
+    assert.equal(await calendar.locator('.dq-calendar-event').count(), 1, 'Deletion Date only must show the decorated removal');
     await page.evaluate(() => { const JE = window.JellyfinEnhanced, state = JE.internals.calendarPage.state; state.activeFilters.add('Episode'); state.filterMatchMode = 'all'; JE.calendarPage.renderPage(); });
     await page.waitForFunction(() => !document.querySelector('#dq-real-calendar [data-event-id]'));
     await page.evaluate(() => { const JE = window.JellyfinEnhanced; JE.internals.calendarPage.state.filterInvert = true; JE.calendarPage.renderPage(); });
-    await calendar.getByRole('button', { name: 'Dated removal fixture · Deletion Date (earliest)', exact: true }).waitFor();
-    assert.equal(await calendar.locator('[data-event-id="native-calendar-event"]').count(), 1);
+    await removal.waitFor();
+    assert.equal(await calendar.locator('[data-event-id="native-calendar-event"]').count(), 1, 'Inverted AND filter must retain the native release');
     await page.evaluate(() => {
         const JE = window.JellyfinEnhanced, P = JE.internals.calendarPage;
         document.removeEventListener('click', P.handleEventClick); document.querySelector('#dq-real-calendar').remove();
