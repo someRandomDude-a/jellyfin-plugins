@@ -28,6 +28,9 @@
     window.AccountHubNotificationSettings = {
         async mount(root, request, { discordAvailable = true, signal } = {}) {
             root.classList.add('suiteCard');
+            root.setAttribute('aria-busy', 'true');
+            const editor = make('fieldset'); editor.dataset.notificationEditor = ''; editor.disabled = true;
+            editor.style.cssText = 'border:0;padding:0;margin:0;min-width:0';
             let revision, skip = 0, disposed = false; const routes = [], list = make('div'), deliveries = make('div'), status = make('p'); status.setAttribute('role', 'status');
             let sourceChoices = ['*', 'account-hub', 'deletion-queue', 'private-syncplay', 'jellyfin-security', 'discord-bridge', 'notifications'];
             const retention = control('Keep notifications (days)', 90, null, 'Keep inbox history for 7–365 days.'); retention.input.min = 7; retention.input.max = 365;
@@ -81,9 +84,9 @@
             });
             const catalogPanel = make('details'); catalogPanel.className = 'suiteCard'; catalogPanel.append(make('summary', 'Registered notification types'));
             const catalogList = make('div'); catalogPanel.append(catalogList);
-            let typesLoading;
-            function loadTypes() {
-                if (disposed) return Promise.resolve();
+            let typesLoading, typesLoaded = false;
+            function loadTypes(reload = false) {
+                if (disposed || typesLoaded && !reload) return Promise.resolve();
                 return typesLoading ||= readTypes().finally(() => { typesLoading = null; });
             }
             async function readTypes() {
@@ -104,17 +107,20 @@
                     })); catalogList.append(section);
                 }
                 if (!catalogList.children.length) catalogList.append(make('p', 'No plugin notification types registered yet.'));
+                typesLoaded = true;
             }
             catalogPanel.addEventListener('toggle', () => { if (catalogPanel.open && !catalogList.children.length) void loadTypes().catch(() => { if (!disposed) catalogList.textContent = 'Could not load notification types. Reload to try again.'; }); });
-            root.replaceChildren(make('h2', 'Delivery routes'), retention.root, list,
-                button('Add route', async () => addRoute()), save, button('Reload', async () => { await loadSettings(); await loadDeliveries(); if (catalogPanel.open) await loadTypes(); }),
+            editor.replaceChildren(make('h2', 'Delivery routes'), retention.root, list,
+                button('Add route', async () => addRoute()), save, button('Reload', async () => { await loadSettings(); await loadDeliveries(); if (catalogPanel.open) await loadTypes(true); }),
                 button('Send sanitized test', async () => { await request('settings/notifications/test', 'POST', {}); await loadDeliveries(); }), status, catalogPanel, deliveries,
                 button('Previous deliveries', async () => { skip = Math.max(0, skip - 25); await loadDeliveries(); }), button('Next deliveries', async () => { skip += 25; await loadDeliveries(); }));
-            const cleanup = () => { if (disposed) return; disposed = true; signal?.removeEventListener('abort', cleanup); eraseSecrets(); root.replaceChildren(); };
+            root.replaceChildren(editor);
+            const cleanup = () => { if (disposed) return; disposed = true; signal?.removeEventListener('abort', cleanup); eraseSecrets(); root.replaceChildren(); root.removeAttribute('aria-busy'); };
             signal?.addEventListener('abort', cleanup, { once: true });
             if (signal?.aborted) cleanup();
             try { await loadSettings(); await loadDeliveries(); } catch (error) { if (!disposed) status.textContent = error.message; }
             try { await loadTypes(); } catch { /* Older compatibility hosts need not expose a registry. */ }
+            if (!disposed) { editor.disabled = false; root.setAttribute('aria-busy', 'false'); }
             return cleanup;
         }
     };

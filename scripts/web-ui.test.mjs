@@ -60,6 +60,27 @@ test('Notification catalog opening during initial fetch shares the request and p
     panel.open = false; panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn(); assert.equal(reads, 1); assert.equal(length.value, '220');
     cleanup(); dom.window.close();
 });
+test('Opening the catalog before initial settings finish does not trigger a second render after startup', async () => {
+    const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window;
+    w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
+    let releaseSettings, reads = 0; const gate = new Promise(resolve => { releaseSettings = resolve; });
+    const root = w.document.querySelector('main');
+    const mounted = w.AccountHubNotificationSettings.mount(root, async path => {
+        if (path === 'settings/notifications') { await gate; return { revision: 0, routes: [], notificationDays: 90 }; }
+        if (path.endsWith('/types')) { reads++; return { catalogs: [{ source: 'example', version: '1', revision: 1, types: [{ type: 'example.changed', name: 'Example', trigger: 'Change', recipients: 'explicit-users', layout: { density: 'compact', summaryLength: 140, expandable: true }, actions: [] }] }] }; }
+        return { deliveries: [] };
+    });
+    const panel = root.querySelector('details'); panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn();
+    const density = panel.querySelector('select'); assert(density); assert.equal(reads, 1);
+    assert.equal(root.getAttribute('aria-busy'), 'true'); assert(density.matches(':disabled'));
+    density.value = 'standard'; // Also prove DOM identity/draft preservation independently of disabled controls.
+    releaseSettings(); const cleanup = await mounted;
+    assert.equal(reads, 1); assert.equal(panel.querySelector('select'), density); assert.equal(density.value, 'standard');
+    assert.equal(root.getAttribute('aria-busy'), 'false'); assert(!density.matches(':disabled'));
+    const reload = [...root.querySelectorAll('button')].find(button => button.textContent === 'Reload'); reload.click(); await turn(); await turn();
+    assert.equal(reads, 2); assert.notEqual(panel.querySelector('select'), density); // Explicit reload still discards drafts.
+    cleanup(); dom.window.close();
+});
 test('Aborting a pending notification settings mount cannot clear the next editor', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window; w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const controller = new w.AbortController(), root = w.document.querySelector('main'); let release, reads = 0;
@@ -207,10 +228,11 @@ test('Navigation aborts a real pending Notifications mount and immediately erase
     const pending = new Promise(resolve => { release = resolve; });
     f.window.fetch = async (url, options) => {
         if (url.includes('/deliveries?')) { signal = options.signal; await pending; }
-        return fetch(url, options); // Deliberately finishes even after abort, like a late transport completion.
+        const result = await fetch(url, options); // Deliberately finishes even after abort, like a late transport completion.
+        return url.endsWith('/settings/notifications') ? response({ revision: 0, notificationDays: 90, routes: [{ id: 'saved-route', source: '*', type: '*', channel: 'webhook', destination: '[configured]', adminOnly: true }] }) : result;
     };
     await f.tab('Notifications'); assert(signal);
-    [...f.content.querySelectorAll('button')].find(n => n.textContent === 'Add route').click(); await turn();
+    assert([...f.content.querySelectorAll('button')].find(n => n.textContent === 'Add route').matches(':disabled'));
     const secret = f.content.querySelector('input[type=password]'); assert(secret); secret.value = 'pending-notifications-secret';
     await f.tab('Settings'); assert.equal(signal.aborted, true); assert.equal(secret.value, ''); assert.equal(secret.isConnected, false);
     const expected = f.content.innerHTML;

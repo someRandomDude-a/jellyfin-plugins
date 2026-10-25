@@ -1,5 +1,13 @@
 # Consolidation and review — 2026-10-25
 
+## Notifications catalog startup race — CI follow-up
+
+The reported Playwright image pull completed successfully. The later `admin/Notifications` density assertion exposed an editor startup race: opening Registered notification types while the initial routing/delivery chain was pending completed an early catalog fetch, then startup fetched and rebuilt the catalog a second time. A deterministic run of the committed baseline produced two reads and changed `standard` back to `compact`.
+
+The catalog now caches its successful initial load; only explicit Reload forces another fetch. The editor stays disabled inside a native fieldset with `aria-busy=true` until initialization finishes. The installed-browser check holds the initial settings request, opens the catalog early, proves controls are disabled and the same catalog rows survive startup, then checks the PUT payload, successful response and persisted API layout. It no longer uses SPA `networkidle` as Notifications readiness or accepts an unrelated/stale success message.
+
+All **35 affected shared/settings/removal UI tests** passed, including early-toggle/late-startup, explicit reload, abort/secret-erasure and mount lifecycle regressions. Fresh packages in `artifacts/notification-catalog-readiness-suite` passed the installed all-five Linux amd64 browser/API checks, including the held-startup regression and real layout save/readback: approved temporary fixture `suite-integration-e2d2eef5-d920-4ee8-b915-91a6bccb018e`. No GitHub-hosted rerun, commit, push or publication was performed. CI must rebuild packages from the fixed source rather than reuse an earlier browser package artifact.
+
 ## Removal actions and Enhanced integration follow-up
 
 - Removal notices now project live, per-recipient Allow/Keep/Undo controls through Notifications' allowlisted framework command interface. Inbox ownership, live access, revision and activity snapshot are rechecked before mutation; selected state is not stored in a shared event. Missing/broken command providers fail closed without hiding other notifications. Owner-only Undo remains enforced.

@@ -225,21 +225,45 @@ const http = require('node:http');
         const adminPages = [];
         for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
             phase = 'admin/' + name;
+            let releaseNotifications;
+            const settingsPattern = '**/Notifications/api/v1/settings/notifications';
+            if (name === 'Notifications') {
+                const gate = new Promise(resolve => { releaseNotifications = resolve; });
+                await page.route(settingsPattern, async route => { await gate; await route.continue(); });
+            }
             await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=' + name);
             await page.locator(ready).first().waitFor();
-            await page.waitForLoadState('networkidle');
+            if (name !== 'Notifications') await page.waitForLoadState('networkidle');
             if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
             if (name === 'Notifications') {
-                const catalog = page.locator('[data-notification-settings] > details');
+                const root = page.locator('#notificationsAdmin [data-notification-settings]');
+                const catalog = root.locator('[data-notification-editor] > details');
                 await catalog.locator(':scope > summary').click();
                 const type = catalog.locator('fieldset').filter({ has: page.locator('legend', { hasText: 'Account notifications' }) }).first();
-                await type.waitFor();
+                try {
+                    await type.waitFor();
+                    assert.equal(await root.getAttribute('aria-busy'), 'true');
+                    assert(await type.getByLabel('Layout', { exact: true }).isDisabled(), 'Notifications draft must stay disabled during initial loading');
+                    await type.evaluate(e => { e.dataset.startupProbe = 'retained'; });
+                } finally { releaseNotifications(); }
+                await page.locator('#notificationsAdmin [data-notification-settings][aria-busy="false"] [data-notification-editor]:not([disabled])').waitFor();
+                await page.unroute(settingsPattern);
+                assert.equal(await type.getAttribute('data-startup-probe'), 'retained', 'Completing startup must not rebuild the early-opened catalog');
                 await type.getByLabel('Layout', { exact: true }).selectOption('standard');
                 await type.getByLabel('Summary length', { exact: true }).fill('180');
+                const saved = page.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith('/settings/notifications/types/layout'));
                 await type.getByRole('button', { name: 'Save layout', exact: true }).click();
-                await page.waitForFunction(() => [...document.querySelectorAll('[data-notification-settings] [role=status]')].some(node => node.textContent.length));
-                assert(await page.locator('[data-notification-settings]').evaluate(e => [...e.querySelectorAll('[role=status]')].some(node => node.textContent === 'Saved / refreshed.')), 'Layout save failed: ' + await page.locator('[data-notification-settings] [role=status]').allTextContents());
+                const saveResponse = await saved;
+                assert.equal(saveResponse.request().postDataJSON().layout.density, 'standard');
+                assert.equal(saveResponse.status(), 200, 'Layout save request failed');
+                assert.equal((await saveResponse.json()).ok, true);
+                await page.waitForFunction(() => [...document.querySelectorAll('#notificationsAdmin [data-notification-settings] [role=status]')].some(node => node.textContent === 'Saved / refreshed.'));
                 assert.equal(await type.getByLabel('Layout', { exact: true }).inputValue(), 'standard');
+                const persisted = await page.evaluate(async () => {
+                    const result = await ApiClient.ajax({ url: ApiClient.getUrl('Notifications/api/v1/settings/notifications/types'), type: 'GET', dataType: 'json' });
+                    return result.data.catalogs.find(catalog => catalog.source === 'account-hub').types.find(type => type.type === '*').layout;
+                });
+                assert.equal(persisted.density, 'standard'); assert.equal(persisted.summaryLength, 180);
                 await catalog.locator(':scope > summary').click();
             }
             if (name === 'privateSyncPlay') {
