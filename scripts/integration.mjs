@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, rm, rename, stat } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
-import { randomUUID, createHash, createHmac } from 'node:crypto';
+import { randomUUID, randomBytes, createHash, createHmac } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import assert from 'node:assert/strict';
 import { target } from '../plugins/private-syncplay/scripts/jellyfin-target.mjs';
@@ -357,6 +357,22 @@ try {
     if(has('notifications')) {
         const endpoint='Notifications/api/v1/';
         await request(endpoint+'notifications',{auth:null,expected:[401,403]});
+        const worker=(await request(endpoint+'notifications/push/sw.js',{auth:null})).text;assert(worker.includes('showNotification'),'Narrow push worker must be public without exposing any session');
+        await request(endpoint+'notifications/push',{auth:null,expected:[401,403]});
+        let push=(await request(endpoint+'settings/notifications/push')).data.data;assert.equal(push.enabled,false,'Web Push must default off');assert(!('privateKey'in push));
+        await request(endpoint+'settings/notifications/push',{method:'PUT',body:{revision:push.revision,enabled:true,subject:'mailto:suite@example.test'}});
+        const enabledPush=(await request(endpoint+'notifications/push')).data.data;assert(enabledPush.enabled&&enabledPush.publicKey.length===87);assert(!('privateKey'in enabledPush));
+        push=(await request(endpoint+'settings/notifications/push')).data.data;await request(endpoint+'settings/notifications/push',{method:'PUT',body:{revision:push.revision,enabled:false}});
+        const ticket=(await request(endpoint+'notifications/live-ticket',{method:'POST'})).data.data.ticket;assert(/^[A-F0-9]{64}$/.test(ticket));
+        const handshake=()=>new Promise((resolve,reject)=>{
+            const address=new URL(endpoint+'notifications/live',base+'/');
+            const req=httpRequest(address,{headers:{Connection:'Upgrade',Upgrade:'websocket','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':randomBytes(16).toString('base64'),'Sec-WebSocket-Protocol':'notifications.v1, ticket.'+ticket,Origin:address.origin}});
+            req.setTimeout(10000,()=>req.destroy(Error('Live socket timeout')));req.on('error',reject);
+            req.on('upgrade',(response,socket)=>{assert.equal(response.headers['sec-websocket-protocol'],'notifications.v1');socket.destroy();resolve(response.statusCode);});
+            req.on('response',response=>{response.resume();resolve(response.statusCode);});req.end();
+        });
+        assert.equal(await handshake(),101,'Native installed socket must accept a valid grant without a URL token');assert.equal(await handshake(),401,'Native socket grant must not be replayable');
+        console.log('PASS installed Web Push defaults/contact/enable/disable/authentication, anonymous scoped worker and native single-use live handshake');
         const before=(await request(endpoint+'notifications/unread-count')).data.data.count;
         await request(endpoint+'settings/notifications/test',{method:'POST'});
         const inbox=(await request(endpoint+'notifications')).data.data.notifications;

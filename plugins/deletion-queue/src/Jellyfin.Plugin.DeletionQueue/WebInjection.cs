@@ -50,7 +50,7 @@ public sealed class WebInjection : IStartupFilter
                     {
                         var root = HtmlEncoder.Default.Encode(assetRoot);
                         var version = typeof(WebInjection).Assembly.GetName().Version!.ToString();
-                        var tags = $"<link rel=\"stylesheet\" href=\"{root}integrated.css?v={version}\"><script id=\"dq-web-client\" defer src=\"{root}integrated.js?v={version}\"></script>";
+                        var tags = $"<link rel=\"stylesheet\" href=\"{root}integrated.css?v={version}\"><link rel=\"stylesheet\" href=\"{root}timeline.css?v={version}\"><script defer src=\"{root}timeline.js?v={version}\"></script><script id=\"dq-web-client\" defer src=\"{root}integrated.js?v={version}\"></script>";
                         bytes = Encoding.UTF8.GetBytes(html.Insert(end, tags));
                         context.Response.ContentLength = bytes.Length;
                         context.Response.Headers.Remove("ETag");

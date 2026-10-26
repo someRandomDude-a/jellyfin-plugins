@@ -66,7 +66,7 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         return $"{(item is Series ? "tv" : "movie")}:{number}";
     }
 
-    public async Task<VerifiedTarget> ResolveAsync(Account caller, TargetSelection selection, CancellationToken ct)
+    public async Task<VerifiedTarget> ResolveAsync(Account caller, TargetSelection selection, CancellationToken ct, Dictionary<string, object?>? metadata = null)
     {
         if (selection.ItemId == Guid.Empty || selection.RequestId <= 0) throw new QueueException("InvalidTarget");
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -140,7 +140,33 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         var key = $"seerr|{activityKey}|{selection.Is4K}";
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"{config.BaseUrl}|{key}|{mediaId}|{nativeId:D}|{service.GetInt32()}|{Number(info, externalProperty)}|{config.Revision}")));
-        var own = await SeerrOwnership.OwnsAsync(info, caller.Id, selection.Is4K, item is Series, seerr.UserAsync, ct);
+        var own = false;
+        bool? ownEvidence = null;
+        try { ownEvidence = own = await SeerrOwnership.OwnsAsync(info, caller.Id, selection.Is4K, item is Series, seerr.UserAsync, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch when (metadata is not null) { /* Failed owner reads remain unknown in rule metadata. */ }
+        Guid? requester = null;
+        if (metadata is not null) {
+            try {
+                var requesterIds = await SeerrOwnership.RequesterIdsAsync(info, selection.Is4K, seerr.UserAsync,
+                    id => users.GetUserById(id) is { } user && !user.HasPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled), ct);
+                requester=requesterIds is {Length:1}?requesterIds[0]:null;
+                metadata["seerr.requesters"]=requesterIds?.Select(id=>id.ToString("D")).ToArray();
+            } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { /* Only requester-dependent conditions lose their evidence. */ }
+            metadata["seerr.ownRequest"] = ownEvidence;
+            metadata["seerr.requesterId"] = requester?.ToString("D");
+            metadata["seerr.is4k"] = selection.Is4K;
+            metadata["seerr.requestOnly"] = false;
+            if(info.TryGetProperty(selection.Is4K?"status4k":"status",out var availability)&&availability.ValueKind==JsonValueKind.Number)metadata["seerr.status"]=availability.Clone();
+            if(info.TryGetProperty("mediaAddedAt",out var added)&&added.ValueKind==JsonValueKind.String&&added.TryGetDateTimeOffset(out var addedDate))metadata["seerr.mediaAddedAt"]=addedDate;
+            if(info.TryGetProperty("requests",out var requests)&&requests.ValueKind==JsonValueKind.Array&&requests.GetArrayLength()<=64&&requests.EnumerateArray().All(r=>r.ValueKind==JsonValueKind.Object&&Number(r,"id")>0&&r.TryGetProperty("is4k",out var edition)&&edition.ValueKind is JsonValueKind.True or JsonValueKind.False)) {
+                var matching=requests.EnumerateArray().Where(r=>Bool(r,"is4k")==selection.Is4K).ToArray();
+                metadata["seerr.requestCount"]=matching.Length;metadata["seerr.isRequested"]=matching.Length>0;
+                var dates=matching.Select(r=>r.TryGetProperty("createdAt",out var date)&&date.ValueKind==JsonValueKind.String&&date.TryGetDateTimeOffset(out var parsed)?(DateTimeOffset?)parsed:null).ToArray();
+                if(dates.Length>0&&dates.All(d=>d.HasValue))metadata["seerr.requestDate"]=dates.Min();
+            }
+        }
         // Seerr is explicitly trusted for Arr scope/files; the legacy FilesPinned field remains false and is not a gate.
         var title = item.Name ?? "Media";
         if (title.Length > 512) title = title[..512];

@@ -1,5 +1,8 @@
 /* Administrator workspace layout; Jellyfin supplies control styling. */
 #deletionQueueAdmin.suiteAdmin .content-primary {max-width:none;width:100%;box-sizing:border-box;}
+#deletionQueueAdmin > [data-role=content],#deletionQueueAdmin #dqPolicy,#deletionQueueAdmin #dqPresentation,#deletionQueueAdmin [data-presentation-editor],#deletionQueueAdmin [data-presentation-editor] > form,#deletionQueueAdmin .dq-overlay-templates,#deletionQueueAdmin .dq-art-template{width:100%;max-width:none;min-width:0;box-sizing:border-box;}
+#deletionQueueAdmin .content-primary{margin-inline:0;}
+#deletionQueueAdmin .dq-art-template{margin-inline:0;}
 #deletionQueueAdmin #dqPolicyControls:disabled {opacity:.45;}
 #deletionQueueAdmin .dq-snap-guide {position:absolute;background:var(--theme-primary-color,#00a4dc);box-shadow:0 0 3px currentColor;pointer-events:none;z-index:4;}
 #deletionQueueAdmin .dq-policy-timeline li {padding:1rem;}
@@ -19,14 +22,27 @@
 #deletionQueueAdmin .dq-canvas-toolbar { display:flex; flex-wrap:wrap; gap:.25rem; border-bottom:1px solid var(--suite-line); padding-bottom:.65rem; margin-bottom:1rem; }
 #deletionQueueAdmin .dq-canvas-toolbar button { font-size:.78rem; }
 #deletionQueueAdmin .dq-canvas-toolbar .dq-canvas-zoom { width:6rem; margin:0 .5rem; }
-#deletionQueueAdmin .dq-canvas-workspace { display:grid; grid-template-columns:minmax(7rem,.65fr) minmax(0,2fr) minmax(11rem,1fr); gap:1rem; align-items:start; }
+#deletionQueueAdmin .dq-canvas-editor{container:overlay-editor / inline-size;min-width:0;width:100%;}
+#deletionQueueAdmin .dq-canvas-workspace { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(20rem,1fr);grid-template-areas:'layers layers' 'canvas inspector'; gap:.8rem; align-items:start; }
+#deletionQueueAdmin .dq-canvas-layers{grid-area:layers;display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;max-height:8rem;overflow:auto;}
+#deletionQueueAdmin .dq-canvas-viewport{grid-area:canvas;}
+#deletionQueueAdmin .dq-canvas-inspector{grid-area:inspector;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;align-content:start;}
+#deletionQueueAdmin .dq-canvas-inspector h4,#deletionQueueAdmin .dq-property-text,#deletionQueueAdmin .dq-canvas-coordinates,#deletionQueueAdmin .dq-canvas-align{grid-column:1 / -1;}
+#deletionQueueAdmin .dq-canvas-inspector [hidden]{display:none!important;}
+#deletionQueueAdmin .dq-canvas-align{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.35rem;}
+#deletionQueueAdmin .dq-canvas-help{margin-block-start:.75rem;font-size:.85em;}
 #deletionQueueAdmin .dq-canvas-workspace > * { min-width:0; }
 #deletionQueueAdmin .dq-canvas-layers, #deletionQueueAdmin .dq-canvas-inspector { background:var(--suite-surface); border:1px solid var(--suite-line); border-radius:.65rem; padding:.75rem; }
 #deletionQueueAdmin .dq-canvas-workspace h4 { margin:0 0 .8rem; font-size:.85rem; }
 #deletionQueueAdmin .dq-canvas-layers button, #deletionQueueAdmin .dq-canvas-align button { display:block; text-align:start; padding:.5rem; width:100%; border:1px solid var(--suite-line); border-radius:.35rem; color:inherit; background:transparent; font:inherit; font-size:.75rem; margin-block:.35rem; overflow-wrap:anywhere; cursor:pointer; }
+#deletionQueueAdmin .dq-canvas-layers button{width:auto;margin:0;max-width:14rem;}
+#deletionQueueAdmin .dq-canvas-layers h4{margin:0 .5rem 0 0;}
+#deletionQueueAdmin .dq-canvas-align button{display:grid;place-items:center;text-align:center;margin:0;min-height:2.5rem;}
 #deletionQueueAdmin .dq-canvas-layers [aria-pressed=true] { border-color:var(--theme-primary-color,#00a4dc); background:color-mix(in srgb,var(--theme-primary-color,#00a4dc) 12%,transparent); }
 #deletionQueueAdmin .dq-canvas-viewport { background:repeating-conic-gradient(color-mix(in srgb,currentColor 4%,transparent) 0% 25%,transparent 0% 50%) 50% / 16px 16px; padding:2rem 1rem; border:1px solid var(--suite-line); border-radius:.65rem; overflow:auto; }
-#deletionQueueAdmin .dq-canvas-artboard { position:relative; width:100%; max-width:34rem; margin:auto; background:radial-gradient(circle at 72% 28%,#a9c7c5 0 9%,transparent 9.3%),linear-gradient(130deg,#162843,#31646f,#121e31); box-shadow:0 .4rem 1.4rem #0005; touch-action:none; outline-offset:4px; }
+#deletionQueueAdmin .dq-canvas-artboard { position:relative; width:100%; margin:auto; background:radial-gradient(circle at 72% 28%,#a9c7c5 0 9%,transparent 9.3%),linear-gradient(130deg,#162843,#31646f,#121e31); box-shadow:0 .4rem 1.4rem #0005; touch-action:none; outline-offset:4px; }
+#deletionQueueAdmin .dq-canvas-editor[data-layout=portrait][data-zoom=fit] .dq-canvas-artboard{max-width:min(100%,24rem,43dvh);}
+#deletionQueueAdmin .dq-canvas-editor[data-layout=landscape][data-zoom=fit] .dq-canvas-artboard{max-width:min(100%,64rem,110dvh);}
 #deletionQueueAdmin .dq-canvas-grid { background-image:linear-gradient(#ffffff10 1px,transparent 1px),linear-gradient(90deg,#ffffff10 1px,transparent 1px),radial-gradient(circle at 72% 28%,#a9c7c5 0 9%,transparent 9.3%),linear-gradient(130deg,#162843,#31646f,#121e31); background-size:10% 10%,10% 10%,100% 100%,100% 100%; }
 #deletionQueueAdmin .dq-canvas-layer { position:absolute; box-sizing:border-box; display:flex; align-items:center; justify-content:center; transform-origin:center; user-select:none; cursor:move; z-index:1; }
 #deletionQueueAdmin .dq-canvas-layer > span { pointer-events:none; white-space:pre-wrap; overflow:hidden; max-height:100%; line-height:1.15; }
@@ -34,20 +50,25 @@
 #deletionQueueAdmin .dq-canvas-layer .dq-canvas-handle { position:absolute; display:block; pointer-events:auto; overflow:visible; background:#fff; border:2px solid #389ddd; width:10px; height:10px; box-sizing:border-box; }
 #deletionQueueAdmin .dq-canvas-resize { right:-6px; bottom:-6px; cursor:nwse-resize; }
 #deletionQueueAdmin .dq-canvas-layer .dq-canvas-rotate { top:-1.7rem; left:calc(50% - .6rem); border-radius:50%; width:1.2rem; height:1.2rem; color:#153751; font:14px/1rem sans-serif; text-align:center; cursor:grab; }
-#deletionQueueAdmin .dq-canvas-inspector .inputContainer, #deletionQueueAdmin .dq-canvas-inspector .selectContainer { margin-block:.5rem .85rem; }
+#deletionQueueAdmin .dq-canvas-inspector .inputContainer, #deletionQueueAdmin .dq-canvas-inspector .selectContainer { margin:0; }
 #deletionQueueAdmin .dq-canvas-inspector label { font-size:.75rem; }
 #deletionQueueAdmin .dq-canvas-inspector input, #deletionQueueAdmin .dq-canvas-inspector select, #deletionQueueAdmin .dq-canvas-inspector textarea { width:100%; min-width:0; box-sizing:border-box; }
-#deletionQueueAdmin .dq-canvas-coordinates { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+#deletionQueueAdmin .dq-canvas-coordinates { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; }
 #deletionQueueAdmin .dq-studio-proof { margin-block:1rem; padding:.75rem; border:1px solid var(--suite-line); border-radius:.5rem; }
 #deletionQueueAdmin .dq-studio-proof img { max-width:100%; max-height:28rem; object-fit:contain; display:block; margin:1rem auto; }
 #deletionQueueAdmin .dq-studio-proof img[hidden] { display:none; }
 #deletionQueueAdmin .dq-art-date-help { font-size:.85rem; line-height:1.6; border-inline-start:2px solid var(--theme-primary-color,currentColor); padding:.5rem .75rem; }
-@media(max-width:1100px) { #deletionQueueAdmin .dq-canvas-workspace { grid-template-columns:minmax(6rem,.6fr) minmax(0,2fr); } #deletionQueueAdmin .dq-canvas-inspector { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.7rem; } #deletionQueueAdmin .dq-canvas-inspector h4 { grid-column:1 / -1; } }
-@media(max-width:600px) { #deletionQueueAdmin .dq-canvas-workspace { grid-template-columns:minmax(0,1fr); } #deletionQueueAdmin .dq-canvas-inspector { grid-template-columns:repeat(2,minmax(0,1fr)); } #deletionQueueAdmin .dq-canvas-layers button { display:inline-block; width:auto; margin:.2rem; } #deletionQueueAdmin .dq-canvas-viewport { padding:2rem .7rem; } }
+@container overlay-editor (max-width:52rem) { #deletionQueueAdmin .dq-canvas-workspace { grid-template-columns:minmax(0,1fr);grid-template-areas:'layers' 'canvas' 'inspector'; } #deletionQueueAdmin .dq-canvas-inspector { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@container overlay-editor (max-width:30rem) { #deletionQueueAdmin .dq-canvas-inspector { grid-template-columns:repeat(2,minmax(0,1fr)); } #deletionQueueAdmin .dq-canvas-coordinates {grid-template-columns:repeat(2,minmax(0,1fr));} }
+@media(max-width:600px) { #deletionQueueAdmin .dq-canvas-workspace { grid-template-columns:minmax(0,1fr);grid-template-areas:'layers' 'canvas' 'inspector'; } #deletionQueueAdmin .dq-canvas-inspector { grid-template-columns:repeat(2,minmax(0,1fr)); } #deletionQueueAdmin .dq-canvas-coordinates {grid-template-columns:repeat(2,minmax(0,1fr));} #deletionQueueAdmin .dq-canvas-viewport { padding:2rem .7rem; } }
 #deletionQueueAdmin .dq-policy-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1.25rem; padding: 0; margin-block: 1.5rem; list-style: none; counter-reset: policy-stage; }
 #deletionQueueAdmin .dq-policy-timeline > li { position: relative; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-block-start: 3px solid var(--theme-primary-color, currentColor); border-radius: .65rem; counter-increment: policy-stage; }
 #deletionQueueAdmin .dq-policy-timeline > li > h3::before { content: counter(policy-stage) '. '; }
 #deletionQueueAdmin .dq-policy-timeline h3 { margin-block: .5rem; }
+#deletionQueueAdmin .dq-policy-paths{display:grid;gap:1rem;border-inline-start:2px solid var(--theme-primary-color,currentColor);padding-inline-start:.75rem;}
+#deletionQueueAdmin .dq-policy-paths > section{position:relative;min-width:0;}
+#deletionQueueAdmin .dq-policy-paths > section::before{content:'';position:absolute;inset-inline-start:-.75rem;top:.75rem;width:.65rem;border-block-start:2px solid var(--theme-primary-color,currentColor);}
+#deletionQueueAdmin .dq-policy-paths h4{margin:.3rem 0 .75rem;}
 #deletionQueueAdmin .dq-policy-timeline p { font-size: .9em; line-height: 1.5; overflow-wrap: anywhere; }
 #deletionQueueAdmin .dq-policy-timeline input[type=number] { width: 100%; box-sizing: border-box; }
 #deletionQueueAdmin .dq-policy-icon { background: transparent; }

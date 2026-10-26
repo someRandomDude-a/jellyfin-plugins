@@ -2,6 +2,7 @@
 <html><head><title>Deletion queue</title></head><body>
 <div id="deletionQueueAdmin" data-suite-plugin="deletion-queue" data-role="page" class="page type-interior pluginConfigurationPage suiteAdmin" data-require="emby-input,emby-button,emby-checkbox,emby-select,emby-textarea">
   <link rel="stylesheet" href="../DeletionQueue/assets/admin.css" />
+  <link rel="stylesheet" href="../DeletionQueue/assets/timeline.css" />
   <div data-role="content"><div class="content-primary">
     <h1>Deletion queue</h1>
     <span id="dqMode" hidden></span>
@@ -21,28 +22,32 @@
     <h2>Permissions and safety policy</h2>
     <form id="dqPolicy">
       <div data-help="Pause eligibility for deletion. Existing proposals and history are retained. Save policy to apply changes."><label class="checkboxContainer"><input is="emby-checkbox" id="dqSuspend" type="checkbox" /><span>Pause deletion</span></label></div>
+      <div id="dqPolicyTimeline" aria-live="polite"></div>
       <fieldset id="dqPolicyControls" style="border:0;padding:0;margin:0;min-width:0"><legend class="hide">Removal policy</legend>
       <ol class="dq-policy-timeline" aria-label="Removal policy timeline">
       <li><span class="material-icons dq-policy-icon" aria-hidden="true">playlist_add</span><h3 data-help="Verified media and permission are required to enter the queue.">Request</h3>
-      <div class="selectContainer" data-help="Choose which items users may request to remove. Per-user overrides can change this permission. Viewer consent is still required."><label for="dqAuthority">Default removal permission</label><select is="emby-select" id="dqAuthority"><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
+      <div class="selectContainer" data-help="Choose which items users may request to remove. Per-user overrides can change this permission. Recent viewers must consent unless all users are inactive."><label for="dqAuthority">Default removal permission</label><select is="emby-select" id="dqAuthority"><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
       </li>
-      <li><span class="material-icons dq-policy-icon" aria-hidden="true">manage_history</span><h3>Recent playback</h3>
+      <li class="dq-policy-fork"><span class="material-icons dq-policy-icon" aria-hidden="true">call_split</span><h3>Activity or consent</h3><div class="dq-policy-paths"><section><h4>All users inactive</h4>
       <div class="inputContainer" data-help="Consider latest playback within this many days, including unfinished playback. A complete native history check replaces a multi-day observation wait."><label for="dqDays">Playback lookback (days)</label><input is="emby-input" id="dqDays" type="number" min="1" max="365" required /></div>
-       <p id="dqLookbackPreview"></p></li>
-      <li><span class="material-icons dq-policy-icon" aria-hidden="true">how_to_vote</span><h3 data-help="Recent viewers must allow the current media snapshot. Viewing a request never grants consent.">Consent &amp; approval</h3>
-      <label class="checkboxContainer"><input is="emby-checkbox" id="dqRequireAdminApproval" type="checkbox" /><span>Require administrator approval for each proposal (optional)</span></label>
-      <p data-help-for="#dqRequireAdminApproval">Approve each proposal in the backlog. Viewer consent and the deletion delay still apply. Activity or policy changes require a new approval.</p><p id="dqApprovalPreview"></p>
+      </section><section><h4 data-help="If there are recent viewers, every one must allow the current media snapshot. Verified inactivity needs no viewer votes. Active playback blocks both paths.">All active viewers consent</h4><p>Current snapshot</p></section></div>
+      <div data-help="Optional deadline for the entire activity/consent stage, measured from request creation. Playback does not renew it. Disabled means no expiry while waiting at this stage; administrator review has its own decision limit."><label class="checkboxContainer"><input is="emby-checkbox" id="dqActivityTimeoutEnabled" type="checkbox" /><span>Limit activity/consent waiting</span></label></div>
+      <div id="dqActivityTimeoutOptions" class="inputContainer"><label for="dqActivityTimeoutDays">Waiting limit (days)</label><input is="emby-input" id="dqActivityTimeoutDays" type="number" min="1" max="365" value="45" required /></div></li>
+      <li><span class="material-icons dq-policy-icon" aria-hidden="true">admin_panel_settings</span><h3>Administrator review</h3>
+      <label class="checkboxContainer"><input is="emby-checkbox" id="dqRequireAdminApproval" type="checkbox" /><span>Require administrator approval</span></label>
+      <p data-help-for="#dqRequireAdminApproval">After either eligibility path, approve in the backlog. Denial or timeout goes directly to Cancelled; approval continues to the safety delay. Activity or policy changes require a fresh approval.</p><p id="dqApprovalPreview"></p>
       <div id="dqApprovalOptions" class="inputContainer" data-help="The clock starts when a verified request reaches administrator review. Approval continues to the safety delay; denial or timeout closes the request. Personal settings may extend the timeout."><label for="dqApprovalDays">Decision timeout (days)</label><input is="emby-input" id="dqApprovalDays" type="number" min="1" max="365" value="30" required /></div></li>
       <li><span class="material-icons dq-policy-icon" aria-hidden="true">hourglass_top</span><h3>Safety delay</h3>
-      <div class="inputContainer" data-help="Minimum two days, starting only after checks and consent pass. Fractions of a day are rounded to whole hours."><label for="dqDelayDays">Minimum delay (days)</label><input is="emby-input" id="dqDelayDays" type="number" min="2" max="365" step="any" required /></div>
+      <div class="inputContainer" data-help="Minimum two days, after inactivity OR all required viewer consent, verified safety checks and any required administrator approval. Fractions of a day are rounded to whole hours."><label for="dqDelayDays">Minimum delay (days)</label><input is="emby-input" id="dqDelayDays" type="number" min="2" max="365" step="any" required /></div>
       <details><summary>Fine-tune in hours</summary><div class="inputContainer"><label for="dqHours">Deletion delay (hours)</label><input is="emby-input" id="dqHours" type="number" min="48" max="8760" required /></div></details>
-      <p id="dqDelayPreview"></p><p data-help-for="#dqDelayDays">Personal preferences may extend this wait. Playback resets it and requires fresh consent. Unaccepted requests expire after 30 days.</p></li>
+      <p data-help-for="#dqDelayDays">Personal preferences may extend this wait. Playback resets it and requires fresh consent. An enabled activity/consent waiting limit is measured from request creation, not renewed by playback.</p></li>
       <li><span class="material-icons dq-policy-icon" aria-hidden="true">auto_delete</span><h3 data-help="Target, access, playback, consent and the delay are rechecked before one removal attempt.">Verify &amp; remove</h3>
       <label class="checkboxContainer"><input is="emby-checkbox" id="dqAuto" type="checkbox" /><span>Opt in to automatic Seerr-managed deletion</span></label>
       <p id="dqSeerrDependency" class="fieldDescription"></p>
       <p data-help-for="#dqAuto">Deletes movie or whole-series files through Seerr; request history is kept. Consent and the delay still apply. Uncertain outcomes stop for review and are never automatically resent.</p>
-      <p id="dqExecutionPreview" role="status"></p></li></ol>
+      </li></ol>
       <h3>Per-user settings</h3>
+      <div class="inputContainer" data-help="Presentation only: separate recent and older retained history. This never deletes history or changes removal deadlines."><label for="dqRecentHistoryDays">Recent history (days)</label><input is="emby-input" id="dqRecentHistoryDays" type="number" min="1" max="365" value="7" required /></div>
       <div id="dqAccounts">
         <div class="selectContainer"><label for="dqUsers">User</label><select is="emby-select" id="dqUsers"></select></div>
         <div class="selectContainer"><label for="dqUserAuthority">Proposal permission</label><select is="emby-select" id="dqUserAuthority"><option value="">Inherit global</option><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
@@ -65,9 +70,10 @@
     <details class="suiteCard"><summary>Coverage and integrity</summary><pre id="dqCoverage" class="dq-evidence"></pre></details>
     <h2>Backlog and retained history</h2><div id="dqBacklog"></div>
     <details class="suiteCard"><summary>Transition journal</summary><pre id="dqJournal" class="dq-evidence"></pre></details>
-    <dialog id="dqOptInDialog" class="dialog" aria-labelledby="dqOptInTitle"><div class="formDialogHeader"><h2 id="dqOptInTitle" class="formDialogHeaderTitle">Enable real automatic deletion?</h2></div><div class="formDialogContent dq-dialog-content"><p>This enables destructive requests to stock Seerr after current consent, complete activity coverage and the removal delay. Seerr controls Arr targeting and record/file removal; requests are retained. Only local authenticated journal/seals are used, not an independent backup-rollback witness. Older preview-only opt-ins do not enable this transport.</p></div><div class="formDialogFooter formDialogFooter-flex"><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInCancel">Cancel</button><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInYes">Explicitly enable deletion</button></div></dialog>
+    <dialog id="dqOptInDialog" class="dialog" aria-labelledby="dqOptInTitle"><div class="formDialogHeader"><h2 id="dqOptInTitle" class="formDialogHeaderTitle">Enable real automatic deletion?</h2></div><div class="formDialogContent dq-dialog-content"><p>This enables destructive requests to stock Seerr after verified inactivity or all required viewer consent, complete activity checks, any required administrator approval and the removal delay. Seerr controls Arr targeting and record/file removal; requests are retained. Only local authenticated journal/seals are used, not an independent backup-rollback witness. Older preview-only opt-ins do not enable this transport.</p></div><div class="formDialogFooter formDialogFooter-flex"><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInCancel">Cancel</button><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInYes">Explicitly enable deletion</button></div></dialog>
   </div></div>
   <script src="configurationpage?name=DeletionQueueAdminUI.js"></script>
+  <script src="configurationpage?name=DeletionQueueTimeline.js"></script>
   <script src="configurationpage?name=DeletionQueueAdmin.js"></script>
   <script src="configurationpage?name=DeletionQueueOverlayEditor.js"></script>
   <script src="configurationpage?name=DeletionQueuePresentation.js"></script>

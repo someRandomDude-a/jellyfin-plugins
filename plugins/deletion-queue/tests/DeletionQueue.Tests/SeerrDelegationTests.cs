@@ -82,6 +82,21 @@ public sealed class SeerrDelegationTests
         await Assert.ThrowsAsync<QueueException>(() => SeerrOwnership.OwnsAsync(info, owner, false, false, User, default));
     }
 
+    [Fact] public async Task RequesterMetadataUsesVerifiedSeerrMappingsNotAnAdministratorSelection() {
+        var owner=Guid.NewGuid();var other=Guid.NewGuid();
+        Task<JsonElement> User(int id,CancellationToken _) => Task.FromResult(Json($$"""{"id":{{id}},"jellyfinUserId":"{{(id==1?owner:other)}}"}"""));
+        var info=Json("""{"requests":[{"id":10,"status":2,"is4k":false,"requestedBy":{"id":1}}]}""");
+        Assert.Equal(owner,await SeerrOwnership.RequesterAsync(info,false,User,_=>true,default));
+        Assert.Null(await SeerrOwnership.RequesterAsync(info,true,User,_=>true,default));
+        Assert.Null(await SeerrOwnership.RequesterAsync(info,false,User,_=>false,default));
+        Assert.Null(await SeerrOwnership.RequesterAsync(info,false,(_,_)=>Task.FromResult(Json("{}")),_=>true,default));
+        Assert.Null(await SeerrOwnership.RequesterAsync(info,false,(_,_)=>Task.FromResult(Json($$"""{"id":9,"jellyfinUserId":"{{owner}}"}""")),_=>true,default));
+        var mixed=Json("""{"requests":[{"id":10,"status":2,"is4k":false,"requestedBy":{"id":1}},{"id":11,"status":2,"is4k":false,"requestedBy":{"id":2}}]}""");
+        Assert.Null(await SeerrOwnership.RequesterAsync(mixed,false,User,_=>true,default));
+        foreach(var invalid in new[]{"{}","{\"requests\":[]}","{\"requests\":[{}]}","{\"requests\":["+string.Join(',',Enumerable.Repeat("{}",65))+"]}"})
+            Assert.Null(await SeerrOwnership.RequesterAsync(Json(invalid),false,User,_=>true,default));
+    }
+
     [Fact] public void LegacyPreviewOptInDoesNotAcknowledgeRealDeletion()
     {
         var policy = JsonSerializer.Deserialize<Policy>("""{"AutomaticDeletion":true}""")!;

@@ -2,12 +2,25 @@ using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using AccountHub.Notifications;
 
 namespace Jellyfin.Plugin.Notifications;
 
 public sealed class WebInjection:IStartupFilter
 {
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)=>app=>{
+        // Jellyfin's native socket middleware consumes upgrades before MVC and
+        // requires its own URL/session token. Intercept only this grant-bound
+        // endpoint; native authorization is rechecked by LiveNotifications.
+        app.UseWebSockets();
+        app.Use(async(context,continuation)=>{
+            if(HttpMethods.IsGet(context.Request.Method)&&(context.Request.Path.Value??"").EndsWith("/Notifications/api/v1/notifications/live",StringComparison.Ordinal)&&context.WebSockets.IsWebSocketRequest){
+                var services=context.RequestServices;var result=await services.GetRequiredService<LiveNotifications>().ConnectAsync(context,services.GetRequiredService<INotificationHost>(),services.GetRequiredService<NotificationStore>());
+                await result.ExecuteAsync(context);return;
+            }
+            await continuation();
+        });
         app.Use(async(context,continuation)=>{
             var path=context.Request.Path.Value??"";
             var suffix=new[]{"/web/index.html","/web/","/web"}.FirstOrDefault(s=>path.EndsWith(s,StringComparison.OrdinalIgnoreCase));

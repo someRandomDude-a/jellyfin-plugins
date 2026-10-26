@@ -23,6 +23,9 @@ public sealed class Policy
     public int ActivityDays { get; set; } = 14;
     public int DelayHours { get; set; } = 48;
     public int AdministratorApprovalDays { get; set; } = 30;
+    public bool ActivityWaitTimeoutEnabled { get; set; }
+    public int ActivityWaitTimeoutDays { get; set; } = 45;
+    public int RecentHistoryDays { get; set; } = 7;
     public bool AutomaticDeletion { get; set; }
     public bool RequireAdministratorApproval { get; set; }
     // Absent in older previews: an old preview-only opt-in must never silently enable a new destructive transport.
@@ -32,6 +35,7 @@ public sealed class Policy
 
 public sealed class Preferences
 {
+    public int RecentHistoryDays { get; set; }
     public int ActivityDays { get; set; }
     public int AdministratorApprovalDays { get; set; }
     public long Revision { get; set; }
@@ -69,6 +73,8 @@ public sealed class Proposal
 {
     public bool RequiresAutomaticRuleValidation { get; set; }
     public string? AutomaticRuleId { get; set; }
+    public Guid? AutomaticAuthorizerId { get; set; }
+    public Guid? RequesterId { get; set; }
     public bool Inactive { get; set; }
     public DateTimeOffset? ActivityVerifiedAt { get; set; }
     public DateTimeOffset? ApprovalWaitingSince { get; set; }
@@ -158,11 +164,17 @@ public sealed record UserProposal(
     public string? ClosureExplanation { get; init; }
     public string MediaKind { get; init; } = "Movie";
     public bool CanConsent { get; init; }
+    public string ConsentStatus { get; init; } = "Checking";
+    public string ActivityStatus { get; init; } = "Checking";
+    public string RequesterLabel { get; init; } = "Another requester";
 }
 public sealed record RemovalCheckpoint(string Key, string Label, string State, DateTimeOffset? At = null)
 {
     public string? DateLabel { get; init; }
     public string? Decision { get; init; }
+    public RemovalCheckpoint[] Paths { get; init; } = [];
+    public double? DurationDays { get; init; }
+    public int? DurationHours { get; init; }
 }
 
 public interface IStateStore

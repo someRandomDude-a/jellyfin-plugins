@@ -28,6 +28,7 @@ public sealed record NotificationEvent(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NotificationLayout? Layout = null)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public NotificationCommand[]? Commands { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? FirstViewedAt { get; init; }
     // Retain the original ABI for independently packaged producer DLLs.
     public NotificationEvent(int schemaVersion, Guid eventId, string source, string type, string severity, string title, string body,
         Guid[] audience, bool adminOnly, DateTimeOffset occurredAt, string? link, string? dedupeKey, Guid? correlationId, Dictionary<string, string>? metadata)

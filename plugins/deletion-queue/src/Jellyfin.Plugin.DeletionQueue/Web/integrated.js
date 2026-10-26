@@ -176,6 +176,7 @@
     }
     function date(value) { const at = value ? new Date(value) : null; return at && Number.isFinite(at.getTime()) ? at : null; }
     function renderTimeline(p, content) {
+        if(window.DeletionQueueTimeline?.render(p,content))return;
         const original = get(p, 'timeline') || [{ key: 'requested', label: 'Check permission', state: 'complete', at: get(p, 'createdAt') }];
         const crossedDelay = ['Ready', 'Claimed', 'Uncertain', 'FilesDeleted', 'Completed'].includes(get(p, 'status'));
         const terminal = ['Completed', 'Cancelled', 'Expired'].includes(get(p, 'status'));
@@ -299,6 +300,8 @@
         const help = get(p, 'statusHelp') || ({ ActivityCoverageIncomplete: 'Viewing-activity checks are not complete yet.', ConsentRequired: 'Required consent is missing or no longer current.', AdministratorApprovalRequired: 'Administrator approval is required.', DelayRequired: 'The safety delay must pass before removal.', RequestExpired: 'This request was not accepted within 30 days.', AdministratorDenied: 'This request was denied and closed.' })[get(p, 'reason')] || 'Removal is waiting for safety checks. No removal time is confirmed.';
         const badge = node('span', label, 'dq-status'); badge.dataset.status = status;
         heading.append(node('h3', get(p, 'title')), badge, statusHelp(get(p,'closureExplanation') || help)); content.append(heading);
+        const badges=node('div',undefined,'dq-request-badges');
+        for(const [key,title]of [['requesterLabel','Requester'],['consentStatus','Consent'],['activityStatus','Activity']])if(get(p,key)){const value=get(p,key),chip=node('span',value,'dq-request-badge');chip.dataset.kind=key;chip.dataset.state=['Allowed','Not needed','Inactive'].includes(value)?'complete':['Kept','Playing'].includes(value)?'blocked':value==='Awaiting consent'?'waiting':'neutral';chip.title=title;badges.append(chip);}if(badges.children.length)content.append(badges);
         if (get(p, 'stage') && get(p, 'stage') !== 'History') content.append(node('span', get(p, 'stage'), 'dq-stage'));
         const scheduled = date(get(p, 'scheduledFor'));
         if (scheduled && !['Completed','Cancelled','Expired'].includes(status)) { const days=Math.ceil((scheduled-(date(get(p,'evaluatedAt'))||new Date()))/86400000);const summary=node('p',days>0?'Earliest removal in '+days+' days':'Safety delay elapsed','dq-schedule');summary.title=scheduled.toLocaleString();content.append(summary); }
@@ -373,6 +376,8 @@
         const rows = node('div', undefined, 'dq-queue-rows'); rows.setAttribute('role', 'tabpanel'); host.append(tabs, rows);
         let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true, lastSnapshot = '';
         const seen = new Set(), sameId = (a, b) => String(a).replaceAll('-', '').toLowerCase() === String(b).replaceAll('-', '').toLowerCase();
+        const historyGroups=new Map();let allUsers=false;
+        if(get(integration,'isAdministrator')){const all=button('All requesters',async()=>{allUsers=!allUsers;all.setAttribute('aria-pressed',String(allUsers));revision++;await refresh();},'emby-button button-flat');all.setAttribute('aria-pressed','false');host.insertBefore(all,tabs);}
         for (const [key, label] of [['active', 'Active'], ['history', 'History']]) {
             const tab = button(label, async () => { view = key; revision++; await refresh(); }, 'emby-button button-flat');
             tab.dataset.view = key; tab.setAttribute('role', 'tab'); tabs.append(tab);
@@ -382,11 +387,11 @@
             try {
                 const start = append ? offset : 0;
                 if (focused && !append && !first) focused = await api('proposals/' + get(focused, 'id'));
-                const proposals = await api('proposals?skip=' + start + '&take=50&view=' + view); if (!valid() || revision !== started) return;
-                const snapshot = JSON.stringify([view, proposals, focused], (key, value) => key.toLowerCase() === 'evaluatedat' ? undefined : value);
+                const proposals = await api('proposals?skip=' + start + '&take=50&view=' + view+(allUsers?'&scope=all-users':'')); if (!valid() || revision !== started) return;
+                const snapshot = JSON.stringify([view,allUsers,Number(get(integration,'recentHistoryDays'))||7,Math.floor(Date.now()/86400000), proposals, focused], (key, value) => key.toLowerCase() === 'evaluatedat' ? undefined : value);
                 if (!append && snapshot === lastSnapshot) { refreshed = Date.now(); return; }
                 lastSnapshot = append ? '' : snapshot;
-                if (!append) { rows.replaceChildren(); seen.clear(); }
+                if (!append) { rows.replaceChildren(); seen.clear();historyGroups.clear(); }
                 const records = [...proposals];
                 const focusedView = focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active';
                 if (!append && focused && focusedView === view && !records.some(p => sameId(get(p, 'id'), get(focused, 'id')))) records.unshift(focused);
@@ -396,12 +401,15 @@
                     const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row);
                     row.dataset.requestId = get(p, 'id');
                     if (focused && sameId(get(p, 'id'), get(focused, 'id'))) { row.classList.add('dq-highlight'); row.tabIndex = -1; row.setAttribute('aria-label', 'Selected removal request'); selected = row; }
-                    rows.append(row);
+                    if(view==='history'){
+                        const cutoff=Number(get(integration,'recentHistoryDays'))||7,closed=(get(p,'timeline')||[]).find(s=>get(s,'key')==='closed'),at=date(get(closed,'at')),recent=at&&at>=new Date(Date.now()-cutoff*86400000),group=recent?'recent':'older';
+                        if(!historyGroups.has(group)){const section=node('section');section.dataset.historyGroup=group;section.append(node('h3',recent?'Recent · '+cutoff+' days':'Older'));historyGroups.set(group,section);if(recent)rows.prepend(section);else rows.append(section);}historyGroups.get(group).append(row);
+                    }else rows.append(row);
                 }
                 if (first && selected) requestAnimationFrame(() => { if (valid() && selected.isConnected) { selected.focus({ preventScroll: true }); selected.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } });
                 first = false;
                 offset = start + proposals.length; more = proposals.length === 50; refreshed = Date.now();
-                if (!rows.children.length) rows.append(node('p', 'No removal requests.'));
+                if (!seen.size) rows.append(node('p', 'No removal requests.'));
                 for (const tab of tabs.querySelectorAll('[role=tab]')) { tab.setAttribute('aria-selected', String(tab.dataset.view === view)); tab.tabIndex = tab.dataset.view === view ? 0 : -1; }
             } catch (error) { if (valid()) { rows.replaceChildren(node('p', error.message || 'Requests unavailable.')); seen.clear(); focused = null; more = false; showError(error, host.closest('dialog')); } }
             finally { loading = false; if (valid() && revision !== started) void refresh(); }
@@ -425,14 +433,14 @@
             hours.id = 'dq-delay-' + command(); hoursLabel.htmlFor = hours.id; hours.setAttribute('is', 'emby-input'); hours.labelElement = hoursLabel;
             hours.addEventListener('focus', () => hoursLabel.classList.add('inputLabelFocused')); hours.addEventListener('blur', () => hoursLabel.classList.remove('inputLabelFocused')); hoursRow.append(hoursLabel, hours);
             const personalRows = [], personalInputs = {};
-            for (const [key, text] of [['activityDays', 'Personal activity window (days; 0 inherits)'], ['administratorApprovalDays', 'Personal administrator timeout (days; 0 inherits)']]) {
+            for (const [key, text] of [['activityDays', 'Playback lookback (days; 0 inherits)'], ['administratorApprovalDays', 'Administrator decision limit (days; 0 inherits)'],['recentHistoryDays','Recent history (days; 0 inherits)']]) {
                 const container = node('div', undefined, 'inputContainer'), caption = node('label', text, 'inputLabel'), input = node('input', undefined, 'emby-input');
                 input.type = 'number'; input.min = '0'; input.max = '365'; input.step = '1'; input.value = get(pref, key) || 0; input.id = 'dq-personal-' + command(); caption.htmlFor = input.id; input.setAttribute('is', 'emby-input'); container.append(caption, input); personalRows.push(container); personalInputs[key] = input;
             }
             panel.content.append(row, hoursRow, ...personalRows, node('p', 'Administrator minimums always apply. Reducing preferences never shortens an existing removal deadline.'), button('Save preferences', async () => {
                 if (!hours.reportValidity()) return;
                 if (!Object.values(personalInputs).every(input => input.reportValidity())) return;
-                await api('me/preferences', 'PATCH', { commandId: command(), revision: get(pref, 'revision'), delayHours: Number(hours.value), notifications: notifications.checked, activityDays: Number(personalInputs.activityDays.value), administratorApprovalDays: Number(personalInputs.administratorApprovalDays.value) });
+                await api('me/preferences', 'PATCH', { commandId: command(), revision: get(pref, 'revision'), delayHours: Number(hours.value), notifications: notifications.checked, activityDays: Number(personalInputs.activityDays.value), administratorApprovalDays: Number(personalInputs.administratorApprovalDays.value),recentHistoryDays:Number(personalInputs.recentHistoryDays.value) });
                 if (alive(panel)) panel.d.close(); await loadNotices();
             }));
         } catch (err) { if (alive(panel)) showError(err, panel.d); }

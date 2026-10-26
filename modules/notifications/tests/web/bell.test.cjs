@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('src/AccountHub.Notifications/Web/bell.js', 'utf8');
 
-function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink, inbox, read = false } = {}) {
+function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink, inbox, read = false, push } = {}) {
     const listeners = {}, calls = [], timers = [];
     let focused;
     class Element {
@@ -43,23 +43,46 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         addEventListener: (name, handler) => { listeners[name] = handler; },
         dispatchEvent: event => { listeners[event.type]?.(event); }
     };
+    const pushEvents=[];
+    if(push){let subscription=null;const registration={scope:'https://example.test/jellyfin/AccountHub/api/v1/notifications/push/',active:true,pushManager:{getSubscription:async()=>subscription,subscribe:async options=>{pushEvents.push({kind:'subscribe',options});subscription={endpoint:'https://fcm.googleapis.com/disposable',toJSON:()=>({endpoint:'https://fcm.googleapis.com/disposable',keys:{p256dh:'public-key',auth:'auth-key'}}),unsubscribe:async()=>{pushEvents.push({kind:'unsubscribe'});subscription=null;}};return subscription;}},unregister:async()=>pushEvents.push({kind:'unregister'})};
+        window.isSecureContext=true;window.PushManager={};window.Notification={requestPermission:async()=>{pushEvents.push({kind:'permission'});return 'granted';}};window.navigator={serviceWorker:{getRegistration:async()=>registration,register:async(url,options)=>{pushEvents.push({kind:'register',url,options});return registration;}}};
+    }
     const context = vm.createContext({ window, document, location: { href }, innerWidth: 1024, innerHeight: 768,
+        URL,Uint8Array,TextEncoder,atob,
         MutationObserver: class { observe() {} }, requestAnimationFrame: fn => fn(), crypto: require('node:crypto').webcrypto, Event: class { constructor(type) { this.type = type; } },
         setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
         fetch: async (url, options) => {
             calls.push({ url, options });
             return { status, ok: status === 200, headers: { get: () => '"tag"' }, json: async () => status !== 200
                 ? (blocked ? { twoFactorRequired: true } : {})
-                : { ok: true, data: url.endsWith('/preferences') ? { preferences } : url.endsWith('unread-count') ? { count: 1 } : inbox ? inbox(Number(new URL(url).searchParams.get('skip') || 0)) : { hasMore, notifications: [
+                : { ok: true, data: url.endsWith('/push')?{enabled:push==='enabled',publicKey:Buffer.alloc(65,1).toString('base64url'),devices:[]}:url.endsWith('/preferences') ? { preferences } : url.endsWith('unread-count') ? { count: 1 } : inbox ? inbox(Number(new URL(url).searchParams.get('skip') || 0)) : { hasMore, notifications: [
                     { id: 'one', event: { title: '<img src=x onerror=alert(1)>', body: 'plain text', link: noticeLink }, read }
                 ] } }
             };
         }
     });
     vm.runInContext(source, context);
-    return { calls, timers, all, window, listeners, rerun: () => vm.runInContext(source, context), get focused() { return focused; } };
+    return { calls, timers, all, window, listeners,pushEvents, rerun: () => vm.runInContext(source, context), get focused() { return focused; } };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+test('Web Push prompts only on explicit opt-in, uses a narrow worker scope and can unsubscribe',async()=>{
+    const h=harness({push:'enabled'});await settle();assert.equal(h.pushEvents.length,0);
+    h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
+    assert.equal(h.pushEvents.length,0);const enable=h.all().find(e=>e.textContent==='Enable browser notifications');assert.equal(enable.disabled,false);await enable.onclick();await settle();
+    assert.equal(h.pushEvents.filter(e=>e.kind==='permission').length,1);const registration=h.pushEvents.find(e=>e.kind==='register');assert(registration.options.scope.endsWith('/notifications/push/'));assert(!registration.url.includes('session-secret'));
+    const write=h.calls.find(c=>c.url.endsWith('/push')&&c.options.method==='POST');assert.equal(JSON.parse(write.options.body).endpoint,'https://fcm.googleapis.com/disposable');assert.match(write.options.headers.Authorization,/session-secret/);
+    await h.all().find(e=>e.textContent==='Disable on this browser').onclick();assert(h.pushEvents.some(e=>e.kind==='unsubscribe'));assert(h.pushEvents.some(e=>e.kind==='unregister'));assert(h.calls.some(c=>c.options.method==='DELETE'&&c.url.includes('/push/')));
+});
+test('administrator-disabled Web Push does not prompt or subscribe',async()=>{
+    const h=harness({push:'disabled'});await settle();h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
+    assert.equal(h.all().find(e=>e.textContent==='Enable browser notifications').disabled,true);assert.equal(h.pushEvents.length,0);
+});
+test('push worker displays only fixed text and opens the native BaseUrl without processing payload links',async()=>{
+    const listeners={},notices=[],opened=[];const context=vm.createContext({URL,self:{location:{pathname:'/jellyfin/Notifications/api/v1/notifications/push/sw.js',origin:'https://example.test'},addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(...args)=>notices.push(args)},clients:{openWindow:async url=>opened.push(url)}}});
+    vm.runInContext(fs.readFileSync('src/AccountHub.Notifications/Web/push-worker.js','utf8'),context);let task;
+    listeners.push({data:{json:()=>({title:'Private media',url:'https://evil.invalid'})},waitUntil:p=>task=p});await task;assert(!JSON.stringify(notices).includes('Private media'));
+    listeners.notificationclick({notification:{close(){}},waitUntil:p=>task=p});await task;assert.deepEqual(opened,['https://example.test/jellyfin/web/index.html']);
+});
 test('only open notification options consume Escape so the next Escape can close the inbox', async () => {
     const h = harness(); await settle();
     const options = h.all().find(e => e.className === 'notificationOptions');

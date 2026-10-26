@@ -148,7 +148,7 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             if (entry.AdminOnly && !await host.IsAdministratorAsync(user, ct)) continue;
             var prefs = store.Preferences(user);
             var mandatory = entry.AdminOnly || entry.Severity == "critical";
-            var inbox = mandatory || Enabled(prefs, entry, "in-app", true);
+            var inbox = mandatory || Enabled(prefs, entry, "in-app", true)&&CategoryEnabled(prefs,entry,"in-app");
             var link = await host.DiscordLinkAsync(user, ct);
             var selected = new List<Route>();
             foreach (var route in routes.Where(r => Matches(r.Source, entry.Source) && Matches(r.Type, entry.Type)))
@@ -157,7 +157,7 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
                 if (entry.Type == "notifications.delivery.failed" || (route.AdminOnly && !entry.AdminOnly)) continue;
                 if (route.DirectMessage)
                 {
-                    if (link is null || (!mandatory && !Enabled(prefs, entry, "discord", false))) continue;
+                    if (link is null || (!mandatory && (!Enabled(prefs, entry, "discord", false)||!CategoryEnabled(prefs,entry,"discord")))) continue;
                     selected.Add(route with { Destination = link });
                 }
                 // Private user events NEVER enter shared channels or webhooks.
@@ -167,10 +167,18 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
         }
         return store.Accept(entry, hash, fanout, upsert);
     }
-    internal static bool Matches(string rule, string value) => rule == "*" || rule == value;
-    internal static bool Enabled(Preference[] prefs, NotificationEvent e, string channel, bool fallback) =>
-        prefs.Where(p => p.Channel == channel && Matches(p.Source, e.Source) && Matches(p.Type, e.Type))
-            .OrderByDescending(p => (p.Source != "*" ? 1 : 0) + (p.Type != "*" ? 1 : 0)).Select(p => (bool?)p.Enabled).FirstOrDefault() ?? fallback;
+    internal static bool Matches(string rule, string value) => rule == "*" || rule == value || rule.EndsWith(".*",StringComparison.Ordinal)&&value.StartsWith(rule[..^1],StringComparison.Ordinal);
+    internal static bool Enabled(Preference[] prefs, NotificationEvent e, string channel, bool fallback) {
+        if(prefs.Any(p=>p.Channel==channel&&!p.Enabled&&Matches(p.Source,e.Source)&&(p.Type=="*"||p.Type.EndsWith(".*",StringComparison.Ordinal)&&Matches(p.Type,e.Type))))return false;
+        return prefs.Where(p => p.Channel == channel && Matches(p.Source, e.Source) && Matches(p.Type, e.Type))
+            .OrderByDescending(p => (p.Source != "*" ? 1 : 0) + (p.Type != "*" ? 1 : 0)).ThenByDescending(p=>p.Type.Length).Select(p => (bool?)p.Enabled).FirstOrDefault() ?? fallback;
+    }
+    internal static bool CategoryEnabled(Preference[] prefs,NotificationEvent e,string channel){
+        if(e.Source!="account-hub"||!e.Type.StartsWith("library.",StringComparison.Ordinal))return true;
+        if(!Enabled(prefs,e with{Type="category.library.*"},channel,true))return false;
+        return (e.Metadata?.GetValueOrDefault("libraryCategories")??"all").Split(',').Where(c=>c is "all" or "requested" or "favourite")
+            .Any(c=>Enabled(prefs,e with{Type="category.library."+c},channel,c=="all"));
+    }
 
     public async Task SaveSettingsAsync(Settings settings, Guid actor, CancellationToken ct)
     {

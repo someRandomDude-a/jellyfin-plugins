@@ -24,7 +24,7 @@ public static class QueueRules
         bool accessible, string expectedSnapshot, DateTimeOffset now)
     {
         RequireProposalAuthority(state, caller, target, accessible);
-        foreach (var existing in state.Proposals) Expire(existing, now);
+        foreach (var existing in state.Proposals) Expire(state, existing, now);
         var proposal = state.Proposals.SingleOrDefault(p => !p.Terminal && (p.Target.Key == target.Key ||
             (target.DestructiveScopeKey is not null && p.Target.DestructiveScopeKey == target.DestructiveScopeKey)));
         if (proposal?.Claim is not null) throw new QueueException("AlreadyClaimed");
@@ -52,7 +52,7 @@ public static class QueueRules
     public static Proposal ProposeAutomatically(QueueState state, Account actor, VerifiedTarget target, DateTimeOffset now)
     {
         RequireProposalAuthority(state, actor, target, true);
-        foreach (var p in state.Proposals) Expire(p, now);
+        foreach (var p in state.Proposals) Expire(state, p, now);
         if (state.Proposals.Any(p => p.Target.Key == target.Key && (p.Status == ProposalStatus.Cancelled || p.Reason == "AdministratorDenied")))
             throw new QueueException("PriorRemovalDeclined");
         var existing = state.Proposals.SingleOrDefault(p => !p.Terminal && (p.Target.Key == target.Key ||
@@ -73,7 +73,7 @@ public static class QueueRules
     {
         if (!caller.Enabled || !accessible) throw new QueueException("TargetUnavailable");
         var proposal = Find(state, id);
-        Expire(proposal, now);
+        Expire(state, proposal, now);
         RequireMutable(proposal, revision);
         if (Snapshot(state, proposal.Target, caller.Id) != snapshot) throw new QueueException("SnapshotChanged");
         if (proposal.Consents.Count >= 1000 && !proposal.Consents.ContainsKey(caller.Id)) throw new QueueException("ConsentCapacityReached");
@@ -117,7 +117,7 @@ public static class QueueRules
         if (!caller.Enabled || !caller.Administrator || !accessible) throw new QueueException("AccessDenied");
         if (!state.Policy.RequireAdministratorApproval) throw new QueueException("AdministratorApprovalNotRequired");
         var p = Find(state, id);
-        Expire(p, now);
+        Expire(state, p, now);
         RequireMutable(p, revision);
         if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
         p.AdministratorApproval = approved ? new(caller.Id, snapshot, now) : null;
@@ -127,7 +127,7 @@ public static class QueueRules
     public static void Deny(QueueState state, Guid id, Account caller, long revision, string snapshot, bool accessible, DateTimeOffset now)
     {
         if (!caller.Enabled || !caller.Administrator || !accessible) throw new QueueException("AccessDenied");
-        var p = Find(state, id); Expire(p, now); RequireMutable(p, revision);
+        var p = Find(state, id); Expire(state, p, now); RequireMutable(p, revision);
         if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
         p.ClosedCheckpoint = UserProgress.Checkpoint(p);
         p.ClosedChecksAt = p.EligibleSince;
@@ -155,7 +155,7 @@ public static class QueueRules
         }
         foreach (var p in state.Proposals.Where(p => !p.Terminal && p.Claim is null && p.Target.ActivityKey == key))
         {
-            Expire(p, now); if (p.Terminal) continue;
+            Expire(state, p, now); if (p.Terminal) continue;
             Block(p, "ConsentRequired");
             if (newPlayback && p.OwnerId == user) {
                 ExtendDelay(state, p, user);
@@ -176,7 +176,7 @@ public static class QueueRules
 
     public static void Evaluate(QueueState state, Proposal proposal, EvaluationEvidence evidence, DateTimeOffset now)
     {
-        Expire(proposal, now);
+        Expire(state, proposal, now);
         if (proposal.Terminal || proposal.Claim is not null) return;
         var reason = !state.ClockHealthy ? "ClockUnverified"
             : state.Policy.Suspended ? "Suspended"
@@ -212,22 +212,30 @@ public static class QueueRules
         proposal.Status = now >= proposal.NotBefore ? ProposalStatus.Ready : ProposalStatus.Waiting;
         proposal.Reason = proposal.Status == ProposalStatus.Ready ? "Ready" : "DelayRequired";
     }
-    public static void Expire(Proposal proposal, DateTimeOffset now)
+    internal static bool AdministratorReviewWaiting(QueueState state,Proposal proposal)=>state.Policy.RequireAdministratorApproval && proposal.ApprovalDeadline is not null &&
+        (proposal.AdministratorApproval is null || !AdministratorApprovalCurrent(state,proposal) || proposal.Reason=="AdministratorApprovalRequired");
+    public static DateTimeOffset? ExpirationDeadline(QueueState state, Proposal proposal) =>
+        proposal.Status != ProposalStatus.Blocked ? null :
+        AdministratorReviewWaiting(state,proposal) ? proposal.ApprovalDeadline :
+        state.Policy.ActivityWaitTimeoutEnabled ? proposal.CreatedAt.AddDays(state.Policy.ActivityWaitTimeoutDays) : null;
+
+    public static void Expire(QueueState state, Proposal proposal, DateTimeOffset now)
     {
-        var deadline = proposal.AdministratorApproval is null && proposal.ApprovalDeadline is { } approvalDeadline ? approvalDeadline : (proposal.LastPlaybackResetAt ?? proposal.CreatedAt).AddDays(30);
-        if (proposal.Status == ProposalStatus.Blocked && proposal.Claim is null && proposal.FilesDeletedAt is null && now >= deadline) {
-            proposal.ClosedCheckpoint = proposal.AdministratorApproval is null && proposal.ApprovalDeadline is not null ? "approval" : UserProgress.Checkpoint(proposal);
+        var deadline = ExpirationDeadline(state,proposal);
+        if (deadline is {} expires && proposal.Claim is null && proposal.FilesDeletedAt is null && now >= expires) {
+            var approval = AdministratorReviewWaiting(state,proposal);
+            proposal.ClosedCheckpoint = approval ? "approval" : "activity-timeout";
             proposal.Status = ProposalStatus.Expired;
-            proposal.Reason = proposal.AdministratorApproval is null && proposal.ApprovalDeadline is not null ? "AdministratorApprovalExpired" : "RequestExpired";
+            proposal.Reason = approval ? "AdministratorApprovalExpired" : "ActivityWaitExpired";
             proposal.EligibleSince = null;
-            proposal.ClosedAt = deadline;
+            proposal.ClosedAt = expires;
             proposal.Revision++;
         }
     }
 
     public static void VerificationUnavailable(QueueState state, Proposal proposal, DateTimeOffset now)
     {
-        Expire(proposal, now);
+        Expire(state, proposal, now);
         if (!proposal.Terminal && proposal.Claim is null) Block(proposal, "VerificationUnavailable");
     }
 
@@ -284,7 +292,7 @@ public static class QueueRules
     {
         if (state.Policy.Revision != expectedRevision) throw new QueueException("RevisionChanged");
         if (policy is null || policy.Accounts is null || policy.Accounts.Count > 1000 || policy.Accounts.ContainsKey(Guid.Empty) ||
-            policy.ActivityDays is < 1 or > 365 || policy.DelayHours is < 48 or > 8760 || policy.AdministratorApprovalDays is < 1 or > 365 ||
+            policy.ActivityDays is < 1 or > 365 || policy.DelayHours is < 48 or > 8760 || policy.AdministratorApprovalDays is < 1 or > 365 || policy.ActivityWaitTimeoutDays is < 1 or > 365 || policy.RecentHistoryDays is <1 or >365 ||
             !Enum.IsDefined(policy.DefaultAuthority) || policy.Accounts.Values.Any(v => !Enum.IsDefined(v)))
             throw new QueueException("InvalidPolicy");
         var oldPolicy = state.Policy;
@@ -319,10 +327,11 @@ public static class QueueRules
             p.Revision++;
         }
     }
-    public static void UpdatePersonalTimelines(QueueState state, Guid user, int activityDays, int approvalDays)
+    public static void UpdatePersonalTimelines(QueueState state, Guid user, int activityDays, int approvalDays,int? recentHistoryDays=null)
     {
-        if (activityDays is < 0 or > 365 || approvalDays is < 0 or > 365) throw new QueueException("InvalidDelay");
+        if (activityDays is < 0 or > 365 || approvalDays is < 0 or > 365 || recentHistoryDays is <0 or >365) throw new QueueException("InvalidDelay");
         var preferences = state.Preferences[user];
+        if(recentHistoryDays is {} days)preferences.RecentHistoryDays=days;
         if (preferences.ActivityDays == activityDays && preferences.AdministratorApprovalDays == approvalDays) return;
         var activityChanged = preferences.ActivityDays != activityDays;
         preferences.ActivityDays = activityDays; preferences.AdministratorApprovalDays = approvalDays;
@@ -353,11 +362,13 @@ public static class QueueRules
         accounts.Remove(user);
         UpdatePolicy(state, new Policy { Accounts = accounts, DefaultAuthority = old.DefaultAuthority,
             ActivityDays = old.ActivityDays, DelayHours = old.DelayHours, AdministratorApprovalDays = old.AdministratorApprovalDays,
+            ActivityWaitTimeoutEnabled = old.ActivityWaitTimeoutEnabled, ActivityWaitTimeoutDays = old.ActivityWaitTimeoutDays,
+            RecentHistoryDays=old.RecentHistoryDays,
              AutomaticDeletion = old.AutomaticDeletion, SeerrManagedDeletionAcknowledged = old.SeerrManagedDeletionAcknowledged,
             RequireAdministratorApproval = old.RequireAdministratorApproval,
             Suspended = old.Suspended }, policyRevision);
         UpdatePreferences(state, user, preferencesRevision, 48, true);
-        UpdatePersonalTimelines(state, user, 0, 0);
+        UpdatePersonalTimelines(state, user, 0, 0,0);
         state.Preferences[user].Subscriptions.Clear();
     }
     public static int ResetAllUserPermissions(QueueState state, long policyRevision)
@@ -365,6 +376,8 @@ public static class QueueRules
         var policy = state.Policy; var count = policy.Accounts.Count;
         UpdatePolicy(state, new Policy {
             Accounts = [], DefaultAuthority = policy.DefaultAuthority, ActivityDays = policy.ActivityDays, AdministratorApprovalDays = policy.AdministratorApprovalDays,
+            ActivityWaitTimeoutEnabled = policy.ActivityWaitTimeoutEnabled, ActivityWaitTimeoutDays = policy.ActivityWaitTimeoutDays,
+            RecentHistoryDays=policy.RecentHistoryDays,
             DelayHours = policy.DelayHours, AutomaticDeletion = policy.AutomaticDeletion,
             SeerrManagedDeletionAcknowledged = policy.SeerrManagedDeletionAcknowledged,
             RequireAdministratorApproval = policy.RequireAdministratorApproval, Suspended = policy.Suspended
@@ -374,7 +387,7 @@ public static class QueueRules
 
     public static UserProposal Project(QueueState state, Proposal p, Guid caller, DateTimeOffset now)
     {
-        Expire(p, now);
+        Expire(state, p, now);
         var snapshot = Snapshot(state, p.Target, caller);
         p.Consents.TryGetValue(caller, out var consent);
         var answer = consent?.Snapshot == snapshot ? consent.Answer : (Answer?)null;
@@ -393,11 +406,14 @@ public static class QueueRules
                 EvaluatedAt = now,
                 ActivityWindowDays = state.Policy.ActivityDays,
                 SafetyDelayHours = p.Terminal ? p.DelayFloorHours : Math.Max(state.Policy.DelayHours, p.DelayFloorHours),
-                ClosedCheckpoint = p.ClosedCheckpoint is "checks" or "delay" or "approval" ? p.ClosedCheckpoint : null,
+                ClosedCheckpoint = p.ClosedCheckpoint is "checks" or "delay" or "approval" or "activity-timeout" ? p.ClosedCheckpoint : null,
                 ClosureExplanation = p.Terminal && p.Status != ProposalStatus.Completed ? progress.Help : null,
                 MediaKind = p.Target.Kind.ToString(),
                 CanConsent = !p.Terminal && p.Claim is null && IsRecent(state, p.Target, caller, now),
-                ExpiresAt = p.Status == ProposalStatus.Blocked ? p.Reason == "AdministratorApprovalRequired" ? p.ApprovalDeadline : (p.LastPlaybackResetAt ?? p.CreatedAt).AddDays(30) : null,
+                ConsentStatus = answer==Answer.Yes?"Allowed":answer==Answer.No?"Kept":p.Inactive&&p.ActivityVerifiedAt is not null?"Not needed":IsRecent(state,p.Target,caller,now)?"Awaiting consent":"Not required",
+                ActivityStatus = p.Reason is "ActivityCoverageIncomplete" or "VerificationUnavailable"?"Checking":p.Reason=="PlaybackActive"?"Playing":p.Inactive&&p.ActivityVerifiedAt is not null?"Inactive":p.ActivityVerifiedAt is not null?"Recent activity":"Checking",
+                RequesterLabel = p.RequiresAutomaticRuleValidation&&p.RequesterId is null?"Automation · requester unknown":p.OwnerId==caller?"You":"Another requester",
+                ExpiresAt = ExpirationDeadline(state,p),
                 Stage = p.Terminal ? "History" : p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "Queued" :
                     p.Status is ProposalStatus.Claimed or ProposalStatus.Uncertain or ProposalStatus.FilesDeleted ? "Processing" :
                     p.Reason == "AdministratorApprovalRequired" ? "Administrator review" : p.Reason == "ConsentRequired" ? "Consent" : "Safety checks"

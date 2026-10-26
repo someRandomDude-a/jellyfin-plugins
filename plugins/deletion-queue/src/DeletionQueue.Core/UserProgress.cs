@@ -8,7 +8,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
     public static string PublicReason(string reason) => reason switch {
         "ActivityCoverageIncomplete" or "ConsentRequired" or "AdministratorApprovalRequired" or "PlaybackActive" or "Suspended" or "PolicyChanged" or
         "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "AutomaticRuleVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
-        "AdministratorApprovalExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
+         "AdministratorApprovalExpired" or "ActivityWaitExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
         _ => "VerificationRequired"
     };
     public static UserProgress For(QueueState state, Proposal p)
@@ -29,6 +29,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
             ProposalStatus.Cancelled => ("Cancelled", "This removal request was withdrawn using Undo. It will not be executed."),
             ProposalStatus.Expired when p.Reason == "AdministratorDenied" => ("Denied", "This request was denied and closed. A new removal request can be submitted."),
             ProposalStatus.Expired when p.Reason == "AdministratorApprovalExpired" => ("Expired", "The administrator approval deadline passed. This request is closed."),
+            ProposalStatus.Expired when p.Reason == "ActivityWaitExpired" => ("Expired", "The activity/consent waiting limit passed. This request is closed without removal."),
             ProposalStatus.Expired => ("Expired", "This request was not accepted within 30 days and is now closed."),
             _ => ("Pending checks", "The queue is checking this request. No removal time is confirmed.")
         };
@@ -61,6 +62,34 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
             var approval = new RemovalCheckpoint("approval", "Administrator consent", denied || expired ? "cancelled" : approved ? "complete" : p.Reason == "AdministratorApprovalRequired" ? "current" : p.Terminal ? "stopped" : "pending",
                 denied ? p.ClosedAt : approved ? null : p.ApprovalDeadline) { Decision = denied ? "denied" : approved ? "approved" : p.Reason == "AdministratorApprovalExpired" ? "expired" : "pending", DateLabel = !approved && !denied && p.ApprovalDeadline is not null ? "Decision deadline" : null };
             steps = steps.Take(2).Append(approval).Concat(steps.Skip(2)).ToArray();
+        }
+        // These are alternative eligibility routes, not separate mandatory waits:
+        // no recent viewers OR current consent from every relevant recent viewer.
+        // Both still require verified history, no active playback and all other gates.
+        var checksComplete = checksPassed || p.Reason == "AdministratorApprovalRequired" || p.ClosedChecksAt is not null;
+        var inactive = p.Inactive && p.ActivityVerifiedAt is not null;
+        var lookback = state.Activity.Where(a=>a.Key==p.Target.ActivityKey).Select(a=>QueueRules.ActivityDays(state,a.UserId)).DefaultIfEmpty(state.Policy.ActivityDays).Max();
+        steps[1] = steps[1] with { Paths = [
+            new("activity", "All users inactive", inactive && checksComplete ? "complete" : checksComplete ? "skipped" : p.Terminal ? "stopped" : p.Reason == "ConsentRequired" ? "skipped" : "current") { DurationDays = lookback },
+            new("consent", "All active viewers consent", checksComplete ? inactive ? "skipped" : "complete" : p.Terminal ? "stopped" : p.Reason == "ConsentRequired" ? "current" : "pending")
+        ] };
+        if(state.Policy.ActivityWaitTimeoutEnabled || p.Reason=="ActivityWaitExpired") {
+            var expired=p.Reason=="ActivityWaitExpired";
+            var limit=expired && p.ClosedAt is {} closed ? (closed-p.CreatedAt).TotalDays : state.Policy.ActivityWaitTimeoutDays;
+            var deadline=expired?p.ClosedAt:p.Status==ProposalStatus.Blocked && !QueueRules.AdministratorReviewWaiting(state,p)?p.CreatedAt.AddDays(state.Policy.ActivityWaitTimeoutDays):(DateTimeOffset?)null;
+            steps[1]=steps[1] with{Paths=steps[1].Paths.Append(new("activity-timeout","Activity/consent wait expired",expired?"cancelled":checksComplete||p.Terminal?"stopped":"pending",deadline){DurationDays=limit,DateLabel="Waiting deadline (from request creation)"}).ToArray()};
+        }
+        var delayIndex = Array.FindIndex(steps,s=>s.Key=="delay");
+        steps[delayIndex] = steps[delayIndex] with { DurationHours = p.Terminal ? p.DelayFloorHours : Math.Max(p.DelayFloorHours,state.Policy.DelayHours) };
+        var approvalIndex = Array.FindIndex(steps,s=>s.Key=="approval");
+        if(approvalIndex>=0 && (state.Policy.RequireAdministratorApproval || p.Terminal || p.AdministratorApproval is not null)) {
+            var approval=steps[approvalIndex];
+            var limit=p.ApprovalDeadline is {} deadline && p.ApprovalWaitingSince is {} since
+                ? (deadline-since).TotalDays : Math.Max(state.Policy.AdministratorApprovalDays,state.Preferences.GetValueOrDefault(p.OwnerId)?.AdministratorApprovalDays??0);
+            steps[approvalIndex]=approval with { DurationDays=limit, Paths=[
+                new("approved","Approved",approval.Decision=="approved"?"complete":closedWithoutRemoval?"stopped":"pending"),
+                new("approval-timeout","Denied or timed out",approval.Decision is "denied" or "expired"?"cancelled":approval.Decision=="approved"?"skipped":p.Terminal?"stopped":"pending",approval.Decision=="denied"?p.ClosedAt:approval.Decision=="approved"?null:p.ApprovalDeadline){DurationDays=limit,DateLabel="Decision deadline"}
+            ] };
         }
         return new(label, help, scheduled, steps);
     }

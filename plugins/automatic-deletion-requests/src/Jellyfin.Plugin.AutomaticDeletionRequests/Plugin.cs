@@ -28,6 +28,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection services, IServerApplicationHost host) {
         services.AddSingleton<RuleStore>(); services.AddSingleton<AccountHub.Api.DeletionRequestsClient>();
         services.AddSingleton<RuleRunner>();
+        services.AddSingleton<ArrConnections>();services.AddSingleton<ArrMetadata>();services.AddSingleton<JellyfinMetadata>();
         services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.AutomaticRuleValidationClient.ServiceKey,
             (sp, _) => sp.GetRequiredService<RuleRunner>().ValidateAsync);
     }

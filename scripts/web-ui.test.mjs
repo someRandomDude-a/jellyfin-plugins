@@ -16,19 +16,22 @@ test('Automation chrome defers surfaces and typography to native skins',async()=
     const canvas=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js');
     assert(canvas.includes('ar-circuit dialog paperList'));assert(canvas.includes("if(!n)return"));
 });
-test('Circuit input cards are locked, repositionable and selectable for path tests; traces colour ports and wires', async () => {
+test('Circuit library links are editable, cards open their filters and traces colour ports and wires', async () => {
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;
     try {
         w.CSS ||= {};w.CSS.escape ||= x=>x;
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
         const rule={match:'all',conditions:[{field:'year',operator:'less',value:2000}]};let chosen;
-        const editor=w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{},{sources:[{id:'scope',name:'Old movies'}],onSource:s=>{chosen=s.id;}});
-        const card=w.document.querySelector('.ar-source');assert.equal(card.querySelectorAll('.ar-socket').length,0);
+        let routed;
+        const editor=w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{},{sources:[{id:'scope',name:'Old movies'}],onSource:s=>{chosen=s.id;},onRoute:(s,attached)=>{routed={id:s.id,attached};}});
+        const card=w.document.querySelector('.ar-source');assert.equal(card.querySelectorAll('.ar-socket').length,1);
+        assert.equal(w.document.querySelectorAll('[data-kind=start]').length,0);assert.equal(rule.circuit.version,2);
         card.click();assert.equal(chosen,'scope');
+        w.document.querySelector('.ar-wires path[data-scope=scope]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));assert.deepEqual(routed,{id:'scope',attached:false});
         const title=card.querySelector('header');const x=parseFloat(card.style.left);
         title.onpointerdown(new w.MouseEvent('pointerdown',{bubbles:true,clientX:20,clientY:20}));
         title.onpointermove(new w.MouseEvent('pointermove',{bubbles:true,clientX:70,clientY:40}));
-        title.onpointerup();assert.equal(rule.circuit.sources.scope.x,x+50);
+        title.onpointerup();assert.equal(rule.circuit.sources.scope.x,x+50/rule.circuit.zoom);
         editor.trace({start:true,c0:false,group:false,delete:false,'filter:scope':true});
         assert(w.document.querySelector('.ar-wires path[data-signal=false]'));assert(w.document.querySelector('.ar-socket[data-signal=false]'));
         assert(w.document.querySelector('.ar-wires path[data-signal=true]'));
@@ -39,6 +42,70 @@ test('Circuit input cards are locked, repositionable and selectable for path tes
         const insert=[...w.document.querySelectorAll('.ar-canvas-menu button')].find(b=>b.textContent==='Insert NOT');assert(insert);insert.click();assert(rule.circuit.nodes.some(n=>n.kind==='not'));
         assert(w.document.querySelector('.ar-logic-gate svg path'));
         editor.dispose();assert.equal(w.document.querySelectorAll('.ar-circuit').length,0);
+    }finally{w.close();}
+});
+test('metadata sockets constrain conditions and AND gates grow and shrink with connected inputs',async()=>{
+    const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
+    try{
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        const rule={match:'all',conditions:[{field:'title',operator:'contains',value:'movie'}]};w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{});
+        assert.equal(w.document.querySelectorAll('[data-kind=start]').length,0);w.RemovalCircuit.check(rule.circuit);
+        [...w.document.querySelectorAll('.ar-palette button')].find(b=>b.textContent==='AND').click();
+        let gate=rule.circuit.nodes.filter(n=>n.kind==='and').at(-1);const condition=rule.circuit.nodes.find(n=>n.kind==='condition');
+        const output=()=>w.document.querySelector(`[data-id="${condition.id}"] .ar-output`).click();
+        for(let i=0;i<3;i++){output();w.document.querySelector(`[data-id="${gate.id}"] [data-port="${i}"]`).click();}
+        assert.equal(gate.inputs.length,3);assert(gate.inputs.every(Boolean));
+        assert.equal(w.document.querySelector(`[data-id="${gate.id}"]`).style.minHeight,'168px');
+        w.document.querySelector(`path[data-target="${gate.id}"][data-input="1"]`).dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+        [...w.document.querySelectorAll('.ar-canvas-menu button')].find(b=>b.textContent==='Disconnect').click();
+        assert.equal(gate.inputs.length,2);assert(gate.inputs.every(Boolean));
+        const metadata=w.document.querySelector('[data-kind=metadata]');metadata.querySelector('button').click();assert(w.document.querySelector('[data-field=title]'));
+        w.document.querySelector('[data-field=title]').click();w.document.querySelector(`[data-id="${gate.id}"] [data-port="0"]`).click();
+        assert.equal(gate.inputs[0],condition.id,'Metadata cannot feed a Boolean gate directly');
+    }finally{w.close();}
+});
+test('metadata conditions support confirmed-absence operators and a second typed source operand',async()=>{
+    const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window,d=w.document;w.CSS||={};w.CSS.escape||=x=>x;
+    try{
+        w.RemovalMetadataCatalog=[{id:'added',source:'jellyfin',label:'Added',type:'date',operators:['before','exists','not-exists']},{id:'radarr.added',source:'radarr',label:'Arr added',type:'date',operators:['before','exists','not-exists']}];
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        const rule={match:'all',conditions:[{field:'added',operator:'before',value:'2020-01-01T00:00:00Z'}]};w.RemovalCircuit.mount(d.querySelector('main'),rule,()=>{});
+        let select=d.querySelector('[aria-label="Condition comparison"]');select.value='not-exists';select.dispatchEvent(new w.Event('change'));
+        assert.equal(rule.conditions[0].value,null);assert.equal(d.querySelector('[aria-label="Condition value"]'),null);w.RemovalCircuit.check(rule.circuit);
+        select=d.querySelector('[aria-label="Condition comparison"]');select.value='before';select.dispatchEvent(new w.Event('change'));
+        select=d.querySelector('[aria-label="Comparison operand"]');select.value='metadata';select.dispatchEvent(new w.Event('change'));
+        assert.equal(d.querySelectorAll('[data-kind=condition] .ar-input').length,2);assert.throws(()=>w.RemovalCircuit.check(rule.circuit));
+        [...d.querySelectorAll('.ar-palette button')].find(b=>b.textContent==='Radarr metadata').click();d.querySelector('[data-source-type=radarr] button').click();
+        d.querySelector('[data-field="radarr.added"]').click();d.querySelector('[data-kind=condition] [data-port="1"]').click();
+        assert.equal(rule.conditions[0].referenceField,'radarr.added');w.RemovalCircuit.check(rule.circuit);
+    }finally{w.close();}
+});
+test('Sonarr and Radarr connection settings support manual editing and remain editable after import',async()=>{
+    const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
+    const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://example.test/web/'}),w=dom.window,d=w.document,calls=[];
+    const saved={sonarr:{revision:0,url:'',keyConfigured:false},radarr:{revision:0,url:'',keyConfigured:false}};
+    w.RemovalRouting={mount:()=>({dispose(){}})};
+    w.ApiClient={getUrl:p=>p,ajax:async options=>{
+        calls.push(options);const match=options.url.match(/\/metadata\/(sonarr|radarr)(\/import-enhanced)?$/);
+        if(match){const source=match[1];if(options.type==='PUT'){const body=JSON.parse(options.data);assert.equal(body.revision,saved[source].revision);saved[source]={revision:body.revision+1,url:body.url,keyConfigured:true};}
+            if(match[2])saved[source]={revision:saved[source].revision+1,url:'https://imported-'+source+'.test',keyConfigured:true};
+            return {...saved[source]};}
+        return {configuration:{revision:0,enabled:false,intervalHours:24,rules:[],filters:[]},libraries:[],queueAvailable:true};
+    }};
+    try{
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.js'));await turn();await turn();
+        d.querySelector('#arConnections').open=true;d.querySelector('#arConnections').dispatchEvent(new w.Event('toggle'));await turn();await turn();
+        for(const source of ['sonarr','radarr']){
+            const section=d.querySelector('[data-arr-source='+source+']'),url=section.querySelector('input[type=url]'),key=section.querySelector('input[type=password]');
+            assert.equal(url.readOnly,false);assert.equal(key.readOnly,false);assert.equal(url.disabled,false);assert.equal(key.disabled,false);
+            url.value='https://manual-'+source+'.test';key.value='manual-secret';section.querySelector('[data-arr-save]').click();await turn();await turn();
+            assert.equal(saved[source].url,url.value);assert.equal(key.value,'');
+            section.querySelector('[data-arr-import]').click();await turn();await turn();assert.equal(url.value,'https://imported-'+source+'.test');
+            assert.equal(url.readOnly,false);assert.equal(key.readOnly,false);
+            url.value='https://edited-'+source+'.test';key.value='replacement-secret';section.querySelector('[data-arr-save]').click();await turn();await turn();
+            assert.equal(saved[source].url,'https://edited-'+source+'.test');assert.equal(saved[source].revision,3);assert.equal(key.value,'');
+        }
+        assert.equal(calls.filter(c=>c.type==='PUT').length,4);
     }finally{w.close();}
 });
 test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save while editing', async () => {
@@ -55,20 +122,39 @@ test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.js')); await turn(); await turn();
         assert.match(d.querySelector('#arRuleCards').textContent, /Movies/);
-        assert.match(d.querySelector('#arActor').textContent, /Library administrator/); assert.match(d.querySelector('#arLibrary').textContent, /Movies/);
-        d.querySelector('#arEnabled').checked = true; d.querySelector('#arForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
-        assert.equal(writes.length, 0); assert.match(d.querySelector('#arStatus').textContent, /Choose a request owner/);
-        d.querySelector('#arEnabled').checked = false; d.querySelector('#arActor').value = actor; d.querySelector('#arLibrary').value = library;
+        assert.equal(d.querySelector('#arActor'), null); assert.equal(d.querySelector('#arLibrary'), null);
+        assert(!d.body.textContent.includes('Execution settings'));
         d.querySelector('#arAddRule').click();d.querySelector('#arNewTitle').value='Old media';d.querySelector('#arNewCreate').click(); assert.equal(writes.length, 0);
-        let select = d.querySelector('.ar-block[data-kind=condition] select'); select.value = 'seerr.ownRequest'; select.dispatchEvent(new w.Event('change'));
+        [...d.querySelectorAll('.ar-palette button')].find(b=>b.textContent==='Seerr metadata').click();
+        const seerr=d.querySelector('.ar-block[data-source-type=seerr]');[...seerr.querySelectorAll('button')].find(b=>b.textContent==='Show outputs').click();
+        d.querySelector('[data-field="seerr.ownRequest"]').click();d.querySelector('.ar-block[data-kind=condition] .ar-input').click();
         const draft = JSON.parse(d.querySelector('#arRules').value); assert.equal(draft.rules[0].conditions[0].field, 'seerr.ownRequest'); assert.equal(draft.rules[0].conditions[0].value, true);
+        d.querySelector('[data-field="seerr.requesterId"]').click();d.querySelector('.ar-block[data-kind=condition] .ar-input').click();
+        const requester=d.querySelector('.ar-block[data-kind=condition] input');requester.value=actor;requester.dispatchEvent(new w.Event('change'));
+        assert.equal(JSON.parse(d.querySelector('#arRules').value).rules[0].conditions[0].value,actor);
         assert.equal(writes.length, 0); assert.equal(d.querySelector('#arEnabled').checked, false);
         d.querySelector('#arForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
         assert.equal(writes.length, 1); assert.equal(writes[0].configuration.enabled, false); assert.equal(writes[0].configuration.rules[0].enabled, false);
-        assert.equal(writes[0].configuration.actorId, actor); assert.equal(writes[0].configuration.libraryId, library);
+        assert(!('actorId' in writes[0].configuration)); assert(!('libraryId' in writes[0].configuration));
+        assert.equal(writes[0].configuration.filters[0].libraryId,library);
         d.querySelector('#arPreview').click(); await turn(); assert.equal(d.querySelectorAll('.ar-match-card').length, 1); assert.equal(d.querySelectorAll('#arResult img').length, 0); assert.match(d.querySelector('#arResult').textContent, /Preview only/); assert.equal(writes.length, 1);
         d.querySelector('#automaticDeletionAdmin').dispatchEvent(new w.Event('viewhide')); assert.equal(d.querySelector('#arRules').value, ''); assert.equal(d.querySelector('#arRuleCards').children.length, 0);
     } finally { dom.window.close(); }
+});
+test('overlay properties hide irrelevant fields and use compact accessible alignment controls',async()=>{
+    const dom=new JSDOM('<div id="deletionQueueAdmin"><main></main></div>',{runScripts:'outside-only'}),w=dom.window,d=w.document;
+    try{
+        w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/overlay-editor.js'));
+        const editor=w.DeletionQueueOverlayEditor.mount(d.querySelector('main'),{text:'Leaving in {days} days',position:'bottom',bandHeight:.18,fontSize:.055,foreground:'#FFFFFF',background:'#8B2635',opacity:220},true);
+        const root=d.querySelector('.dq-canvas-editor');assert.equal(root.dataset.layout,'portrait');
+        const field=caption=>{const label=[...root.querySelectorAll('label')].find(l=>l.textContent===caption);return d.getElementById(label.htmlFor);};
+        assert.equal(field('Corner radius (%)').parentElement.hidden,true);assert.equal(field('Layer text').parentElement.hidden,false);
+        const align=root.querySelectorAll('.dq-canvas-align button');assert.equal(align.length,6);assert([...align].every(b=>b.getAttribute('aria-label')&&b.querySelector('.material-icons')));
+        [...root.querySelectorAll('.dq-canvas-layers button')].find(b=>b.textContent==='Rectangle').click();
+        assert.equal(field('Corner radius (%)').parentElement.hidden,false);assert.equal(field('Layer text').parentElement.hidden,true);assert.equal(field('Font weight').parentElement.hidden,true);
+        const zoom=field('Zoom');zoom.value='2';zoom.dispatchEvent(new w.Event('change'));assert.equal(root.dataset.zoom,'2');zoom.value='fit';zoom.dispatchEvent(new w.Event('change'));assert.equal(root.querySelector('.dq-canvas-artboard').style.maxWidth,'');
+        assert(root.querySelector('.dq-canvas-help summary'));editor.dispose();
+    }finally{w.close();}
 });
 test('Deletion Queue hides routing mode and confirms permissions-only reset using the saved revision', async () => {
     const html = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.html');
@@ -87,6 +173,7 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         return {};
     } };
     try {
+        w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/timeline.js'));
         w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.js'));
         await turn(); await turn();
         assert.equal(d.querySelector('#deletionQueueAdmin').getAttribute('aria-busy'), 'false');
@@ -104,13 +191,24 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         assert.equal(d.querySelector('#dqDelayDays').value, '2');
         const writesBeforePreview = calls.filter(c => c.type !== 'GET').length;
         d.querySelector('#dqDelayDays').value = '3'; d.querySelector('#dqDelayDays').dispatchEvent(new w.Event('input'));
-        assert.equal(d.querySelector('#dqHours').value, '72'); assert.match(d.querySelector('#dqDelayPreview').textContent, /3 days/);
+        assert.equal(d.querySelector('#dqHours').value, '72');
+        for(const id of ['dqDelayPreview','dqLookbackPreview','dqExecutionPreview'])assert.equal(d.querySelector('#'+id),null);
         d.querySelector('#dqRequireAdminApproval').checked = true; d.querySelector('#dqRequireAdminApproval').dispatchEvent(new w.Event('input'));
-        assert.match(d.querySelector('#dqApprovalPreview').textContent, /AND administrator approval/);
+        assert.match(d.querySelector('#dqApprovalPreview').textContent, /either eligibility path/);
+        assert(d.querySelector('#dqPolicyTimeline [data-checkpoint=activity]'));assert(d.querySelector('#dqPolicyTimeline [data-checkpoint=consent]'));
+        assert.match(d.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-to="approval-timeout"]').textContent,/30-day decision limit/);
+        d.querySelector('#dqApprovalDays').value='45';d.querySelector('#dqApprovalDays').dispatchEvent(new w.Event('input'));
+        assert.match(d.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-to="approval-timeout"]').textContent,/45-day decision limit/);
+        assert.match(d.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-from=delay][data-to=removing]').textContent,/3 days \(72 hours\)/);
+        assert.equal(d.querySelector('#dqActivityTimeoutDays').disabled,true);
+        d.querySelector('#dqActivityTimeoutEnabled').checked=true;d.querySelector('#dqActivityTimeoutEnabled').dispatchEvent(new w.Event('input'));
+        assert.equal(d.querySelector('#dqActivityTimeoutDays').disabled,false);
+        assert.match(d.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-to="activity-timeout"]').textContent,/45-day waiting limit/);
         assert.equal(calls.filter(c => c.type !== 'GET').length, writesBeforePreview, 'Preview must not save policy or opt in');
         d.querySelector('#dqPolicy').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
         const savedPolicy = JSON.parse(calls.find(c => c.type === 'PATCH' && c.url.endsWith('/admin/policy')).data);
         assert.equal(savedPolicy.policy.delayHours, 72); assert.equal(savedPolicy.policy.activityDays, 30); assert.equal(savedPolicy.policy.requireAdministratorApproval, true);
+        assert.equal(savedPolicy.policy.activityWaitTimeoutEnabled,true);assert.equal(savedPolicy.policy.activityWaitTimeoutDays,45);
         d.querySelector('#dqHubSettings').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
         const settings = calls.find(c => c.type === 'PUT'); assert(settings); assert(!('notificationMode' in JSON.parse(settings.data)));
         d.querySelector('#dqKey').value = 'draft-secret-must-not-be-tested'; d.querySelector('#dqTestConnection').click(); await turn();

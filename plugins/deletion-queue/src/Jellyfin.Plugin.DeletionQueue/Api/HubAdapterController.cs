@@ -37,6 +37,8 @@ public sealed class HubAdapterController(QueueRuntime runtime, LiveIdentity iden
                 deviceBell = new { type = "boolean", @default = true }, hubFallbackAfterMinutes = new { type = "integer", min = 1, max = 1440, @default = 15 },
                 defaultAuthority = new { type = "enum", values = Enum.GetNames<ProposalAuthority>(), @default = "OwnRequests" },
                 activityDays = new { type = "integer", min = 1, max = 365, @default = 14 }, delayHours = new { type = "integer", min = 48, max = 8760, @default = 48 },
+                activityWaitTimeoutEnabled = new { type = "boolean", @default = false }, activityWaitTimeoutDays = new { type = "integer", min = 1, max = 365, @default = 45 },
+                recentHistoryDays=new{type="integer",min=1,max=365,@default=7},
                 automaticDeletion = new { type = "boolean", @default = false }, requireAdministratorApproval = new { type = "boolean", @default = false },
                 seerrManagedDeletionAcknowledged = new { type = "boolean", @default = false }, suspended = new { type = "boolean", @default = false },
                 authority = new { type = "nullable-enum", values = Enum.GetNames<ProposalAuthority>(), @default = (string?)null },

@@ -14,6 +14,9 @@ public sealed class NotificationsController(EndpointAdapter adapter) : Controlle
     [Route("Notifications/api/v1/notifications/{**tail}")]
     [Route("Notifications/api/v1/settings/notifications/{**tail}")]
     public Task Protected() => adapter.ExecuteAsync(HttpContext);
+    [AllowAnonymous,HttpGet("Notifications/api/v1/notifications/live")]
+    [HttpGet("Notifications/api/v1/notifications/push/sw.js")]
+    public Task HandshakeAndWorker()=>adapter.ExecuteAsync(HttpContext);
     [AllowAnonymous, HttpPost("Notifications/api/v1/producer/notifications")]
     [HttpPost("Notifications/api/v1/producer/audit")]
     public Task Producer() => adapter.ExecuteAsync(HttpContext);

@@ -6,6 +6,28 @@ namespace DeletionQueue.Tests;
 
 public sealed class RemovalLifecycleTests
 {
+    [Fact] public void OptionalActivityWaitingClockIsNotRenewedByPlaybackAndCanBeDisabled() {
+        var state=State();var p=Propose(state);
+        QueueRules.Expire(state,p,Now.AddDays(400));Assert.False(p.Terminal);Assert.Null(QueueRules.Project(state,p,Owner.Id,Now.AddDays(400)).ExpiresAt);
+        state.Policy.ActivityWaitTimeoutEnabled=true;state.Policy.ActivityWaitTimeoutDays=45;
+        QueueRules.RecordActivity(state,Owner.Id,p.Target.ActivityKey,"new-play",false,Now.AddDays(44));
+        Assert.Equal(Now.AddDays(45),QueueRules.ExpirationDeadline(state,p));
+        QueueRules.Expire(state,p,Now.AddDays(45));Assert.Equal("ActivityWaitExpired",p.Reason);Assert.Equal(Now.AddDays(45),p.ClosedAt);
+        Assert.Equal("activity-timeout",p.ClosedCheckpoint);
+        var graph=QueueRules.Project(state,p,Owner.Id,Now.AddDays(46)).Timeline.Single(s=>s.Key=="checks").Paths.Single(s=>s.Key=="activity-timeout");
+        Assert.Equal(45,graph.DurationDays);Assert.Equal("cancelled",graph.State);
+        state.Policy.ActivityWaitTimeoutEnabled=false;state.Policy.ActivityWaitTimeoutDays=90;
+        Assert.Equal(45,QueueRules.Project(state,p,Owner.Id,Now.AddDays(47)).Timeline.Single(s=>s.Key=="checks").Paths.Single(s=>s.Key=="activity-timeout").DurationDays);
+    }
+    [Fact] public void AdministratorReviewClockAndAcceptedDelayAreSeparateFromActivityWaiting() {
+        var state=State();state.Policy.ActivityWaitTimeoutEnabled=true;state.Policy.RequireAdministratorApproval=true;state.Policy.AdministratorApprovalDays=60;
+        var p=Propose(state);Evaluate(state,p);Assert.Equal("AdministratorApprovalRequired",p.Reason);
+        QueueRules.Expire(state,p,Now.AddDays(46));Assert.False(p.Terminal);Assert.Equal(Now.AddDays(60),QueueRules.ExpirationDeadline(state,p));
+        QueueRules.Expire(state,p,Now.AddDays(60));Assert.Equal("AdministratorApprovalExpired",p.Reason);
+        var accepted=State();accepted.Policy.ActivityWaitTimeoutEnabled=true;var waiting=Propose(accepted);
+        Evaluate(accepted,waiting,Now.AddDays(44),Good with{NativeHistoryVerified=true});Assert.Equal(ProposalStatus.Waiting,waiting.Status);
+        QueueRules.Expire(accepted,waiting,Now.AddDays(46));Assert.Equal(ProposalStatus.Waiting,waiting.Status);
+    }
     [Fact] public void RepeatedRequestsReuseConsentWithoutRenewingOrDuplicating()
     {
         var state = State(); var p = Propose(state); var revision = p.Revision;
@@ -14,19 +36,20 @@ public sealed class RemovalLifecycleTests
         QueueRules.Propose(state, Viewer, p.Target, true, QueueRules.Snapshot(state, p.Target, Viewer.Id), Now.AddDays(10));
         Assert.Equal(Answer.Yes, p.Consents[Viewer.Id].Answer); Assert.Single(state.Proposals);
     }
-    [Fact] public void UnacceptedRequestsExpireAfterThirtyDaysAndCanBeRecreated()
+    [Fact] public void UnacceptedRequestsUseTheOptionalWaitingLimitAndCanBeRecreated()
     {
-        var state = State(); var old = Propose(state);
-        var next = QueueRules.Propose(state, Owner, old.Target, true, QueueRules.Snapshot(state, old.Target, Owner.Id), Now.AddDays(30));
-        Assert.NotEqual(old.Id, next.Id); Assert.Equal(ProposalStatus.Expired, old.Status); Assert.Equal("RequestExpired", old.Reason);
+        var state = State();state.Policy.ActivityWaitTimeoutEnabled=true; var old = Propose(state);
+        QueueRules.Expire(state,old,Now.AddDays(31));Assert.False(old.Terminal);
+        var next = QueueRules.Propose(state, Owner, old.Target, true, QueueRules.Snapshot(state, old.Target, Owner.Id), Now.AddDays(45));
+        Assert.NotEqual(old.Id, next.Id); Assert.Equal(ProposalStatus.Expired, old.Status); Assert.Equal("ActivityWaitExpired", old.Reason);
         Assert.Equal(2, state.Proposals.Count);
     }
     [Fact] public void AcceptedOrInFlightRequestsAreNotExpiredByTheIntakeDeadline()
     {
-        var state = State(); var p = Propose(state); Evaluate(state, p);
-        QueueRules.Expire(p, Now.AddDays(31)); Assert.Equal(ProposalStatus.Waiting, p.Status);
+        var state = State();state.Policy.ActivityWaitTimeoutEnabled=true; var p = Propose(state); Evaluate(state, p);
+        QueueRules.Expire(state,p, Now.AddDays(46)); Assert.Equal(ProposalStatus.Waiting, p.Status);
         p.Status = ProposalStatus.Uncertain; p.Claim = new(Guid.NewGuid(), Now, p.Target.Fingerprint, p.Revision);
-        QueueRules.Expire(p, Now.AddDays(31)); Assert.Equal(ProposalStatus.Uncertain, p.Status);
+        QueueRules.Expire(state,p, Now.AddDays(46)); Assert.Equal(ProposalStatus.Uncertain, p.Status);
     }
     [Fact] public void AdministratorRequesterApprovesWithoutBypassingOtherViewers()
     {

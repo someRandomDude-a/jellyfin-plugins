@@ -21,6 +21,28 @@ public sealed class LiveRuleTests
         protected override object? Invoke(MethodInfo? method, object?[]? args) => Call(method!, args ?? []);
     }
     private static T Fake<T>(Func<MethodInfo, object?[], object?> call) where T : class { var value = DispatchProxy.Create<T, Proxy>(); ((Proxy)(object)value).Call = call; return value; }
+    [Fact] public void SaveBindsAuthorizationToNativeSessionAndKeepsLibrariesOnFilterCards() {
+        var root=Path.Combine(Path.GetTempPath(),"automatic-session-"+Guid.NewGuid().ToString("N"));
+        using var provider=new ServiceCollection().BuildServiceProvider();
+        try {
+            var store=new RuleStore(Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?root:throw new NotSupportedException()));
+            var actor=new User("fixture","auth","reset"){Id=Guid.NewGuid()};
+            var users=Fake<IUserManager>((m,_)=>m.Name switch {"GetUserById"=>actor,"GetUserDto"=>new UserDto{Id=actor.Id,Policy=new UserPolicy{IsAdministrator=true}},_=>throw new NotSupportedException()});
+            var context=new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            context.User=new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+                new("Jellyfin-UserId",actor.Id.ToString()),new("Jellyfin-IsApiKey","false")],"fixture"));
+            var controller=new RuleController(store,null!,users,new(provider),null!){ControllerContext=new(){HttpContext=context}};
+            var filter=new LibraryFilter("scope","Movies",Guid.NewGuid(),new("all","All",false,"all",[new("title","contains",JsonSerializer.SerializeToElement(""))]),[]);
+            controller.Save(new(new(0,false,Guid.NewGuid(),Guid.NewGuid(),24,[]){Filters=[filter]},false));
+            var saved=store.Read(s=>s.Configuration);
+            Assert.Equal(actor.Id,saved.ActorId); Assert.Equal(Guid.Empty,saved.LibraryId);
+            Assert.Equal(filter.LibraryId,Assert.Single(saved.Filters!).LibraryId);
+            Assert.Throws<InvalidOperationException>(()=>controller.Save(new(saved with{Revision=0},false)));
+            context.User=new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+                new("Jellyfin-UserId",actor.Id.ToString()),new("Jellyfin-IsApiKey","true")],"fixture"));
+            Assert.Throws<UnauthorizedAccessException>(()=>controller.Save(new(saved,false)));
+        } finally { if(Directory.Exists(root))Directory.Delete(root,true); }
+    }
     [Fact] public async Task LiveRuleChecksRejectChangedMetadataDisabledRulesAndOutOfScopeItems() {
         var root = Path.Combine(Path.GetTempPath(), "automatic-live-rule-" + Guid.NewGuid().ToString("N"));
         using var provider = new ServiceCollection().BuildServiceProvider();

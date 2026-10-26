@@ -96,8 +96,8 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
             {
                 var previous = (p.Status, p.Reason, p.NotBefore, p.EligibleSince, p.DelayFloorHours);
                 var owner = identity.Account(p.OwnerId);
-                QueueRules.Expire(p, now);
-                var authorized = owner.Enabled && resolver.Accessible(owner.Id, p.Target) &&
+                QueueRules.Expire(state, p, now);
+                var authorized = owner.Enabled && (p.AutomaticAuthorizerId is not {} authorizer || identity.Account(authorizer) is {Enabled:true,Administrator:true}) && resolver.Accessible(owner.Id, p.Target) &&
                     QueueRules.Authority(state, owner.Id) != ProposalAuthority.Denied &&
                     (QueueRules.Authority(state, owner.Id) == ProposalAuthority.AnyAccessibleItem || p.Target.OwnRequestVerified);
                 // The execution worker supplies fresh target/inventory evidence. Do not erase its eligibility epoch here.

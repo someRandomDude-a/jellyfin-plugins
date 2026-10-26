@@ -3,6 +3,9 @@
 <style>
 #automaticDeletionAdmin { --ar-line:color-mix(in srgb,currentColor 14%,transparent); --ar-soft:color-mix(in srgb,currentColor 4%,transparent); }
 #automaticDeletionAdmin.suiteAdmin .content-primary {max-width:none;width:100%;box-sizing:border-box;}
+#automaticDeletionAdmin > [data-role=content],#automaticDeletionAdmin #arForm,#automaticDeletionAdmin .ar-section,#automaticDeletionAdmin .ar-rule,#automaticDeletionAdmin .ar-circuit{width:100%;max-width:none;min-width:0;box-sizing:border-box;}
+#automaticDeletionAdmin .content-primary{margin-inline:0;}
+#automaticDeletionAdmin .ar-rule{margin-inline:0;}
 #automaticDeletionAdmin h1 { margin-block:.5rem; font-size:clamp(1.8rem,4vw,2.8rem); line-height:1.15; }
 #automaticDeletionAdmin .ar-toolbar { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
 #automaticDeletionAdmin .ar-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr)); gap:1rem; }
@@ -30,14 +33,26 @@
 #automaticDeletionAdmin .ar-logic-gate header{background:transparent!important;height:22px;border-radius:0}
 #automaticDeletionAdmin .ar-gate-shape{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;overflow:visible}
 #automaticDeletionAdmin .ar-logic-gate{isolation:isolate}
-#automaticDeletionAdmin .ar-gate-shape path{fill:var(--ar-canvas-surface);stroke:currentColor;stroke-width:2}
+#automaticDeletionAdmin .ar-logic-gate{--ar-gate-color:var(--suite-not-color,#8062ad)}
+#automaticDeletionAdmin .ar-logic-gate[data-kind=and]{--ar-gate-color:var(--suite-and-color,#288a68)}
+#automaticDeletionAdmin .ar-logic-gate[data-kind=or]{--ar-gate-color:var(--suite-or-color,#327aa9)}
+#automaticDeletionAdmin .ar-gate-shape path{fill:var(--ar-gate-color);stroke:currentColor;stroke-width:2}
+#automaticDeletionAdmin .ar-logic-gate .ar-port-row{height:36px;margin-block:0}
+#automaticDeletionAdmin .ar-metadata-row{position:relative;display:flex;align-items:center;min-height:2rem;padding:.35rem 1rem;font-size:.8rem;border-block-start:1px solid var(--ar-line);overflow-wrap:anywhere}
+#automaticDeletionAdmin .ar-metadata-row .ar-output{inset-inline-end:-10px;top:calc(50% - 10px)}
+#automaticDeletionAdmin .ar-block[data-kind=metadata]{--ar-source-color:var(--theme-primary-color,Highlight);border-color:var(--ar-source-color)}
+#automaticDeletionAdmin .ar-block[data-source-type=seerr]{--ar-source-color:var(--suite-seerr-color,#a37ac4)}
+#automaticDeletionAdmin .ar-block[data-source-type=sonarr]{--ar-source-color:var(--suite-sonarr-color,#399bb6)}
+#automaticDeletionAdmin .ar-block[data-source-type=radarr]{--ar-source-color:var(--suite-radarr-color,#a58a26)}
+#automaticDeletionAdmin .ar-block[data-kind=metadata] header{background:color-mix(in srgb,var(--ar-source-color) 22%,transparent)}
+#automaticDeletionAdmin .ar-wires path[data-metadata]{stroke:var(--ar-socket);stroke-dasharray:3 3}
 #automaticDeletionAdmin .ar-logic-gate .ar-port-row span{visibility:hidden}
 #automaticDeletionAdmin .ar-circuit-tools{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:.7rem;background:var(--ar-soft);font-size:.8rem}
 #automaticDeletionAdmin .ar-circuit-tools select{width:auto;max-width:16rem;color:inherit;background:var(--ar-canvas-surface);font:inherit;border:1px solid var(--ar-line);padding:.4rem;border-radius:.3rem}
 #automaticDeletionAdmin .ar-circuit button:focus-visible,#automaticDeletionAdmin .ar-circuit select:focus-visible,#automaticDeletionAdmin .ar-circuit input:focus-visible{outline:2px solid var(--ar-accent);outline-offset:2px}
 #automaticDeletionAdmin .ar-circuit button{color:inherit;border:1px solid var(--ar-line);border-radius:5px;padding:.4rem .6rem;background:var(--ar-soft);cursor:pointer;font:inherit}
 #automaticDeletionAdmin .ar-circuit-layout{display:grid;grid-template-columns:minmax(0,1fr) 160px}
-#automaticDeletionAdmin .ar-viewport{height:clamp(24rem,70dvh,60rem);overflow:hidden;position:relative;background-color:var(--ar-canvas-surface);background-image:radial-gradient(color-mix(in srgb,currentColor 22%,transparent) 1px,transparent 1px);background-size:20px 20px;touch-action:none}
+#automaticDeletionAdmin .ar-viewport{height:clamp(24rem,calc(100dvh - 12rem),80rem);overflow:hidden;position:relative;background-color:var(--ar-canvas-surface);background-image:radial-gradient(color-mix(in srgb,currentColor 22%,transparent) 1px,transparent 1px);background-size:20px 20px;touch-action:none}
 #automaticDeletionAdmin .ar-stage{position:absolute;width:4000px;height:4000px;transform-origin:0 0}
 #automaticDeletionAdmin .ar-palette{padding:.75rem;background:var(--ar-soft);border-inline-start:1px solid var(--ar-line)}
 #automaticDeletionAdmin .ar-palette button{display:block;width:100%;margin:.5rem 0;text-align:left}
@@ -61,7 +76,8 @@
 #automaticDeletionAdmin .ar-socket[data-signal=true]{border-color:var(--ar-true);box-shadow:0 0 12px var(--ar-true);color:var(--ar-true)}
 #automaticDeletionAdmin .ar-socket[data-signal=false]{opacity:.35}
 #automaticDeletionAdmin .ar-socket[data-signal=null]{border-color:var(--ar-unknown)}
-#automaticDeletionAdmin .ar-source{opacity:.6;border-style:dashed;cursor:pointer}
+#automaticDeletionAdmin .ar-source{cursor:pointer;border-color:var(--ar-accent)}
+#automaticDeletionAdmin .ar-source[data-attached=false]{border-style:dashed;opacity:.75}
 #automaticDeletionAdmin .ar-source header{background:var(--ar-soft)}
 #automaticDeletionAdmin .ar-wires path[data-execution=true][data-signal=idle]{stroke:currentColor;opacity:.4}
 #automaticDeletionAdmin .ar-logic-gate .ar-output{top:calc(50% - 10px)}
@@ -69,10 +85,14 @@
 @media(max-width:650px){#automaticDeletionAdmin .ar-circuit-layout{grid-template-columns:minmax(0,1fr)}#automaticDeletionAdmin .ar-palette{border-left:0}#automaticDeletionAdmin .ar-palette button{display:inline-block;width:auto;margin:.3rem}}
 </style>
 <header><h1>Automatic deletion requests</h1></header>
-<p id="arStatus" role="status"></p><form id="arForm">
-<section class="ar-section"><h2>Execution settings</h2><div class="ar-grid"><div class="selectContainer" data-help="Administrator used to evaluate rules and submit requests. This does not grant viewer consent or deletion approval. Automatic requester attribution is not yet available."><label for="arActor">Administrator</label><select is="emby-select" id="arActor"></select></div>
-<div class="selectContainer" data-help="Default selection for new library-filter cards. Each filter keeps its own library."><label for="arLibrary">Default library</label><select is="emby-select" id="arLibrary"></select></div></div>
-<input id="arHours" type="hidden" value="24" /><div data-suite-jobs aria-label="Scheduled maintenance tasks"></div></section>
+<p id="arStatus" role="status"></p>
+<details id="arConnections" class="ar-section"><summary>Metadata connections</summary><p>Edit URLs and API keys, or import from Enhanced. Seerr uses the saved Deletion Queue connection.</p>
+<div class="ar-grid">
+<section data-arr-source="sonarr"><h3>Sonarr</h3><div class="inputContainer"><label for="arSonarrUrl">URL</label><input is="emby-input" id="arSonarrUrl" type="url" /></div><div class="inputContainer"><label for="arSonarrKey">API key</label><input is="emby-input" id="arSonarrKey" type="password" autocomplete="new-password" /></div><div class="ar-toolbar"><button is="emby-button" class="raised" type="button" data-arr-save>Save</button><button is="emby-button" class="raised" type="button" data-arr-test>Test saved</button><button is="emby-button" class="raised" type="button" data-arr-import>Import from Enhanced</button></div><p role="status" data-arr-status></p></section>
+<section data-arr-source="radarr"><h3>Radarr</h3><div class="inputContainer"><label for="arRadarrUrl">URL</label><input is="emby-input" id="arRadarrUrl" type="url" /></div><div class="inputContainer"><label for="arRadarrKey">API key</label><input is="emby-input" id="arRadarrKey" type="password" autocomplete="new-password" /></div><div class="ar-toolbar"><button is="emby-button" class="raised" type="button" data-arr-save>Save</button><button is="emby-button" class="raised" type="button" data-arr-test>Test saved</button><button is="emby-button" class="raised" type="button" data-arr-import>Import from Enhanced</button></div><p role="status" data-arr-status></p></section>
+</div></details>
+<form id="arForm">
+<input id="arHours" type="hidden" value="24" /><div data-suite-jobs aria-label="Scheduled maintenance tasks"></div>
 <section class="ar-section"><div class="ar-toolbar"><h2>Automation canvas</h2><button is="emby-button" id="arAddRule" type="button" class="raised">New card</button></div><div id="arRuleCards"></div></section>
 <details><summary>JSON import/export</summary><div class="inputContainer"><label for="arRules">Canvas JSON (rules, library filters and layout)</label><textarea is="emby-textarea" id="arRules" data-json rows="12" style="width:100%;box-sizing:border-box" spellcheck="false"></textarea></div><button is="emby-button" id="arImport" type="button" class="raised">Import draft</button><button is="emby-button" id="arExport" type="button" class="raised">Export canvas</button></details>
 <section class="ar-section"><div data-help="Unknown evidence blocks matching, including under NOT. Changes are rechecked before queued requests progress. Collections and artwork are configured in Deletion Queue."><label class="checkboxContainer"><input is="emby-checkbox" id="arEnabled" type="checkbox" /><span>Enable automation</span></label></div><div class="ar-footer"><button is="emby-button" type="submit" class="raised button-submit">Save automation</button><button is="emby-button" id="arPreview" type="button" class="raised">Preview saved rules</button></div></section></form>

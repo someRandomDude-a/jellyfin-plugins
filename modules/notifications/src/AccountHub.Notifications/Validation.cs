@@ -41,12 +41,13 @@ internal static partial class Validation
         Require(e.Metadata is null || (e.Metadata.Count <= 20 && e.Metadata.All(p => p.Key.Length <= 80 && p.Value is not null && p.Value.Length <= 500 && !SecretKey(p.Key))), "Unsafe metadata");
         Require(e.Details is null || e.Details.Length <= 8000, "Notification details too long");
         Require(e.Commands is null, "Commands must be projected by the internal provider");
+        Require(e.FirstViewedAt is null,"Viewed timestamps are recipient-owned");
         if (e.Layout is not null) Layout(e.Layout);
         Require(e.Actions is null || e.Actions.Length <= 5 && e.Actions.All(a => a is not null && a.Label is { Length: > 0 and <= 60 } &&
             a.Link is not null && SafeLink(a.Link, options) && a.Size is "compact" or "normal"), "Invalid notification actions");
         Require(Encoding.UTF8.GetByteCount(Contract.Serialize(e)) <= Contract.EventLimit, "Event too large");
     }
-    public static void Layout(NotificationLayout layout) => Require(layout is not null && layout.Density is "compact" or "standard" && layout.SummaryLength is >= 60 and <= 300 && layout.ToastSeconds is >= 0 and <= 10 && layout.MessageTemplate?.Length is not > 400, "Invalid notification layout");
+    public static void Layout(NotificationLayout layout) => Require(layout is not null && layout.Density is "compact" or "standard" && layout.SummaryLength is >= 60 and <= 300 && layout.ToastSeconds is >= 0 and <= 10 && layout.MessageTemplate?.Length is not > 400 && (layout.ExpireAfterViewHours is null or >=1 and <=8760), "Invalid notification layout");
     public static void Registration(NotificationRegistration registration, NotificationOptions options)
     {
         Require(registration is not null && registration.Source is { Length: > 0 and <= 100 } && registration.Source.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '_' or '.') && registration.Version is { Length: > 0 and <= 50 } && registration.Types is { Length: > 0 and <= 100 }, "Invalid producer registration");

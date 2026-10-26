@@ -12,10 +12,12 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
     {
         observedGeneration = fence.Generation;
         var owner = identity.Account(proposal.OwnerId);
-        var resolved = await targets.ResolveAsync(owner, proposal.Target.RequestId is { } requestId ? new TargetSelection(null, requestId, proposal.Target.Is4K) : new TargetSelection(proposal.Target.JellyfinItemId, null, proposal.Target.Is4K), ct);
+        var metadata=proposal.RequesterId is not null?new Dictionary<string,object?>():null;
+        var resolved = await targets.ResolveAsync(owner, proposal.Target.RequestId is { } requestId ? new TargetSelection(null, requestId, proposal.Target.Is4K) : new TargetSelection(proposal.Target.JellyfinItemId, null, proposal.Target.Is4K), ct,metadata);
+        var requesterCurrent=proposal.RequesterId is not {} expected || metadata?.GetValueOrDefault("seerr.requesterId") is string mapped && Guid.TryParse(mapped,out var currentRequester)&&currentRequester==expected;
         var state = runtime.Read();
         var authority = QueueRules.Authority(state, owner.Id);
-        var authorized = owner.Enabled && targets.Accessible(owner.Id, resolved) &&
+        var authorized = owner.Enabled && AuthorizerCurrent(proposal) && requesterCurrent && targets.Accessible(owner.Id, resolved) &&
             (authority == ProposalAuthority.AnyAccessibleItem || authority == ProposalAuthority.OwnRequests && resolved.OwnRequestVerified);
         var scan = fence.Quiet && inventory.Scan(resolved) && fence.Quiet && observedGeneration == fence.Generation && runtime.CollectorHealthy;
         var latest = runtime.Read();
@@ -54,7 +56,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var state = runtime.Read(); var p = QueueRules.Find(state, proposal.Id);
         var owner = identity.Account(p.OwnerId);
         var authority = QueueRules.Authority(state, owner.Id);
-        if (!owner.Enabled || !targets.Accessible(owner.Id, p.Target) || authority == ProposalAuthority.Denied ||
+        if (!owner.Enabled || !AuthorizerCurrent(p) || !targets.Accessible(owner.Id, p.Target) || authority == ProposalAuthority.Denied ||
             authority == ProposalAuthority.OwnRequests && !p.Target.OwnRequestVerified) throw new QueueException("OwnerNotAuthorized");
         if (p.Claim?.Id != proposal.Claim?.Id || p.Status != ProposalStatus.Claimed || !state.Policy.AutomaticDeletion ||
             !state.Policy.SeerrManagedDeletionAcknowledged || state.Policy.Suspended ||
@@ -68,7 +70,9 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
 
     private Task<bool> AutomaticRuleMatchesAsync(Proposal proposal, CancellationToken ct) => !proposal.RequiresAutomaticRuleValidation
         ? Task.FromResult(true) : automaticRules is null || string.IsNullOrEmpty(proposal.AutomaticRuleId)
-            ? Task.FromResult(false) : automaticRules.MatchesAsync(new(proposal.OwnerId, proposal.Target.JellyfinItemId, proposal.AutomaticRuleId), ct);
+            ? Task.FromResult(false) : automaticRules.MatchesAsync(new(proposal.AutomaticAuthorizerId??proposal.OwnerId, proposal.Target.JellyfinItemId, proposal.AutomaticRuleId), ct);
+
+    private bool AuthorizerCurrent(Proposal p)=>p.AutomaticAuthorizerId is not {} id || identity.Account(id) is {Enabled:true,Administrator:true};
 
     private bool AdministratorAuthorized(QueueState state, Proposal proposal)
     {

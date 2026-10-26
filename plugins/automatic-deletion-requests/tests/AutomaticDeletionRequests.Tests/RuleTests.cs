@@ -5,6 +5,20 @@ namespace AutomaticDeletionRequests.Tests;
 
 public sealed class RuleTests
 {
+    [Fact] public void SeerrRequesterIsTypedMetadataAndUnknownNeverMatchesNegativeComparisons() {
+        var id=Guid.NewGuid();
+        var rule=new Rule("requester","Requested by",true,"all",[new("seerr.requesterId","equals",Value(id.ToString("N")))]);
+        RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule]));
+        var facts=new Dictionary<string,JsonElement>{["seerr.requesterId"]=Value(id.ToString("D"))};
+        Assert.True(RuleEngine.Matches(rule,facts,DateTimeOffset.UtcNow));
+        rule=rule with{Conditions=[rule.Conditions[0] with{Operator="not-equals"}]};
+        foreach(var missing in new[]{JsonSerializer.SerializeToElement<object?>(null),Value(""),Value("not-a-user"),Value(false)}) {
+            facts["seerr.requesterId"]=missing;
+            Assert.Null(RuleEngine.TestCondition(rule.Conditions[0],facts,DateTimeOffset.UtcNow));
+            Assert.False(RuleEngine.Matches(rule,facts,DateTimeOffset.UtcNow));
+        }
+        Assert.True(RuleEngine.Matches(new("year","Year only",true,"all",[new("year","less",Value(2000))]),new Dictionary<string,JsonElement>{["year"]=Value(1990)},DateTimeOffset.UtcNow));
+    }
     private static JsonElement Value(object value) => JsonSerializer.SerializeToElement(value);
     [Fact] public void NumericAndTextConditionsMatchWithoutScripts()
     {
@@ -37,7 +51,7 @@ public sealed class RuleTests
     }
     [Fact] public void UnsupportedProvidersAndEmptyRulesAreRejected()
     {
-        Assert.Throws<InvalidOperationException>(() => RuleEngine.Validate(new(0, false, Guid.Empty, Guid.Empty, 24, [new("bad", "Unsupported", true, "all", [new("radarr.tags", "contains", Value("delete"))])])));
+        Assert.Throws<InvalidOperationException>(() => RuleEngine.Validate(new(0, false, Guid.Empty, Guid.Empty, 24, [new("bad", "Unsupported", true, "all", [new("unknown.tags", "contains", Value("delete"))])])));
         Assert.Throws<InvalidOperationException>(() => RuleEngine.Validate(new(0, false, Guid.Empty, Guid.Empty, 24, [new("bad", "Empty", true, "all", [])])));
     }
 }

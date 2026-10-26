@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const require = createRequire(new URL('../plugins/private-syncplay/package.json', import.meta.url));
 const { JSDOM } = require('jsdom');
 const script = await readFile(new URL('../plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/integrated.js', import.meta.url), 'utf8');
+const timelineScript = await readFile(new URL('../plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/timeline.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setTimeout(resolve, 45));
 async function fixture(failure = false, data = {}) {
     const dom = new JSDOM('<script id="dq-web-client" src="https://test.invalid/suite/DeletionQueue/assets/integrated.js"></script><div><button class="headerUserButton">User</button></div><div class="itemAction" data-id="11111111111111111111111111111111">Media</div>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://test.invalid/suite/web/index.html#/home' });
@@ -19,7 +20,7 @@ async function fixture(failure = false, data = {}) {
         const preview = path.endsWith('/preview');
         return { ok: !preview || !failure, status: preview && failure ? 409 : 200, headers: { get: () => null }, json: async () => preview ? failure ? { code: 'SeerrNotConfigured' } : { title: 'Fixture movie', kind: 'Movie', executionAvailable: true } : path.endsWith('/removal') ? data.removal || { canPropose: true, proposals: [] } : path.endsWith('/notices') ? [] : path.endsWith('/integration') ? data.integration || {} : path.endsWith('/proposals') ? data.proposals || [] : data.detail || {} };
     };
-    w.eval(script); await tick();
+    w.eval(timelineScript);w.eval(script); await tick();
     return { dom, w, d, calls };
 }
 test('right-click supports itemAction metadata and menu removal without a close event', async () => {
@@ -89,6 +90,26 @@ test('queue is an icon with inline selected actions, a small badge and no Load m
         assert.equal(modal.querySelector('[data-answer=keep]').getAttribute('aria-pressed'), 'false');
         assert(!modal.textContent.includes('Open full queue'));
     } finally { f.dom.window.close(); }
+});
+test('branched request timeline shows inactive OR consent and a timed approval route directly to Cancelled',async()=>{
+    const f=await fixture(false,{integration:{deviceBell:false},proposals:[{id:'forks',title:'Branched movie',status:'Expired',reason:'AdministratorApprovalExpired',closedCheckpoint:'approval',evaluatedAt:'2026-10-31T00:00:00Z',timeline:[
+        {key:'requested',label:'Requested',state:'complete',at:'2026-10-01T00:00:00Z'},
+        {key:'checks',label:'Inactive',state:'complete',paths:[{key:'activity',label:'All users inactive',state:'complete',durationDays:14},{key:'consent',label:'All active viewers consent',state:'skipped',durationDays:30}]},
+        {key:'approval',label:'Administrator review',state:'cancelled',decision:'expired',paths:[{key:'approved',label:'Approved',state:'stopped'},{key:'approval-timeout',label:'Denied or timed out',state:'cancelled',durationDays:30,at:'2026-10-31T00:00:00Z'}]},
+        {key:'delay',label:'Safety delay',state:'stopped',durationHours:48},{key:'removing',label:'Removal started',state:'stopped'},{key:'closed',label:'Expired',state:'complete',at:'2026-10-31T00:00:00Z'}
+    ]}]});
+    try{
+        f.d.querySelector('.dq-local-shortcut').click();await tick();
+        const graph=f.d.querySelector('.dq-flow-timeline');assert(graph);assert.match(graph.getAttribute('aria-description'),/inactive OR/);
+        assert.match(graph.querySelector('.dq-flow-edge-label[data-to=activity]').textContent,/14 days lookback/);
+        assert.match(graph.querySelector('.dq-flow-edge-label[data-to="approval-timeout"]').textContent,/30-day decision limit/);
+        assert.match(graph.querySelector('.dq-flow-edge-label[data-from=delay][data-to=removing]').textContent,/2 days \(48 hours\)/);
+        assert.equal(graph.querySelector('[data-checkpoint=cancelled]').dataset.state,'cancelled');assert.equal(graph.querySelector('[data-checkpoint=completed]').dataset.state,'stopped');
+        assert.equal(graph.querySelector('.dq-media-marker').dataset.checkpoint,'cancelled');
+        assert(graph.querySelector('path[data-from="approval-timeout"][data-to=cancelled][data-state=cancelled]'));
+        assert(!graph.querySelector('path[data-from="approval-timeout"][data-to=delay]'));
+        assert.equal(graph.querySelector('[data-checkpoint=approved] time'),null,'Do not invent an approval timestamp');
+    }finally{f.dom.window.close();}
 });
 test('approval fork is shown during review while later removal stages stay collapsed', async () => {
     const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'review', title: 'Movie', status: 'Blocked', timeline: [

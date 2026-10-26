@@ -38,6 +38,9 @@ public sealed class ProductionGatewayTests : IDisposable
     private readonly Clock clock = new();
     private readonly User owner = new("owner", "auth", "reset") { Id = Guid.NewGuid() };
     private readonly User restricted = new("restricted", "auth", "reset") { Id = Guid.NewGuid() };
+    private readonly User requester = new("requester", "auth", "reset") { Id = Guid.NewGuid() };
+    private bool attributeToRequester;
+    private Guid lastRuleActor;
     private readonly Movie movie = new() { Id = Guid.NewGuid(), Name = "Fixture movie", ProviderIds = new() { ["Tmdb"] = "1" } };
     private readonly QueueRuntime runtime;
     private readonly TargetResolver targets;
@@ -67,8 +70,8 @@ public sealed class ProductionGatewayTests : IDisposable
         runtime.MarkCollectorStarted();
         var users = Fake<IUserManager>((m, args) => m.Name switch
         {
-            "GetUsers" => new[] { owner, restricted },
-            "GetUserById" => (Guid)args[0]! == owner.Id ? owner : restricted,
+            "GetUsers" => new[] { owner, restricted,requester },
+            "GetUserById" => (Guid)args[0]! == owner.Id ? owner : (Guid)args[0]! == requester.Id?requester:restricted,
             "GetUserDto" => new UserDto { Id = ((User)args[0]!).Id, Policy = new UserPolicy { IsDisabled = ((User)args[0]!).Id == restricted.Id,
                 IsAdministrator = ((User)args[0]!).Id == owner.Id && administrator } },
             _ => throw new NotSupportedException(m.Name)
@@ -90,7 +93,7 @@ public sealed class ProductionGatewayTests : IDisposable
         var inventory = new ActivityInventory(library, users, data, sessions, runtime, targets, clock);
         var ruleServices = new ServiceCollection();
         ruleServices.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AutomaticRuleValidationClient.ServiceKey,
-            (_, _) => (_, _) => Task.FromResult(Contract.Serialize(new { matches = ++ruleChecks < denyRuleAt })));
+            (_, _) => (json, _) => {using var body=JsonDocument.Parse(json);lastRuleActor=body.RootElement.GetProperty("actorId").GetGuid();return Task.FromResult(Contract.Serialize(new { matches = ++ruleChecks < denyRuleAt }));});
         rulesProvider = ruleServices.BuildServiceProvider();
         gateway = new SeerrExecutionGateway(runtime, targets, identity, inventory, fence, clock, clients, new(rulesProvider));
         runtime.Write(Guid.NewGuid(), "fixture", "Configure", state =>
@@ -122,18 +125,29 @@ public sealed class ProductionGatewayTests : IDisposable
         {
             "/api/v1/settings/jellyfin" => wrongSeerrServer ? """{"serverId":"different-server"}""" : """{"serverId":"fixture-server"}""",
             "/api/v1/status" => """{"version":"3.0.0"}""",
-            "/api/v1/user/1" => $$$"""{"jellyfinUserId":"{{{owner.Id}}}"}""",
-            "/api/v1/user/2" => $$$"""{"jellyfinUserId":"{{{restricted.Id}}}"}""",
+            "/api/v1/user/1" => $$$"""{"id":1,"jellyfinUserId":"{{{(attributeToRequester?requester.Id:owner.Id)}}}"}""",
+            "/api/v1/user/2" => $$$"""{"id":2,"jellyfinUserId":"{{{restricted.Id}}}"}""",
             "/api/v1/request/9" => JsonSerializer.Serialize(new { id = 9, status = declines > 0 ? 3 : pendingOnly ? 1 : 2, is4k = false, requestedBy = new { id = otherRequestOwner ? 2 : 1 }, media = new { id = 42, tmdbId = 1, mediaType = "movie" } }),
             "/api/v1/movie/1" when unfulfilled => JsonSerializer.Serialize(new { id = 1, title = "Pending movie", mediaInfo = new { id = 42, tmdbId = 1, mediaType = "movie", status = 3,
                 serviceId = pendingOnly ? (int?)null : 0, externalServiceId = pendingOnly ? (int?)null : 123,
                 requests = new[] { new { id = 9, is4k = false, status = pendingOnly ? 1 : 2, requestedBy = new { id = otherRequestOwner ? 2 : 1 } } } } }),
-            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
+            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"id":9,"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
             "/api/v1/media/42" => $$$"""{"id":42,"tmdbId":1,"status":{{{(deleted ? 7 : 5)}}}}""",
             _ => throw new NotSupportedException(request.RequestUri.AbsolutePath)
         };
         return new(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
     }
+    [Fact] public async Task AutomaticRequestsAttributeVerifiedRequesterWithoutGrantingConsentOrLosingAuthorizerRechecks() {
+        administrator=true;attributeToRequester=true;var ready=new HubAvailability();ready.Set(true);
+        var service=new AutomaticRequests(runtime,targets,identity,ready,clock);
+        await service.SubmitAsync(Contract.Serialize(new AutomaticRemovalSubmission(Guid.NewGuid(),owner.Id,movie.Id,"owned-rule")),default);
+        var p=Assert.Single(runtime.Read().Proposals);Assert.Equal(requester.Id,p.OwnerId);Assert.Equal(requester.Id,p.RequesterId);Assert.Equal(owner.Id,p.AutomaticAuthorizerId);
+        Assert.Empty(p.Consents);Assert.Null(p.AdministratorApproval);
+        var check=await gateway.PreflightAsync(p,default);Assert.True(check.Evidence.OwnerAuthorized);Assert.Equal(owner.Id,lastRuleActor);
+        attributeToRequester=false;check=await gateway.PreflightAsync(p,default);Assert.False(check.Evidence.OwnerAuthorized);Assert.Equal(0,deletes);
+        attributeToRequester=true;administrator=false;check=await gateway.PreflightAsync(p,default);Assert.False(check.Evidence.OwnerAuthorized);
+    }
+
     [Fact] public void EpisodeContextRequiresAccessToTheEpisodeAndItsParentSeries() {
         var series=new MediaBrowser.Controller.Entities.TV.Series{Id=Guid.NewGuid()};
         var episode=new MediaBrowser.Controller.Entities.TV.Episode{Id=Guid.NewGuid(),SeriesId=series.Id};

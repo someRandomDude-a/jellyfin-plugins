@@ -32,6 +32,7 @@ public sealed class Plugin : BasePlugin, IHasWebPages
         };
         yield return new PluginPageInfo
         { Name = "DeletionQueueAdmin.js", EmbeddedResourcePath = GetType().Namespace + ".Web.admin.js" };
+        yield return new PluginPageInfo { Name = "DeletionQueueTimeline.js", EmbeddedResourcePath = GetType().Namespace + ".Web.timeline.js" };
         yield return new PluginPageInfo { Name = "DeletionQueueAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" };
         yield return new PluginPageInfo { Name = "DeletionQueuePresentation.js", EmbeddedResourcePath = GetType().Namespace + ".Web.presentation.js" };
         yield return new PluginPageInfo { Name = "DeletionQueueOverlayEditor.js", EmbeddedResourcePath = GetType().Namespace + ".Web.overlay-editor.js" };
@@ -54,6 +55,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<QueueRuntime>();
         services.AddSingleton<LiveIdentity>();
         services.AddSingleton<TargetResolver>();
+        services.AddSingleton<LibraryRequesterMetadata>();
+        services.AddKeyedSingleton<Func<Guid,CancellationToken,Task<Guid[]?>>>("Notifications.LibraryRequesters.1",(sp,_)=>sp.GetRequiredService<LibraryRequesterMetadata>().ReadAsync);
         services.AddSingleton<NotificationCommands>();
         services.AddSingleton<AutomaticRequests>();
         services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.DeletionRequestsClient.ServiceKey,

@@ -9,6 +9,27 @@ namespace AccountHub.Notifications.Tests;
 
 public sealed class IntakeTests
 {
+    [Theory]
+    [InlineData("all",false,false,true)]
+    [InlineData("all,requested",true,false,true)]
+    [InlineData("all,favourite",false,true,true)]
+    [InlineData("all",true,true,false)]
+    [InlineData("all,requested,favourite",true,true,true)]
+    public async Task LibraryCategoryUnionProducesAtMostOneInboxRow(string categories,bool requested,bool favourite,bool expected){
+        var f=new Fixture();
+        f.Store.Preferences(f.Host.Alice,[new("account-hub","category.library.all","in-app",!requested&&!favourite),new("account-hub","category.library.requested","in-app",requested),new("account-hub","category.library.favourite","in-app",favourite)]);
+        var e=f.Event() with{Source="account-hub",Type="library.movie.added",Metadata=new Dictionary<string,string>{["libraryCategories"]=categories}};
+        await f.Publish(e);Assert.Equal(expected?1:0,f.Store.Inbox(f.Host.Alice,0,100,null,false).Count);
+    }
+    [Theory]
+    [InlineData("category.library.*")]
+    [InlineData("library.*")]
+    [InlineData("*")]
+    public async Task DisabledLibraryMasterCannotBeOverriddenBySpecificOptIn(string master){
+        var f=new Fixture();f.Store.Preferences(f.Host.Alice,[new("account-hub",master,"in-app",false),new("account-hub","category.library.requested","in-app",true),new("account-hub","library.movie.added","in-app",true)]);
+        await f.Publish(f.Event() with{Source="account-hub",Type="library.movie.added",Metadata=new Dictionary<string,string>{["libraryCategories"]="all,requested"}});
+        Assert.Empty(f.Store.Inbox(f.Host.Alice,0,100,null,false));
+    }
     [Fact] public async Task Upsert_moves_to_top_even_when_updates_arrive_in_the_same_second()
     {
         var f = new Fixture(); var entry = f.Event() with { DedupeKey = "thread" };

@@ -29,6 +29,10 @@ public sealed class StorageTests:IDisposable
         var database=Path.Combine(legacy,"account-hub.db");
         var old=new NotificationStore(new(){DatabasePath=database},protection,TimeProvider.System);
         var user=Guid.NewGuid();var entry=new NotificationEvent(1,Guid.NewGuid(),"deletion-queue","proposal.created","info","Existing notice","Preserve me",[user],false,DateTimeOffset.UtcNow);
+        old.ConfigurePush(0,true,"mailto:test@example.test");var pushKey=old.PushSettings().PublicKey;
+        using var device=System.Security.Cryptography.ECDiffieHellman.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);var point=device.ExportParameters(false);
+        var subscription=new PushSubscription("https://fcm.googleapis.com/disposable",WebPush.Encode([4,..point.Q.X!,..point.Q.Y!]),WebPush.Encode(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)));
+        var deviceId=old.SavePush(user,subscription);
         var route=new Route("old","*","*","webhook","https://example.invalid",Secret:"preserve-encrypted-secret");
         old.Accept(entry,"hash",[(user,true,new[]{route},null)]);
         var leased=old.Claim();Assert.NotNull(leased);
@@ -41,6 +45,7 @@ public sealed class StorageTests:IDisposable
         Assert.Equal(id,current.Inbox(user,0,25,null,false).Single().Id);
         Assert.False(current.Preferences(user).Single().Enabled);
         Assert.Equal("preserve-encrypted-secret",current.Settings(false).Routes.Single().Secret);
+        Assert.Equal(pushKey,current.PushSettings().PublicKey);Assert.Equal(subscription,current.PushTargets(user).Single().Subscription);Assert.Equal(deviceId,current.PushTargets(user).Single().Id);Assert.Single(current.PushJobs());
         Assert.Null(current.Claim()); // Migration must not reset an in-flight delivery lease.
         using(var pending=System.Text.Json.JsonDocument.Parse(Contract.Serialize(current.Deliveries(0,25)))){
             Assert.Equal(leased.Id,pending.RootElement[0].GetProperty("id").GetGuid());
@@ -63,6 +68,12 @@ public sealed class StorageTests:IDisposable
         var storage=Create();_=Open(storage);var original=storage.Database;
         Directory.CreateDirectory(Path.Combine(root,"AccountHub"));File.WriteAllText(Path.Combine(root,"AccountHub","account-hub.db"),"not the notification store");
         Assert.Equal(original,Create().Database);
+    }
+    [Fact]public void PrePushLegacySchemaMigratesWithoutInventingSubscriptions(){
+        var legacy=Path.Combine(root,"AccountHub");Directory.CreateDirectory(legacy);var protection=DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(legacy,"keys")),b=>b.SetApplicationName("AccountHub"));_=protection.CreateProtector("test").Protect("initialize");
+        var database=Path.Combine(legacy,"account-hub.db");var old=new NotificationStore(new(){DatabasePath=database},protection,TimeProvider.System);var user=Guid.NewGuid();old.Preferences(user,[new("*","*","in-app",false)]);
+        using(var db=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=database}.ToString())){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DROP TABLE nh_push_jobs; DROP TABLE nh_push_subscriptions; DROP TABLE nh_push_settings";cmd.ExecuteNonQuery();}
+        var current=Open(Create());Assert.False(current.Preferences(user).Single().Enabled);Assert.False(current.PushSettings().Enabled);Assert.Empty(current.PushTargets(user));
     }
     [Fact] public void MissingBoundDatabaseIsNeverRecreated()
     {
@@ -124,6 +135,7 @@ public sealed class StorageTests:IDisposable
     [InlineData("UPDATE nh_settings SET json='invalid-ciphertext'")]
     [InlineData("UPDATE nh_schema SET version=99")]
     [InlineData("DROP TABLE nh_schema")]
+    [InlineData("DROP TABLE nh_push_subscriptions")]
     public void InvalidSourceIsNotCutOverOrRetired(string corruption)
     {
         var legacy=Path.Combine(root,"AccountHub");Directory.CreateDirectory(legacy);

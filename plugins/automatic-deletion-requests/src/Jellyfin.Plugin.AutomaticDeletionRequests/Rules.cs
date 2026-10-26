@@ -2,7 +2,10 @@ using System.Text.Json;
 
 namespace Jellyfin.Plugin.AutomaticDeletionRequests;
 
-public sealed record Condition(string Field, string Operator, JsonElement Value);
+public sealed record Condition(string Field, string Operator, JsonElement Value)
+{
+    public string? ReferenceField{get;init;}
+}
 public sealed record Rule(string Id, string Name, bool Enabled, string Match, Condition[] Conditions)
 {
     public RuleCircuit? Circuit { get; init; }
@@ -25,7 +28,7 @@ public sealed record Configuration(long Revision, bool Enabled, Guid ActorId, Gu
 public sealed record CanvasView(float Zoom,float PanX,float PanY);
 public static class RuleEngine
 {
-    public static readonly string[] Fields = ["title", "year", "added", "rating", "kind", "seerr.ownRequest", "seerr.is4k", "seerr.requestOnly"];
+    public static readonly string[] Fields = MetadataCatalog.Fields.Select(f=>f.Id).ToArray();
     public static void Validate(Configuration config)
     {
         if(config is not null && (config.View is null || !float.IsFinite(config.View.Zoom) || config.View.Zoom is <.25f or >2 || !float.IsFinite(config.View.PanX) || !float.IsFinite(config.View.PanY) || Math.Abs(config.View.PanX)>10000 || Math.Abs(config.View.PanY)>10000))throw new InvalidOperationException("Invalid canvas view");
@@ -40,13 +43,25 @@ public static class RuleEngine
                 r.Match is not ("all" or "any") || r.Conditions is null || r.Conditions.Length is < 1 or > 50) throw new InvalidOperationException("Invalid rule");
             foreach (var c in r.Conditions) {
                 if (c is null || !Fields.Contains(c.Field) || c.Value.ValueKind == JsonValueKind.Undefined || c.Value.GetRawText().Length > 500) throw new InvalidOperationException("Unsupported field");
-                if (c.Field is "title" or "kind") {
-                    if (c.Operator is not ("equals" or "not-equals" or "contains") || c.Value.ValueKind != JsonValueKind.String) throw new InvalidOperationException("Invalid text condition");
-                } else if (c.Field.StartsWith("seerr.", StringComparison.Ordinal)) {
-                    if (c.Operator is not ("equals" or "not-equals") || c.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new InvalidOperationException("Invalid Seerr condition");
-                } else if (c.Field == "added") {
-                    if (c.Operator is not ("older-days" or "newer-days") || !c.Value.TryGetInt32(out var days) || days is < 0 or > 36500) throw new InvalidOperationException("Invalid date condition");
-                } else if (c.Operator is not ("equals" or "not-equals" or "greater" or "less") || !c.Value.TryGetDouble(out var number) || !double.IsFinite(number)) throw new InvalidOperationException("Invalid number condition");
+                var field=MetadataCatalog.Find(c.Field)!;
+                if(!field.Operators.Contains(c.Operator))throw new InvalidOperationException("Invalid comparison");
+                if(c.ReferenceField is {} reference){
+                    var target=MetadataCatalog.Find(reference);if(target is null||target.Type!=field.Type||target.Unit!=field.Unit||c.Operator is not ("equals" or "not-equals" or "greater" or "less" or "before" or "after")||field.Type=="list")throw new InvalidOperationException("Incompatible metadata comparison");
+                    continue;
+                }
+                if(c.Operator is "exists" or "not-exists"){if(c.Value.ValueKind!=JsonValueKind.Null)throw new InvalidOperationException("Existence comparisons have no value");continue;}
+                var valid=field.Type switch {
+                    "text"=>c.Value.ValueKind==JsonValueKind.String,
+                    "user"=>c.Value.ValueKind==JsonValueKind.String&&Guid.TryParse(c.Value.GetString(),out var uid)&&uid!=Guid.Empty,
+                    "boolean"=>c.Value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+                    "date" when c.Operator is "before" or "after" or "equals" or "not-equals"=>c.Value.ValueKind==JsonValueKind.String&&c.Value.TryGetDateTimeOffset(out _),
+                    "date"=>c.Value.ValueKind==JsonValueKind.Number&&c.Value.TryGetInt32(out var days)&&days is >=0 and <=36500,
+                    "list" when c.Operator.StartsWith("count-",StringComparison.Ordinal)=>c.Value.ValueKind==JsonValueKind.Number&&c.Value.TryGetInt32(out var count)&&count is >=0 and <=1000000,
+                    "list" when c.Operator is "contains" or "not-contains" or "contains-partial" or "not-contains-partial"=>c.Value.ValueKind==JsonValueKind.String,
+                    "list"=>ValidList(c.Value),
+                    _=>c.Value.ValueKind==JsonValueKind.Number&&c.Value.TryGetDouble(out var number)&&double.IsFinite(number)
+                };
+                if(!valid)throw new InvalidOperationException("Invalid condition value");
             }
             if (r.Circuit is not null) CircuitRules.Validate(r.Circuit);
         }
@@ -64,30 +79,64 @@ public static class RuleEngine
     {
         // Unavailable facts invalidate the whole evaluation, even under OR/NOT.
         try {
-            if (GetConditions(rule).Any(c => !evidence.TryGetValue(c.Field, out var value) || !ValidEvidence(c, value))) return false;
-            if (rule.Circuit is not null) return CircuitRules.Evaluate(rule.Circuit, c => Compare(c, evidence[c.Field], now));
-            var results = rule.Conditions.Select(c => Compare(c, evidence[c.Field], now)).ToArray();
+            if (GetConditions(rule).Any(c => TestCondition(c,evidence,now) is null)) return false;
+            if (rule.Circuit is not null) return CircuitRules.Evaluate(rule.Circuit, c => TestCondition(c,evidence,now)==true);
+            var results = rule.Conditions.Select(c => TestCondition(c,evidence,now)==true).ToArray();
             return rule.Match == "all" ? results.All(x => x) : results.Any(x => x);
         } catch (Exception e) when (e is InvalidOperationException or FormatException or OverflowException) { return false; }
     }
     public static IEnumerable<Condition> GetConditions(Rule rule) => rule.Circuit is null ? rule.Conditions : CircuitRules.Conditions(rule.Circuit);
     public static bool? TestCondition(Condition c, IReadOnlyDictionary<string, JsonElement> evidence, DateTimeOffset now) {
-        try { return evidence.TryGetValue(c.Field, out var value) && ValidEvidence(c, value) ? Compare(c, value, now) : null; }
+        try {
+            if(!evidence.TryGetValue(c.Field,out var value))return null;
+            if(c.Operator is "exists" or "not-exists"){
+                if(MetadataEvidence.IsAbsent(value))return c.Operator=="not-exists";
+                return ValidEvidence(c,value)?c.Operator=="exists":null;
+            }
+            if(!ValidEvidence(c,value))return null;
+            if(c.ReferenceField is {} reference){if(!evidence.TryGetValue(reference,out var other)||!ValidEvidence(c with{Field=reference},other))return null;c=c with{Value=other};}
+            return Compare(c,value,now);
+        }
         catch (Exception e) when (e is InvalidOperationException or FormatException or OverflowException) { return null; }
     }
-    private static bool ValidEvidence(Condition condition, JsonElement value) => condition.Field switch {
-        "title" or "kind" => value.ValueKind == JsonValueKind.String,
-        "added" => value.ValueKind == JsonValueKind.String && value.TryGetDateTimeOffset(out _),
-        _ when condition.Field.StartsWith("seerr.", StringComparison.Ordinal) => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+    private static bool ValidList(JsonElement value)=>value.ValueKind==JsonValueKind.Array&&value.GetArrayLength()<=1000&&value.EnumerateArray().All(v=>v.ValueKind==JsonValueKind.String&&v.GetString()!.Length<=500);
+    private static bool ValidEvidence(Condition condition, JsonElement value) => MetadataCatalog.Find(condition.Field)?.Type switch {
+        "text" => value.ValueKind == JsonValueKind.String,
+        "date" => value.ValueKind == JsonValueKind.String && value.TryGetDateTimeOffset(out _),
+        "user" => value.ValueKind == JsonValueKind.String && Guid.TryParse(value.GetString(),out var id) && id != Guid.Empty,
+        "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+        "list"=>ValidList(value),
         _ => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number)
     };
     private static bool Compare(Condition c, JsonElement actual, DateTimeOffset now) => c.Operator switch {
         "older-days" => actual.GetDateTimeOffset() < now.AddDays(-c.Value.GetInt32()),
         "newer-days" => actual.GetDateTimeOffset() >= now.AddDays(-c.Value.GetInt32()),
-        "contains" => actual.GetString()!.Contains(c.Value.GetString()!, StringComparison.OrdinalIgnoreCase),
+        "older-hours" => actual.GetDateTimeOffset() < now.AddHours(-c.Value.GetInt32()),
+        "newer-hours" => actual.GetDateTimeOffset() >= now.AddHours(-c.Value.GetInt32()),
+        "in-next-days"=>actual.GetDateTimeOffset()>=now&&actual.GetDateTimeOffset()<=now.AddDays(c.Value.GetInt32()),
+        "in-last-days"=>actual.GetDateTimeOffset()<=now&&actual.GetDateTimeOffset()>=now.AddDays(-c.Value.GetInt32()),
+        "before"=>actual.GetDateTimeOffset()<c.Value.GetDateTimeOffset(),
+        "after"=>actual.GetDateTimeOffset()>c.Value.GetDateTimeOffset(),
+        "contains" => Contains(actual,c.Value.GetString()!),
+        "not-contains"=>!Contains(actual,c.Value.GetString()!),
+        "contains-partial"=>actual.EnumerateArray().Any(v=>v.GetString()!.Contains(c.Value.GetString()!,StringComparison.OrdinalIgnoreCase)),
+        "not-contains-partial"=>!actual.EnumerateArray().Any(v=>v.GetString()!.Contains(c.Value.GetString()!,StringComparison.OrdinalIgnoreCase)),
+        "contains-any"=>c.Value.EnumerateArray().Any(v=>Contains(actual,v.GetString()!)),
+        "contains-all"=>c.Value.EnumerateArray().All(v=>Contains(actual,v.GetString()!)),
+        "not-contains-all"=>!c.Value.EnumerateArray().All(v=>Contains(actual,v.GetString()!)),
+        "contains-none"=>!c.Value.EnumerateArray().Any(v=>Contains(actual,v.GetString()!)),
+        "count-equals"=>actual.GetArrayLength()==c.Value.GetInt32(),
+        "count-not-equals"=>actual.GetArrayLength()!=c.Value.GetInt32(),
+        "count-greater"=>actual.GetArrayLength()>c.Value.GetInt32(),
+        "count-less"=>actual.GetArrayLength()<c.Value.GetInt32(),
         "greater" => actual.GetDouble() > c.Value.GetDouble(),
         "less" => actual.GetDouble() < c.Value.GetDouble(),
-        "equals" => Equal(actual, c.Value), "not-equals" => !Equal(actual, c.Value), _ => false
+        "equals" => EqualValue(c,actual), "not-equals" => !EqualValue(c,actual), _ => false
     };
+    private static bool Contains(JsonElement actual,string value)=>actual.ValueKind==JsonValueKind.Array
+        ?actual.EnumerateArray().Any(v=>string.Equals(v.GetString(),value,StringComparison.OrdinalIgnoreCase))
+        :actual.GetString()!.Contains(value,StringComparison.OrdinalIgnoreCase);
+    private static bool EqualValue(Condition c,JsonElement actual) => c.Field == "seerr.requesterId"
+        ? Guid.Parse(actual.GetString()!) == Guid.Parse(c.Value.GetString()!) : MetadataCatalog.Find(c.Field)?.Type=="date"?actual.GetDateTimeOffset()==c.Value.GetDateTimeOffset():Equal(actual,c.Value);
     private static bool Equal(JsonElement a, JsonElement b) => a.ValueKind == b.ValueKind && (a.ValueKind == JsonValueKind.Number ? a.GetDouble() == b.GetDouble() : a.ValueKind is JsonValueKind.True or JsonValueKind.False || a.ValueKind == JsonValueKind.String && string.Equals(a.GetString(), b.GetString(), StringComparison.OrdinalIgnoreCase));
 }

@@ -10,6 +10,7 @@ public sealed record NotificationLayout(string Density = "compact", int SummaryL
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? MessageTemplate { get; init; }
     public int ToastSeconds { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? ExpireAfterViewHours { get; init; }
 }
 public sealed record NotificationActionDefinition(string Label, string Size = "compact");
 public sealed record NotificationTypeDefinition(string Type, string Name, string Trigger, string Recipients,

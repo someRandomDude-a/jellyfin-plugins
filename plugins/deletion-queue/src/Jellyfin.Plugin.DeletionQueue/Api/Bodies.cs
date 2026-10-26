@@ -19,6 +19,7 @@ public sealed record PreferencesBody(Guid CommandId, [Range(0, long.MaxValue)] l
 {
     [Range(0, 365)] public int? ActivityDays { get; init; }
     [Range(0, 365)] public int? AdministratorApprovalDays { get; init; }
+    [Range(0,365)]public int? RecentHistoryDays{get;init;}
 }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PolicyBody(Guid CommandId, long Revision, [Required] Policy Policy) : IValidatableObject
@@ -27,7 +28,7 @@ public sealed record PolicyBody(Guid CommandId, long Revision, [Required] Policy
     {
         if (Revision < 0 || Policy is null || Policy.Accounts is null || Policy.Accounts.Count > 1000 ||
             Policy.Accounts.Any(a => a.Key == Guid.Empty || !Enum.IsDefined(a.Value)) || !Enum.IsDefined(Policy.DefaultAuthority) ||
-            Policy.ActivityDays is < 1 or > 365 || Policy.DelayHours is < 48 or > 8760 || Policy.AdministratorApprovalDays is < 1 or > 365)
+             Policy.ActivityDays is < 1 or > 365 || Policy.DelayHours is < 48 or > 8760 || Policy.AdministratorApprovalDays is < 1 or > 365 || Policy.ActivityWaitTimeoutDays is < 1 or > 365 || Policy.RecentHistoryDays is <1 or >365)
             yield return new ValidationResult("Invalid or excessive policy.");
     }
 }

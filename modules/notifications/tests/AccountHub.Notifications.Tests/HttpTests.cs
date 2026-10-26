@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -139,6 +140,44 @@ public sealed class HttpTests
         Assert.Contains("\"count\":0", await client.GetStringAsync(Base + "/notifications/unread-count"));
     }
     private const string Base = "/AccountHub/api/v1";
+    [Fact]public async Task WebPushAdministrationRequiresNativeAdministratorAndWorkerContainsNoCredentials(){
+        var f=new Fixture();await using var app=await App(f);using var anonymous=Client(app);using var alice=Client(app,f.Host.Alice);using var bob=Client(app,f.Host.Bob);
+        Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync(Base+"/notifications/push")).StatusCode);
+        var worker=await anonymous.GetStringAsync(Base+"/notifications/push/sw.js");Assert.Contains("showNotification",worker);Assert.DoesNotContain("accessToken",worker);
+        Assert.Equal(HttpStatusCode.Forbidden,(await alice.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true})).StatusCode);
+        f.Host.Admins.Add(f.Host.Bob);f.Host.DenyStepUp=true;
+        Assert.Equal(HttpStatusCode.Forbidden,(await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true})).StatusCode);
+        f.Host.DenyStepUp=false;(await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true,subject="mailto:test@example.test"})).EnsureSuccessStatusCode();
+        var settings=await bob.GetStringAsync(Base+"/settings/notifications/push");Assert.DoesNotContain("privateKey",settings);Assert.Contains("\"enabled\":true",settings);
+    }
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("origin")]
+    [InlineData("revoked")]
+    public async Task LiveSocketRejectsExpiredCrossOriginAndRevokedGrants(string reason){
+        var f=new Fixture();await using var app=await App(f);using var anonymous=Client(app);
+        Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.PostAsJsonAsync(Base+"/notifications/live-ticket",new{})).StatusCode);
+        using var client=Client(app,f.Host.Alice);using var reply=await client.PostAsJsonAsync(Base+"/notifications/live-ticket",new{});reply.EnsureSuccessStatusCode();
+        using var grant=JsonDocument.Parse(await reply.Content.ReadAsStringAsync());var ticket=grant.RootElement.GetProperty("data").GetProperty("ticket").GetString()!;
+        if(reason=="expired")f.Clock.Now=f.Clock.Now.AddSeconds(31);
+        if(reason=="revoked")f.Host.Deleted.Add(f.Host.Alice);
+        var ws=app.GetTestServer().CreateWebSocketClient();ws.SubProtocols.Add("notifications.v1");ws.SubProtocols.Add("ticket."+ticket);ws.ConfigureRequest=request=>request.Headers["Origin"]=reason=="origin"?"https://untrusted.invalid":"http://localhost";
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await Assert.ThrowsAnyAsync<Exception>(()=>ws.ConnectAsync(new Uri("http://localhost"+Base+"/notifications/live"),deadline.Token));
+    }
+    [Fact]public async Task LiveSocketUsesSingleUseNativeSessionGrantAndSendsNoNotificationContent(){
+        var f=new Fixture();await using var app=await App(f);using var client=Client(app,f.Host.Alice);
+        using var reply=await client.PostAsJsonAsync(Base+"/notifications/live-ticket",new{});reply.EnsureSuccessStatusCode();
+        using var grant=JsonDocument.Parse(await reply.Content.ReadAsStringAsync());var ticket=grant.RootElement.GetProperty("data").GetProperty("ticket").GetString()!;
+        var ws=app.GetTestServer().CreateWebSocketClient();ws.SubProtocols.Add("notifications.v1");ws.SubProtocols.Add("ticket."+ticket);ws.ConfigureRequest=request=>request.Headers["Origin"]="http://localhost";
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(15));using var socket=await ws.ConnectAsync(new Uri("http://localhost"+Base+"/notifications/live"),deadline.Token);
+        var buffer=new byte[256];var first=await socket.ReceiveAsync(buffer.AsMemory(),deadline.Token);Assert.Equal("changed",Encoding.UTF8.GetString(buffer,0,first.Count));
+        var before=f.Store.LiveDigest(f.Host.Alice);await f.Publish(f.Event() with{Audience=[f.Host.Bob],Title="Other user's secret"});Assert.Equal(before,f.Store.LiveDigest(f.Host.Alice));
+        await f.Publish(f.Event() with{Title="Private title never sent on socket"});var second=await socket.ReceiveAsync(buffer.AsMemory(),deadline.Token);Assert.Equal("changed",Encoding.UTF8.GetString(buffer,0,second.Count));
+        var replay=app.GetTestServer().CreateWebSocketClient();replay.SubProtocols.Add("notifications.v1");replay.SubProtocols.Add("ticket."+ticket);replay.ConfigureRequest=request=>request.Headers["Origin"]="http://localhost";
+        await Assert.ThrowsAnyAsync<Exception>(()=>replay.ConnectAsync(new Uri("http://localhost"+Base+"/notifications/live"),deadline.Token));
+        await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,"Done",deadline.Token);
+    }
     private static async Task<WebApplication> App(Fixture f, bool basePath = false)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
@@ -148,6 +187,7 @@ public sealed class HttpTests
         builder.Services.AddAccountHubNotifications(f.Options);
         builder.Services.AddSingleton<INotificationHost>(f.Host); builder.Services.AddSingleton<IDiscordTransport>(f.Bot);
         builder.Services.AddSingleton(f.Store); builder.Services.AddSingleton(f.Service);
+        builder.Services.AddSingleton<TimeProvider>(f.Clock);
         builder.Services.RemoveAll<IHostedService>();
         var app = builder.Build();
         if (basePath) app.UsePathBase("/jellyfin");
@@ -158,7 +198,7 @@ public sealed class HttpTests
             { context.Response.StatusCode = 403; await context.Response.WriteAsJsonAsync(new { twoFactorRequired = true, marker = "raw-middleware-body" }); return; }
             await next(context);
         });
-        app.UseAuthentication(); app.UseAuthorization(); app.MapAccountHubNotifications();
+        app.UseWebSockets();app.UseAuthentication(); app.UseAuthorization(); app.MapAccountHubNotifications();
         await app.StartAsync(); return app;
     }
     private static HttpClient Client(WebApplication app, Guid? user = null)

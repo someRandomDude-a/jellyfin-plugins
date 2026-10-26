@@ -25,6 +25,7 @@ public sealed class DeliveryWorker(NotificationStore store, NotificationService 
                     var result = await DeliverAsync(delivery, stoppingToken);
                     store.Complete(delivery, result);
                 }
+                await new WebPush(store,host,time).ProcessAsync(stoppingToken);
                 if (time.GetUtcNow() >= nextPrune)
                 {
                     await host.AppendAuditAsync(new(1, Guid.NewGuid(), "account-hub", "notifications.retention.pruning", "success", time.GetUtcNow()), stoppingToken);

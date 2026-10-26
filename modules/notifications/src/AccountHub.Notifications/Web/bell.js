@@ -9,16 +9,24 @@
     const apiPrefix = document.querySelector('[data-notifications-bootstrap]')?.dataset.notificationsApi || 'AccountHub/api/v1/';
     const expanded = new Set(); let moreObserver, moreSentinel, loadMoreRequested = false;
     let historyView=false;
+    let viewedObserver;const viewedKeys=new Set();
+    let liveSocket,liveTimer,liveConnecting=false,liveDirty=false,liveBackoff=1000;
+    const mediaImages=new Map();let wantedImages=new Set();
+    let pushScope;
     let localRows = [], localSequence = 0, settingsElement, toast, toastTimer;
     const toasted = new Set();
     const url = path => client().getUrl(apiPrefix + path);
     const element = (tag, text) => { const e = document.createElement(tag); if (tag === 'button') { e.className = 'emby-button raised'; e.setAttribute('is', 'emby-button'); e.type = 'button'; } if (text) e.textContent = text; return e; };
     function clear(clearLocal = false) {
+        if(clearLocal&&pushScope){const scope=pushScope;pushScope=null;void window.navigator?.serviceWorker?.getRegistration(scope).then(async registration=>{if(registration?.scope!==scope)return;const subscription=await registration.pushManager.getSubscription();await subscription?.unsubscribe();await registration.unregister();}).catch(()=>{});}
         if (clearLocal) localRows = [];
         clearTimeout(timer); timer = null; etag = undefined; rows = [];
         generation++; skip = 0; hasMore = false; unreadCount = 0; settingsView = false;
+        clearTimeout(liveTimer);liveTimer=null;const previousSocket=liveSocket;liveSocket=null;previousSocket?.close();liveConnecting=false;liveDirty=false;
         historyView=false;
         expanded.clear(); moreObserver?.disconnect(); loadMoreRequested = false;
+        viewedObserver?.disconnect();viewedKeys.clear();
+        for(const image of mediaImages.values()){image.abort?.abort();if(image.url)window.URL?.revokeObjectURL(image.url);}mediaImages.clear();
         settingsElement = null;
         toast?.remove(); toast = null; clearTimeout(toastTimer); if (clearLocal) toasted.clear();
         button?.remove(); panel?.remove(); button = panel = null;
@@ -84,8 +92,10 @@
     }
     function render() {
         if (!panel) return;
+        viewedObserver?.disconnect();
         moreObserver?.disconnect(); moreObserver = null; moreSentinel = null;
         if (settingsView) { if (!settingsElement?.isConnected) renderSettings(); return; }
+        wantedImages=new Set();for(const image of mediaImages.values())image.targets.clear();
         const header = element('div'); header.className = 'notificationHeader'; header.append(element('h2', 'Notifications')); panel.replaceChildren(header);
         const settings = element('button', ''); settings.className = 'paper-icon-button-light notificationSettings'; settings.setAttribute('aria-label', 'Notification settings');
         const gear = element('span', 'settings'); gear.className = 'material-icons'; gear.setAttribute('aria-hidden', 'true'); settings.append(gear);
@@ -108,6 +118,8 @@
         entries.sort((a, b) => (b.row.event.occurredAt || '').localeCompare(a.row.event.occurredAt || ''));
         for (const { row, time } of entries) {
             const item = element('section'); item.dataset.unread = String(!row.read);
+            item.dataset.notificationId=row.id;
+            addMediaImage(row,item);
             item.dataset.density = row.event.layout?.density === 'standard' ? 'standard' : 'compact';
             const mainLink = row.event.link || row.event.actions?.[0]?.link;
             const main = element(mainLink ? 'a' : 'div'); main.className = 'notificationMain';
@@ -175,6 +187,7 @@
             }
             panel.append(item);
         } }
+        for(const [key,image]of mediaImages)if(!wantedImages.has(key)){image.abort?.abort();if(image.url)window.URL?.revokeObjectURL(image.url);mediaImages.delete(key);}
         const next = element('button', 'Older notifications'); next.disabled = !hasMore; next.hidden = !hasMore;
         moreSentinel = next;
         next.onclick = () => { if (inFlight || !hasMore) return; skip += 100; loadMoreRequested = true; etag = undefined; void poll(); }; panel.append(next);
@@ -182,6 +195,28 @@
             moreObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) next.onclick(); }, { root: panel, rootMargin: '80px' });
             moreObserver.observe(next);
         }
+        if(!panel.hidden&&!historyView&&typeof IntersectionObserver!=='undefined'){
+            const started=generation;
+            viewedObserver=new IntersectionObserver(entries=>{if(started!==generation||panel.hidden||settingsView||historyView||document.hidden)return;for(const entry of entries){if(!entry.isIntersecting||entry.intersectionRatio<.5)continue;const row=rows.find(r=>r.id===entry.target.dataset.notificationId);if(!row||row.event.firstViewedAt||!(row.event.layout?.expireAfterViewHours>0))continue;const key=row.id+':'+row.event.eventId;if(viewedKeys.has(key))continue;viewedKeys.add(key);while(viewedKeys.size>1000)viewedKeys.delete(viewedKeys.values().next().value);
+                void request('notifications/'+row.id+'/viewed','POST').then(()=>{if(started!==generation)return;if(!row.read)unreadCount=Math.max(0,unreadCount-1);row.read=true;entry.target.dataset.unread='false';etag=undefined;paintCount(unreadCount);}).catch(()=>viewedKeys.delete(key));
+            }},{root:panel,threshold:.5});
+            for(const item of panel.querySelectorAll('section[data-notification-id]'))viewedObserver.observe(item);
+        }
+    }
+    function addMediaImage(row,item){
+        if(panel.hidden)return;
+        const metadata=row.event.metadata,id=metadata?.imageItemId;
+        if(row.event.source!=='account-hub'||!row.event.type?.startsWith('library.')||typeof id!=='string'||!/^([a-f0-9]{32}|[a-f0-9-]{36})$/i.test(id)||id.replaceAll('-','').toLowerCase()!==String(metadata.itemId).replaceAll('-','').toLowerCase()||typeof window.URL?.createObjectURL!=='function')return;
+        const key=row.id+':'+row.event.eventId+':'+id;wantedImages.add(key);
+        const image=element('img');image.className='notificationMediaImage';image.alt='';image.setAttribute('aria-hidden','true');image.dataset.kind=row.event.type.includes('.episode.')?'episode':'movie';item.append(image);
+        let cached=mediaImages.get(key);if(cached){cached.targets.add(image);if(cached.url)image.src=cached.url;return;}
+        if(mediaImages.size>=100){image.remove();return;}
+        const started=generation,token=client().accessToken(),abort=new AbortController();cached={targets:new Set([image]),abort,url:null};mediaImages.set(key,cached);
+        const deadline=setTimeout(()=>abort.abort(),5000);
+        void fetch(client().getUrl('Items/'+encodeURIComponent(id)+'/Images/Primary',{maxWidth:160,maxHeight:160,quality:85}),{credentials:'omit',headers:{Authorization:'MediaBrowser Token="'+token+'"'},signal:abort.signal}).then(async response=>{
+            if(!response.ok||!/^image\/(png|jpeg|webp|avif)(;|$)/i.test(response.headers.get('Content-Type')||''))throw Error('Image unavailable');const blob=await response.blob();if(blob.size>524288||started!==generation||token!==client().accessToken()||mediaImages.get(key)!==cached)throw Error('Stale image');
+            cached.url=window.URL.createObjectURL(blob);for(const target of cached.targets)if(target.isConnected)target.src=cached.url;
+        }).catch(()=>{if(mediaImages.get(key)===cached)mediaImages.delete(key);for(const target of cached.targets)target.remove();}).finally(()=>clearTimeout(deadline));
     }
     function renderSettings() {
         panel.replaceChildren(element('h2', 'Notification settings'));
@@ -192,7 +227,8 @@
         const active = () => settingsView && generation === started && view.isConnected;
         const same = (a, b) => a.source === b.source && a.type === b.type && a.channel === b.channel;
         const key = rule => JSON.stringify([rule.source, rule.type, rule.channel]);
-        const paint = () => { for (const entry of controls) { const enabled = rules.find(rule => same(rule, entry.rule))?.enabled ?? entry.rule.channel === 'in-app'; entry.button.disabled = loading || busy.has(key(entry.rule)); entry.button.setAttribute('aria-checked', String(enabled)); } };
+        const preferenceDefault=rule=>rule.type.startsWith('category.library.')?['category.library.*','category.library.all'].includes(rule.type):rule.channel==='in-app';
+        const paint = () => { for (const entry of controls) { const enabled = rules.find(rule => same(rule, entry.rule))?.enabled ?? preferenceDefault(entry.rule);const parentOff=rules.some(rule=>!same(rule,entry.rule)&&!rule.enabled&&rule.channel===entry.rule.channel&&(rule.source==='*'||rule.source===entry.rule.source)&&(rule.type==='*'||rule.type.endsWith('.*')&&entry.rule.type.startsWith(rule.type.slice(0,-1)))); entry.button.disabled = loading || busy.has(key(entry.rule))||parentOff; entry.button.setAttribute('aria-checked', String(enabled)); } };
         async function save(rule) {
             if (loading || busy.has(key(rule))) return;
             busy.add(key(rule)); paint();
@@ -212,7 +248,32 @@
         const library = element('details'); library.append(element('summary', 'New episodes and movies'));
         for (const [kind, label] of [['episode', 'new episodes'], ['movie', 'new movies']]) for (const channel of ['in-app', 'discord'])
             preferenceRow(label[0].toUpperCase() + label.slice(1) + ' · ' + (channel === 'in-app' ? 'In-app' : 'Discord'), 'account-hub', 'library.' + kind + '.added', channel, label + ' on ' + channel, library);
+        const categories=element('details');categories.append(element('summary','Library categories'));
+        for(const [category,label]of [['*','Library updates'],['all','All additions'],['requested','Requested media'],['favourite','Favourites']])for(const channel of ['in-app','discord'])preferenceRow(label+' · '+(channel==='in-app'?'In-app':'Discord'),'account-hub','category.library.'+category,channel,label+' on '+channel,categories);
+        library.append(categories);
         view.append(library);
+        if(window.isSecureContext&&window.navigator?.serviceWorker&&window.PushManager&&window.Notification){
+            const pushArea=element('section'),pushStatus=element('p','Loading browser notification settings…'),enablePush=element('button','Enable browser notifications'),disablePush=element('button','Disable on this browser');
+            enablePush.disabled=true;disablePush.disabled=true;pushArea.append(element('h3','Browser notifications'),pushStatus,enablePush,disablePush);view.append(pushArea);
+            const worker=url('notifications/push/sw.js'),scope=new URL('./',worker).href;pushScope=scope;
+            let pushConfig;
+            const refreshPush=async()=>{pushConfig=await request('notifications/push');if(!active())return;const registration=await window.navigator.serviceWorker.getRegistration(scope),subscription=registration?.scope===scope?await registration.pushManager.getSubscription():null;
+                enablePush.disabled=!pushConfig.enabled;disablePush.disabled=!subscription;pushStatus.textContent=pushConfig.enabled?'Optional device notifications contain no private details. Your browser or OS may limit delivery.':'Web Push is disabled by the administrator.';};
+            enablePush.onclick=async()=>{enablePush.disabled=true;const token=client().accessToken();try{
+                // Permission is requested only in this explicit user-gesture handler.
+                const permission=await window.Notification.requestPermission();if(permission!=='granted')throw Error('Browser notification permission was not granted.');
+                const registration=await window.navigator.serviceWorker.register(worker,{scope});
+                const pending=registration.installing||registration.waiting;if(!registration.active&&pending)await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('Worker activation timed out.')),10000);pending.addEventListener('statechange',()=>{if(pending.state==='activated'){clearTimeout(timeout);resolve();}else if(pending.state==='redundant'){clearTimeout(timeout);reject(Error('Worker activation failed.'));}});});
+                if(!active()||token!==client().accessToken())return;
+                const bytes=Uint8Array.from(atob(pushConfig.publicKey.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-pushConfig.publicKey.length%4)%4)),c=>c.charCodeAt(0));
+                const subscription=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
+                if(!active()||token!==client().accessToken()){await subscription.unsubscribe();return;}
+                const value=subscription.toJSON();try{await request('notifications/push','POST',{endpoint:value.endpoint,p256dh:value.keys.p256dh,auth:value.keys.auth});}catch(error){await subscription.unsubscribe();throw error;}
+                if(active()){pushStatus.textContent='Enabled on this browser.';disablePush.disabled=false;}
+            }catch(error){if(active())pushStatus.textContent=error.message||'Could not enable browser notifications.';}finally{if(active())enablePush.disabled=!pushConfig?.enabled;}};
+            disablePush.onclick=async()=>{disablePush.disabled=true;try{const registration=await window.navigator.serviceWorker.getRegistration(scope);if(registration?.scope===scope){const subscription=await registration.pushManager.getSubscription();if(subscription){const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(subscription.endpoint)))].map(v=>v.toString(16).padStart(2,'0')).join('');await request('notifications/push/'+hash,'DELETE');await subscription.unsubscribe();}await registration.unregister();}if(active())pushStatus.textContent='Disabled on this browser.';}catch{if(active()){pushStatus.textContent='Could not disable. Try again.';disablePush.disabled=false;}}};
+            void refreshPush().catch(()=>{if(active())pushStatus.textContent='Browser notifications are unavailable.';});
+        }
         const muted = element('details'), mutedList = element('div'); muted.append(element('summary', 'Muted sources and types'), mutedList); view.append(muted);
         function renderMuted() {
             mutedList.replaceChildren();
@@ -238,7 +299,12 @@
     function mount() {
         if (forbidden() || !client()?.accessToken?.() || !client()?.getCurrentUserId?.()) { clear(true); return false; }
         const nextIdentity = url('notifications') + ':' + client().getCurrentUserId();
-        if (identity !== nextIdentity) { clear(true); paused = false; identity = nextIdentity; }
+        if (identity !== nextIdentity) { clear(true); paused = false; identity = nextIdentity;
+            if(window.isSecureContext&&window.navigator?.serviceWorker&&window.PushManager){
+                const scope=new URL('./',url('notifications/push/sw.js')).href;pushScope=scope;const started=generation,token=client().accessToken();
+                void window.navigator.serviceWorker.getRegistration(scope).then(async registration=>{if(registration?.scope!==scope)return;const subscription=await registration.pushManager.getSubscription();if(!subscription)return;const config=await request('notifications/push');const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(subscription.endpoint)))].map(v=>v.toString(16).padStart(2,'0')).join('');if(started!==generation||token!==client().accessToken())return;if(!config.enabled||!config.devices?.includes(hash)){await subscription.unsubscribe();await registration.unregister();}}).catch(()=>{});
+            }
+        }
         const anchor = [...document.querySelectorAll('.headerUserButton, [aria-controls="app-user-menu"]')].find(node => node.getClientRects().length && !node.closest('.videoOsdBottom'));
         if (button?.isConnected) {
             if (anchor?.parentElement && button.parentElement !== anchor.parentElement) anchor.parentElement.insertBefore(button, anchor);
@@ -311,14 +377,31 @@
             const count = await request('notifications/unread-count');
             unreadCount = count.count; paintCount(unreadCount);
             delay = 30000;
+            void connectLive();
         } catch { if (append) skip = Math.max(0, skip - 100); delay = Math.min(delay * 2, 300000); }
         finally {
             inFlight = false;
             if (moreObserver && moreSentinel && hasMore && !panel?.hidden && !settingsView) { moreObserver.disconnect(); moreObserver.observe(moreSentinel); }
             // Navigation can occur while a request is in flight; don't strand the new view.
             if (generation !== activeGeneration && !paused) timer = setTimeout(poll, 0);
+            if(liveDirty&&generation===activeGeneration&&!paused){liveDirty=false;timer=setTimeout(poll,0);return;}
         }
         if (!paused && generation === activeGeneration) timer = setTimeout(poll, delay);
+    }
+    async function connectLive(){
+        if(typeof window.WebSocket!=='function'||liveSocket||liveConnecting||liveTimer||paused||document.hidden||forbidden())return;
+        const started=generation;liveConnecting=true;
+        const retry=()=>{if(started!==generation||paused||forbidden())return;liveTimer=setTimeout(()=>{liveTimer=null;void connectLive();},liveBackoff);liveBackoff=Math.min(liveBackoff*2,300000);};
+        try{
+            const grant=await request('notifications/live-ticket','POST');if(started!==generation||paused)return;
+            if(typeof grant.ticket!=='string'||!/^[A-F0-9]{64}$/.test(grant.ticket))throw Error('Invalid live grant');
+            const address=new URL(url('notifications/live'),location.href);address.protocol=address.protocol==='https:'?'wss:':'ws:';
+            const socket=new window.WebSocket(address.href,['notifications.v1','ticket.'+grant.ticket]);liveSocket=socket;
+            socket.onopen=()=>{liveBackoff=1000;};
+            socket.onmessage=event=>{if(started!==generation||paused||event.data!=='changed')return;etag=undefined;if(inFlight)liveDirty=true;else void poll();};
+            socket.onclose=()=>{if(liveSocket===socket)liveSocket=null;retry();};
+            socket.onerror=()=>socket.close();
+        }catch{retry();}finally{if(started===generation)liveConnecting=false;}
     }
     const resume = () => { paused = false; poll(); };
     // Settings refreshes can remove the focused control, returning focus to body.

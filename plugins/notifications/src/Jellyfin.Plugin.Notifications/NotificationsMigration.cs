@@ -11,6 +11,8 @@ namespace Jellyfin.Plugin.Notifications;
 public static class NotificationsMigration
 {
     private static readonly string[] Tables=["nh_schema","nh_events","nh_event_content","nh_logical","nh_inbox","nh_deliveries","nh_preferences","nh_settings","nh_tokens","nh_receipts"];
+    private static readonly string[] OptionalTables=["nh_push_settings","nh_push_subscriptions","nh_push_jobs"];
+    private static IEnumerable<string> ExistingTables(SqliteConnection db)=>Tables.Concat(OptionalTables.Where(t=>Has(db,t)));
     private const string Purpose="AccountHub.Notifications.v1";
     public static string Initialize(string configurations)=>Initialize(configurations,null);
     internal static string Initialize(string configurations,Action<string>? checkpoint)
@@ -75,12 +77,13 @@ public static class NotificationsMigration
                 if(Has(legacy,"nh_moved"))throw new InvalidDataException("Source was already migrated; restore the destination instead");
                 if(Has(legacy,"nh_schema"))
                 {
-                    using(var known=legacy.CreateCommand()){known.CommandText="SELECT count(*) FROM sqlite_master WHERE type='table' AND substr(name,1,3)='nh_'";if(Convert.ToInt32(known.ExecuteScalar())!=Tables.Length)throw new InvalidDataException("Unknown legacy notification tables");}
+                    using(var known=legacy.CreateCommand()){known.CommandText="SELECT count(*) FROM sqlite_master WHERE type='table' AND substr(name,1,3)='nh_'";if(Convert.ToInt32(known.ExecuteScalar())!=ExistingTables(legacy).Count())throw new InvalidDataException("Unknown legacy notification tables");}
+                    Validate(legacy);
                     var oldRoot=Path.Combine(configurations,"AccountHub");RequireKeys(oldRoot);
                     var oldProtector=Provider(oldRoot,"AccountHub").CreateProtector(Purpose);
                     var newProtector=protection.CreateProtector(Purpose);
                     using var tx=destination.BeginTransaction();
-                    foreach(var table in Tables)
+                    foreach(var table in ExistingTables(legacy))
                     {
                         if(Columns(legacy,table)!=Columns(destination,table))throw new InvalidDataException("Legacy notification schema mismatch");
                         Execute(destination,$"DELETE FROM {table}");
@@ -93,7 +96,7 @@ public static class NotificationsMigration
                             for(var i=0;i<rows.FieldCount;i++)
                             {
                                 object value=rows.GetValue(i);
-                                if(value is string cipher && (table=="nh_settings"&&rows.GetName(i)=="json" || table=="nh_deliveries"&&rows.GetName(i)=="route"))
+                                if(value is string cipher && ((table is "nh_settings" or "nh_push_settings" or "nh_push_subscriptions")&&rows.GetName(i)=="json" || table=="nh_deliveries"&&rows.GetName(i)=="route"))
                                     value=newProtector.Protect(oldProtector.Unprotect(cipher));
                                 write.Parameters.AddWithValue("$p"+i,value);
                             }
@@ -134,7 +137,7 @@ public static class NotificationsMigration
         else
         {
             if(Fingerprint(source)!=expected)throw new InvalidDataException("Legacy data changed during cutover; no source data was removed");
-            foreach(var table in Tables)Execute(source,$"DROP TABLE {table}");
+            foreach(var table in ExistingTables(source).ToArray())Execute(source,$"DROP TABLE {table}");
             Execute(source,"CREATE TABLE nh_moved(id INTEGER PRIMARY KEY CHECK(id=1),hash TEXT NOT NULL)");
             using var mark=source.CreateCommand();mark.CommandText="INSERT INTO nh_moved VALUES(1,$hash)";mark.Parameters.AddWithValue("$hash",expected);mark.ExecuteNonQuery();
         }
@@ -145,18 +148,19 @@ public static class NotificationsMigration
         using var check=db.CreateCommand();check.CommandText="PRAGMA quick_check";
         if(check.ExecuteScalar() as string!="ok")throw new InvalidDataException("Notification database integrity failure");
         foreach(var table in Tables)if(!Has(db,table))throw new InvalidDataException("Notification table missing");
+        var optional=OptionalTables.Count(t=>Has(db,t));if(optional!=0&&optional!=OptionalTables.Length)throw new InvalidDataException("Push table missing; restore original state");
         check.CommandText="SELECT version FROM nh_schema";
         if(Convert.ToInt32(check.ExecuteScalar())!=1)throw new InvalidDataException("Unsupported notification schema");
     }
     private static void ValidateSecrets(SqliteConnection db,IDataProtector protector)
     {
-        using var command=db.CreateCommand();command.CommandText="SELECT json FROM nh_settings UNION ALL SELECT route FROM nh_deliveries";
+        using var command=db.CreateCommand();command.CommandText="SELECT json FROM nh_settings UNION ALL SELECT route FROM nh_deliveries"+(Has(db,"nh_push_settings")?" UNION ALL SELECT json FROM nh_push_settings UNION ALL SELECT json FROM nh_push_subscriptions":"");
         using var rows=command.ExecuteReader();while(rows.Read())_=protector.Unprotect(rows.GetString(0));
     }
     private static string Fingerprint(SqliteConnection db)
     {
         using var hash=IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach(var table in Tables){hash.AppendData(Encoding.UTF8.GetBytes(table));using var cmd=db.CreateCommand();cmd.CommandText=$"SELECT * FROM {table} ORDER BY rowid";using var rows=cmd.ExecuteReader();while(rows.Read()){var values=new object[rows.FieldCount];rows.GetValues(values);hash.AppendData(JsonSerializer.SerializeToUtf8Bytes(values));}}
+        foreach(var table in ExistingTables(db)){hash.AppendData(Encoding.UTF8.GetBytes(table));using var cmd=db.CreateCommand();cmd.CommandText=$"SELECT * FROM {table} ORDER BY rowid";using var rows=cmd.ExecuteReader();while(rows.Read()){var values=new object[rows.FieldCount];rows.GetValues(values);hash.AppendData(JsonSerializer.SerializeToUtf8Bytes(values));}}
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
     private static string Columns(SqliteConnection db,string table){using var cmd=db.CreateCommand();cmd.CommandText=$"PRAGMA table_info({table})";using var rows=cmd.ExecuteReader();var result=new List<string>();while(rows.Read())result.Add($"{rows.GetString(1)}:{rows.GetString(2)}:{rows.GetInt32(3)}:{rows.GetInt32(5)}");return string.Join('|',result);}

@@ -369,6 +369,7 @@ const http = require('node:http');
             if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
             if (name === 'AutomaticDeletionRequests') {
                 await page.locator('#arForm[aria-busy="false"]').waitFor();
+                assert(await page.locator('#arForm').evaluate(e=>{const p=e.closest('.content-primary'),s=getComputedStyle(p);return Math.abs(e.getBoundingClientRect().width-(p.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)))<3;}),'Automation must use the available settings width');
                 assert.equal(await page.locator('#arEnabled').isChecked(), false);
                 await page.getByRole('button', { name: 'New card', exact: true }).click();
                 await page.locator('#arNewTitle').fill('Browser rule');
@@ -387,8 +388,13 @@ const http = require('node:http');
                 const selector=page.getByLabel('Select card',{exact:true});
                 const ruleId=await selector.locator('option').evaluateAll(options=>options.find(o=>o.textContent==='Rule · Browser rule').value);
                 await selector.selectOption(ruleId);
-                const source=page.locator('.ar-source');await source.waitFor();assert.equal(await source.locator('.ar-socket').count(),0,'Upstream filter connections must be locked in rule mode');
-                assert(await page.locator('.ar-wires path[data-execution=true]').count()>0);
+                const source=page.locator('.ar-source').filter({hasText:'Browser library filter'});await source.waitFor();assert.equal(await source.locator('.ar-socket').count(),1,'Library output must be editable in rule mode');
+                assert.equal(await page.locator('.ar-block[data-kind=start]').count(),0,'Typed circuits have no execution Start');
+                assert(await page.locator('.ar-wires path[data-scope]').count()>0);
+                await page.getByRole('button',{name:'Fit canvas',exact:true}).click();
+                await source.getByRole('button',{name:'Disconnect',exact:true}).click();
+                await source.getByRole('button',{name:'Connect',exact:true}).click();
+                assert(await page.locator('.ar-wires path[data-scope]').count()>0);
                 const skin=await page.addStyleTag({content:'#automaticDeletionAdmin {color:rgb(170,195,210);--theme-primary-color:rgb(180,90,170)} #automaticDeletionAdmin .ar-circuit.paperList,#automaticDeletionAdmin .ar-block.paperList {background-color:rgb(32,42,52)}'});
                 assert.equal(await page.locator('.ar-circuit').evaluate(e=>getComputedStyle(e).color),'rgb(170, 195, 210)','Canvas must inherit skin text colour');
                 assert.equal(await page.locator('.ar-circuit').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(32, 42, 52)','Native paperList surface must accept skin overrides');
@@ -396,6 +402,28 @@ const http = require('node:http');
                 await skin.evaluate(e=>e.remove());
             }
             if (name === 'DeletionQueueAdmin') {
+                const policyWidth=await page.locator('#dqPolicy').evaluate(e=>{const parent=e.closest('.content-primary'),container=getComputedStyle(parent);return{width:e.getBoundingClientRect().width,available:parent.clientWidth-parseFloat(container.paddingLeft)-parseFloat(container.paddingRight)};});
+                assert(Math.abs(policyWidth.width-policyWidth.available)<3,'Policy must use the available settings width: '+JSON.stringify(policyWidth));
+                const policyGraph=page.locator('#dqPolicyTimeline .dq-flow-timeline');await policyGraph.waitFor();
+                assert.equal(await policyGraph.locator('[data-checkpoint=activity]').count(),1);
+                assert.equal(await policyGraph.locator('[data-checkpoint=consent]').count(),1);
+                assert(await policyGraph.locator('path[data-from=requested][data-to=activity]').count());
+                assert(await policyGraph.locator('path[data-from=requested][data-to=consent]').count());
+                const approvalToggle=page.locator('#dqRequireAdminApproval'),required=await approvalToggle.isChecked();
+                if(!required)await page.getByText('Require administrator approval',{exact:true}).click();
+                const approvalDays=page.locator('#dqApprovalDays'),savedDays=await approvalDays.inputValue();
+                await approvalDays.fill('45');
+                await page.waitForFunction(()=>document.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-to="approval-timeout"]')?.textContent.includes('45-day decision limit'));
+                assert(await policyGraph.locator('path[data-from="approval-timeout"][data-to=cancelled]').count());
+                assert.equal(await policyGraph.locator('path[data-from="approval-timeout"][data-to=delay]').count(),0);
+                assert.equal(await policyGraph.locator('[data-checkpoint=completed]').count(),1);
+                assert.equal(await policyGraph.locator('[data-checkpoint=cancelled]').count(),1);
+                await approvalDays.fill(savedDays);if(!required)await page.getByText('Require administrator approval',{exact:true}).click();
+                const waitingToggle=page.locator('#dqActivityTimeoutEnabled'),waitingEnabled=await waitingToggle.isChecked(),waitingDays=page.locator('#dqActivityTimeoutDays'),savedWaitingDays=await waitingDays.inputValue();
+                if(!waitingEnabled)await page.getByText('Limit activity/consent waiting',{exact:true}).click();
+                await waitingDays.fill('45');await page.waitForFunction(()=>document.querySelector('#dqPolicyTimeline .dq-flow-edge-label[data-to="activity-timeout"]')?.textContent.includes('45-day waiting limit'));
+                assert(await policyGraph.locator('path[data-from="activity-timeout"][data-to=cancelled]').count());
+                await waitingDays.fill(savedWaitingDays);if(!waitingEnabled)await page.getByText('Limit activity/consent waiting',{exact:true}).click();
                 const editor = page.locator('#dqPresentation');
                 try { await editor.getByRole('button', { name: 'Preview portrait', exact: true }).waitFor(); }
                 catch (error) { throw new Error(error.message + ' · Presentation status: ' + await editor.locator('[data-presentation-status]').textContent()); }
@@ -409,6 +437,10 @@ const http = require('node:http');
                 const tested = await connectionTest; assert.equal(tested.status(), 200); assert.deepEqual(tested.request().postDataJSON(), {});
                 assert.match(await page.locator('#dqConnectionResult').textContent(), /Save a Seerr/); await page.locator('#dqKey').fill('');
                 const studio = editor.locator('.dq-canvas-editor').first(), artboard = studio.locator('.dq-canvas-artboard');
+                assert(await editor.locator('[data-presentation-editor] > form').evaluate(e=>{const p=e.parentElement,s=getComputedStyle(p);return Math.abs(e.getBoundingClientRect().width-(p.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)))<3;}),'Overlay Studio form must use the available width');
+                assert(await studio.locator('.dq-canvas-layers').evaluate(e=>Math.abs(e.getBoundingClientRect().width-e.parentElement.getBoundingClientRect().width)<3),'Layers must span the editor, not leave a narrow empty left column');
+                assert.equal(await studio.locator('.dq-canvas-align button .material-icons').count(),6);
+                assert(await studio.locator('.dq-canvas-inspector').evaluate(e=>getComputedStyle(e).gridTemplateColumns.split(' ').length>=2),'Layer properties must use compact columns');
                 await studio.getByRole('button', { name: 'Add text', exact: true }).click();
                 const box = await studio.locator('.dq-canvas-selected').boundingBox(), board = await artboard.boundingBox();
                 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + board.width * .05, box.y + box.height / 2 + board.height * .05, { steps: 3 }); await page.mouse.up();
@@ -436,7 +468,7 @@ const http = require('node:http');
             }
             if (name === 'Notifications') {
                 const root = page.locator('#notificationsAdmin [data-notification-settings]');
-                const catalog = root.locator('[data-notification-editor] > details');
+                const catalog = root.locator('[data-notification-editor] > details').filter({has:page.getByText('Registered notification types',{exact:true})});
                 await catalog.locator(':scope > summary').click();
                 const type = catalog.locator('fieldset').filter({ has: page.locator('legend', { hasText: 'Account notifications' }) }).first();
                 try {
@@ -464,6 +496,20 @@ const http = require('node:http');
                 });
                 assert.equal(persisted.density, 'standard'); assert.equal(persisted.summaryLength, 180);
                 await catalog.locator(':scope > summary').click();
+                const push=root.locator('[data-notification-editor] > details').filter({has:page.getByText('Web Push',{exact:true})});
+                await push.locator(':scope > summary').click();
+                await push.getByLabel('Push service contact',{exact:true}).fill('mailto:suite@example.test');
+                const toggle=push.getByLabel('Allow opt-in browser notifications',{exact:true});
+                for(const enabled of [true,false]){
+                    if(await toggle.isChecked()!==enabled)await push.getByText('Allow opt-in browser notifications',{exact:true}).click();
+                    assert.equal(await toggle.isChecked(),enabled);
+                    const reply=page.waitForResponse(response=>response.request().method()==='PUT'&&response.url().endsWith('/settings/notifications/push'));
+                    await push.getByRole('button',{name:'Save Web Push',exact:true}).click();const result=await reply;assert.equal(result.status(),200);assert.equal((await result.json()).ok,true);
+                    const persistedPush=await page.evaluate(async()=>{const result=await ApiClient.ajax({url:ApiClient.getUrl('Notifications/api/v1/settings/notifications/push'),type:'GET',dataType:'json'});return result.data;});
+                    assert.equal(persistedPush.enabled,enabled);assert(!('privateKey'in persistedPush));
+                    await page.waitForFunction(()=>![...document.querySelectorAll('#notificationsAdmin button')].find(b=>b.textContent==='Save Web Push')?.disabled);
+                }
+                await push.locator(':scope > summary').click();
             }
             if (name === 'privateSyncPlay') {
                 await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
@@ -502,6 +548,7 @@ const http = require('node:http');
                 await help.blur(); await help.hover(); assert.equal(await help.getAttribute('aria-expanded'), 'true');
                 await page.mouse.move(0, 0);
                 if (process.env.ADMIN_SCREENSHOTS) await page.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/' + name + '-' + width + '.png', fullPage: true });
+                if(name==='DeletionQueueAdmin'&&process.env.ADMIN_SCREENSHOTS)await page.locator('.dq-canvas-editor').first().screenshot({path:process.env.ADMIN_SCREENSHOTS+'/overlay-workspace-'+width+'.png'});
                 adminPages.push({ name, width, help: true, noOverflow: true });
             }
         }

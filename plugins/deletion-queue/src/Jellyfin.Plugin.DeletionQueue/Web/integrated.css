@@ -29,6 +29,11 @@
 .dq-help-text[hidden] { display: none !important; }
 .dq-help-button:focus-visible, .dq-queue-row:focus-visible { outline: 2px solid var(--theme-primary-color, currentColor); outline-offset: 2px; }
 .dq-schedule { font-size: .85em; margin-block: .5rem; }
+.dq-request-badges{display:flex;flex-wrap:wrap;gap:.35rem;margin-block:.4rem;}
+.dq-request-badge{font-size:.75em;padding:.2rem .5rem;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:1rem;background:color-mix(in srgb,var(--theme-primary-color,currentColor) 7%,transparent);}
+.dq-request-badge[data-state=complete]{border-color:var(--suite-success-color,#3baf75);}
+.dq-request-badge[data-state=blocked]{border-color:var(--suite-danger-color,#cf5f6d);}
+.dq-request-badge[data-state=waiting]{border-color:var(--suite-warning-color,#bd922f);}
 .dq-queue-row.dq-highlight { border-radius: .65rem; box-shadow: inset 0 0 0 2px var(--theme-primary-color, currentColor); background: color-mix(in srgb, var(--theme-primary-color, currentColor) 8%, transparent); padding-inline: .65rem; scroll-margin-block: .75rem; }
 .dq-timeline { overflow-x: auto; padding: .5rem 0; margin: .75rem 0 0; font-size: .74em; }
 .dq-time-track { --dq-lane-height: 6em; position: relative; min-width: 26rem; margin: 3em 4em 0; height: calc(2em + var(--dq-lanes, 1) * var(--dq-lane-height)); border-block-start: 2px solid color-mix(in srgb, currentColor 30%, transparent); }

@@ -6,6 +6,33 @@ namespace DeletionQueue.Tests;
 
 public sealed class UserProgressTests
 {
+    [Fact] public void InactivityAndUnanimousRecentViewerConsentAreAlternativeProjectedPaths() {
+        var state=State();var p=Propose(state);Evaluate(state,p);
+        var paths=QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths;
+        Assert.Equal("complete",paths.Single(s=>s.Key=="activity").State);Assert.Equal("skipped",paths.Single(s=>s.Key=="consent").State);
+        Assert.Equal(state.Policy.ActivityDays,paths.Single(s=>s.Key=="activity").DurationDays);
+        QueueRules.RecordActivity(state,Viewer.Id,p.Target.ActivityKey,null,false,Now);
+        Evaluate(state,p);paths=QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths;
+        Assert.Equal("current",paths.Single(s=>s.Key=="consent").State);Assert.Equal("skipped",paths.Single(s=>s.Key=="activity").State);
+        QueueRules.Consent(state,p.Id,Viewer,p.Revision,QueueRules.Snapshot(state,p.Target,Viewer.Id),Answer.Yes,true,Now);
+        Evaluate(state,p);paths=QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths;
+        Assert.Equal("complete",paths.Single(s=>s.Key=="consent").State);Assert.Equal("skipped",paths.Single(s=>s.Key=="activity").State);
+        QueueRules.RecordActivity(state,Viewer.Id,p.Target.ActivityKey,"playing",false,Now);
+        QueueRules.Consent(state,p.Id,Viewer,p.Revision,QueueRules.Snapshot(state,p.Target,Viewer.Id),Answer.Yes,true,Now);
+        Evaluate(state,p);Assert.Equal("PlaybackActive",p.Reason);
+        Assert.DoesNotContain(QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths,s=>s.State=="complete");
+    }
+    [Fact] public void ApprovalForkUsesConfiguredDeadlineAndTimeoutDoesNotEnterDelay() {
+        var state=State();state.Policy.RequireAdministratorApproval=true;state.Policy.AdministratorApprovalDays=30;
+        var p=Propose(state);Evaluate(state,p);
+        var approval=QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="approval");
+        Assert.Equal(30,approval.DurationDays);Assert.Equal(Now.AddDays(30),approval.Paths.Single(s=>s.Key=="approval-timeout").At);
+        Assert.Equal("complete",QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths.Single(s=>s.Key=="activity").State);
+        QueueRules.Expire(state,p,Now.AddDays(30));var result=QueueRules.Project(state,p,Owner.Id,Now.AddDays(30));
+        Assert.Equal("AdministratorApprovalExpired",result.Reason);Assert.Null(result.ScheduledFor);
+        approval=result.Timeline.Single(s=>s.Key=="approval");Assert.Equal("cancelled",approval.Paths.Single(s=>s.Key=="approval-timeout").State);
+        Assert.Equal("stopped",approval.Paths.Single(s=>s.Key=="approved").State);Assert.Equal("stopped",result.Timeline.Single(s=>s.Key=="delay").State);
+    }
     [Fact] public void LegacyAdministratorWaitDoesNotRenewItsClockOnUpgrade()
     {
         var state = State(); state.Policy.RequireAdministratorApproval = true;
@@ -32,8 +59,8 @@ public sealed class UserProgressTests
         var p = Propose(state); QueueRules.Evaluate(state, p, Good, Now);
         Assert.Equal(Now.AddDays(60), p.ApprovalDeadline);
         QueueRules.Evaluate(state, p, Good, Now.AddHours(1)); Assert.Equal(Now.AddDays(60), p.ApprovalDeadline);
-        QueueRules.Expire(p, Now.AddDays(31)); Assert.False(p.Terminal);
-        QueueRules.Expire(p, Now.AddDays(60)); Assert.Equal("AdministratorApprovalExpired", p.Reason);
+        QueueRules.Expire(state,p, Now.AddDays(31)); Assert.False(p.Terminal);
+        QueueRules.Expire(state,p, Now.AddDays(60)); Assert.Equal("AdministratorApprovalExpired", p.Reason);
         Assert.Equal("expired", QueueRules.Project(state, p, Owner.Id, Now.AddDays(60)).Timeline.Single(step => step.Key == "approval").Decision);
     }
     [Fact] public void CompleteNativeHistoryReplacesObservationWarmupButNotConsentOrDelay()
@@ -73,9 +100,9 @@ public sealed class UserProgressTests
         Assert.Equal("checks", denied.ClosedCheckpoint); Assert.Contains("denied", denied.ClosureExplanation);
         p.ClosedCheckpoint = null;
         Assert.Null(QueueRules.Project(state, p, Owner.Id, Now).ClosedCheckpoint);
-        var expiredState = State(); var expired = Propose(expiredState); QueueRules.Expire(expired, Now.AddDays(31));
-        var result = QueueRules.Project(expiredState, expired, Owner.Id, Now.AddDays(31));
-        Assert.Equal("checks", result.ClosedCheckpoint); Assert.Contains("30 days", result.ClosureExplanation);
+        var expiredState = State();expiredState.Policy.ActivityWaitTimeoutEnabled=true; var expired = Propose(expiredState); QueueRules.Expire(expiredState,expired, Now.AddDays(45));
+        var result = QueueRules.Project(expiredState, expired, Owner.Id, Now.AddDays(45));
+        Assert.Equal("activity-timeout", result.ClosedCheckpoint); Assert.Contains("waiting limit", result.ClosureExplanation);
     }
 
     [Fact] public void BlockedRequestsExplainTheGateWithoutAdvertisingAStaleSchedule()

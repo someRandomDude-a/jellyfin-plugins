@@ -8,11 +8,14 @@ namespace Jellyfin.Plugin.DeletionQueue;
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record HubPolicyPatch(ProposalAuthority? DefaultAuthority = null, int? ActivityDays = null, int? DelayHours = null,
-    bool? AutomaticDeletion = null, bool? RequireAdministratorApproval = null, bool? SeerrManagedDeletionAcknowledged = null, bool? Suspended = null)
+    bool? AutomaticDeletion = null, bool? RequireAdministratorApproval = null, bool? SeerrManagedDeletionAcknowledged = null, bool? Suspended = null,
+    bool? ActivityWaitTimeoutEnabled = null, int? ActivityWaitTimeoutDays = null,int? RecentHistoryDays=null)
 {
     public Policy Apply(Policy p) => new() { Accounts = new(p.Accounts), DefaultAuthority = DefaultAuthority ?? p.DefaultAuthority,
         ActivityDays = ActivityDays ?? p.ActivityDays, DelayHours = DelayHours ?? p.DelayHours, AdministratorApprovalDays = p.AdministratorApprovalDays, AutomaticDeletion = AutomaticDeletion ?? p.AutomaticDeletion,
         RequireAdministratorApproval = RequireAdministratorApproval ?? p.RequireAdministratorApproval,
+        ActivityWaitTimeoutEnabled = ActivityWaitTimeoutEnabled ?? p.ActivityWaitTimeoutEnabled, ActivityWaitTimeoutDays = ActivityWaitTimeoutDays ?? p.ActivityWaitTimeoutDays,
+        RecentHistoryDays=RecentHistoryDays??p.RecentHistoryDays,
         SeerrManagedDeletionAcknowledged = SeerrManagedDeletionAcknowledged ?? p.SeerrManagedDeletionAcknowledged, Suspended = Suspended ?? p.Suspended };
 }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -61,6 +64,8 @@ public static class HubAdapter
         $"{s.Policy.Revision}|{s.Seerr.Revision}|{s.Hub.Revision}|" + string.Join('|', s.Preferences.OrderBy(p => p.Key).Select(p => $"{p.Key:D}:{p.Value.Revision}")))));
 
     public static object Defaults(Policy p) => new { p.DefaultAuthority, p.ActivityDays, p.DelayHours, p.AutomaticDeletion,
+        p.ActivityWaitTimeoutEnabled, p.ActivityWaitTimeoutDays,
+        p.RecentHistoryDays,
         p.RequireAdministratorApproval, p.SeerrManagedDeletionAcknowledged, p.Suspended };
     public static object Effective(QueueState s, Guid id) => new { userId = id, authority = QueueRules.Authority(s, id),
         source = s.Policy.Accounts.ContainsKey(id) ? "override" : "default", notificationPreferences = new {

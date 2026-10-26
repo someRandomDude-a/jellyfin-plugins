@@ -20,11 +20,11 @@
         el('dqApprovalOptions').hidden=!el('dqRequireAdminApproval').checked;
         el('dqApprovalDays').disabled=!el('dqRequireAdminApproval').checked;
         el('dqApprovalPreview').hidden=!el('dqRequireAdminApproval').checked;
-        const days = Number(el('dqDays').value), hours = Number(el('dqHours').value);
-        el('dqLookbackPreview').textContent = el('dqDays').value && days >= 1 && days <= 365 ? 'Look back ' + days + ' days from each check — not an additional waiting period.' : 'Choose a playback lookback from 1 to 365 days.';
-        el('dqApprovalPreview').textContent = el('dqRequireAdminApproval').checked ? 'Advance after current viewer consent AND administrator approval.' : 'Advance after current viewer consent and all safety checks.';
-        el('dqDelayPreview').textContent = el('dqHours').value && hours >= 48 && hours <= 8760 ? 'Earliest removal: checks passed + at least ' + Number((hours / 24).toFixed(4)) + ' days (' + hours + ' hours).' : 'Choose a delay from 2 to 365 days.';
-        el('dqExecutionPreview').textContent = el('dqSuspend').checked ? 'Paused — requests cannot advance to removal.' : el('dqAuto').checked ? 'Automatic removal opted in — all previous gates still apply.' : 'Monitoring only — automatic removal is off.';
+        el('dqActivityTimeoutOptions').hidden=!el('dqActivityTimeoutEnabled').checked;
+        el('dqActivityTimeoutDays').disabled=!el('dqActivityTimeoutEnabled').checked;
+        el('dqApprovalPreview').textContent = el('dqRequireAdminApproval').checked ? 'Approval required after either eligibility path.' : '';
+        const number=id=>{const input=el(id);return input.value&&input.checkValidity()?Number(input.value):null;};
+        window.DeletionQueueTimeline?.policy(el('dqPolicyTimeline'),{activityDays:number('dqDays'),delayHours:number('dqHours'),approvalDays:number('dqApprovalDays'),requireApproval:el('dqRequireAdminApproval').checked,paused:el('dqSuspend').checked,activityTimeoutEnabled:el('dqActivityTimeoutEnabled').checked,activityTimeoutDays:number('dqActivityTimeoutDays')});
     }
     el('dqDelayDays').addEventListener('input', () => {
         const days = el('dqDelayDays').valueAsNumber;
@@ -32,7 +32,7 @@
         previewPolicy();
     });
     el('dqHours').addEventListener('input', () => { el('dqDelayDays').value = el('dqHours').value ? Number(el('dqHours').value) / 24 : ''; previewPolicy(); });
-    for (const id of ['dqDays', 'dqRequireAdminApproval', 'dqAuto', 'dqSuspend']) el(id).addEventListener('input', previewPolicy);
+    for (const id of ['dqDays', 'dqApprovalDays', 'dqActivityTimeoutDays', 'dqActivityTimeoutEnabled', 'dqRequireAdminApproval', 'dqAuto', 'dqSuspend']) el(id).addEventListener('input', previewPolicy);
     const confirmOptIn = () => new Promise(resolve => {
         const dialog = el('dqOptInDialog');
         const finish = result => { cancelOptIn = null; dialog.close(); el('dqOptInCancel').onclick = null; el('dqOptInYes').onclick = null; dialog.oncancel = null; resolve(result); };
@@ -95,6 +95,9 @@
             el('dqKey').value = '';
             el('dqAuthority').value = authorityNumber(value(policy, 'defaultAuthority'));
             el('dqDays').value = value(policy, 'activityDays');
+            el('dqRecentHistoryDays').value=value(policy,'recentHistoryDays')??7;
+            el('dqActivityTimeoutEnabled').checked = value(policy, 'activityWaitTimeoutEnabled') === true;
+            el('dqActivityTimeoutDays').value = value(policy, 'activityWaitTimeoutDays') ?? 45;
             el('dqHours').value = value(policy, 'delayHours');
             el('dqDelayDays').value = value(policy, 'delayHours') / 24;
             el('dqAuto').checked = value(policy, 'automaticDeletion') && value(policy, 'seerrManagedDeletionAcknowledged');
@@ -103,7 +106,7 @@
             const seerrConfigured = !!value(seerr, 'baseUrl') && value(seerr, 'keyConfigured') === true;
             badge('seerr', { name: 'Seerr API', state: seerrConfigured ? 'Saved · not tested' : 'Not configured', working: null, detail: 'Use Test connection to verify the saved key and Jellyfin server identity without changing media. Draft edits are not sent by a test.', version: null });
             el('dqAuto').disabled = !seerrConfigured && !el('dqAuto').checked;
-            el('dqSeerrDependency').textContent = seerrConfigured ? 'Seerr connection is configured. Execution still requires all local safety and consent checks.' : 'Seerr-managed deletion is unavailable: configure and verify the Seerr URL and API key above, or import an enabled Enhanced connection. Monitoring, local evidence and configuration remain independent. An existing opt-in may still be switched off.';
+            el('dqSeerrDependency').textContent = seerrConfigured ? '' : 'Configure and test Seerr to enable automatic removal.';
             el('dqRequireAdminApproval').checked = value(policy, 'requireAdministratorApproval');
             el('dqApprovalDays').value = value(policy, 'administratorApprovalDays') ?? 30;
             el('dqSuspend').checked = value(policy, 'suspended');
@@ -138,7 +141,11 @@
                 const details = document.createElement('details'); const summary = document.createElement('summary');
                 summary.textContent = value(value(proposal, 'target'), 'title') + ' — ' + value(proposal, 'status') + ' / ' + value(proposal, 'reason');
                 const pre = document.createElement('pre'); pre.className = 'dq-evidence';
-                pre.textContent = JSON.stringify(proposal, null, 2); details.append(summary, pre); el('dqBacklog').append(details);
+                pre.textContent = JSON.stringify(proposal, null, 2); details.append(summary); el('dqBacklog').append(details);
+                const progress=value(current,'proposalProgress');
+                const progressKey=progress&&Object.keys(progress).find(k=>normalizedId(k)===normalizedId(value(proposal,'id')));
+                if(progressKey)window.DeletionQueueTimeline?.render(progress[progressKey],details);
+                details.append(pre);
                 if (!value(proposal, 'terminal') && !value(proposal, 'claim')) {
                     const snapshots = value(current, 'administratorApprovalSnapshots');
                     const key = Object.keys(snapshots).find(k => normalizedId(k) === normalizedId(value(proposal, 'id')));
@@ -245,6 +252,8 @@
             await request('admin/policy', 'PATCH', { commandId: crypto.randomUUID(), revision: value(old, 'revision'), policy: {
                 defaultAuthority: Number(el('dqAuthority').value), accounts,
                 activityDays: Number(el('dqDays').value), delayHours: Number(el('dqHours').value), administratorApprovalDays: Number(el('dqApprovalDays').value),
+                activityWaitTimeoutEnabled: el('dqActivityTimeoutEnabled').checked, activityWaitTimeoutDays: Number(el('dqActivityTimeoutDays').value),
+                recentHistoryDays:Number(el('dqRecentHistoryDays').value),
                 automaticDeletion, seerrManagedDeletionAcknowledged: automaticDeletion,
                 requireAdministratorApproval: el('dqRequireAdminApproval').checked, suspended: el('dqSuspend').checked
             } });

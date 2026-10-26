@@ -90,6 +90,7 @@ public static class HubIntegration
 
     public static object ConfigurationSummary(QueueState s) => new { defaultAuthority = s.Policy.DefaultAuthority.ToString(),
         activityDays = s.Policy.ActivityDays, delayHours = s.Policy.DelayHours, automaticDeletion = s.Policy.AutomaticDeletion,
+        activityWaitTimeoutEnabled = s.Policy.ActivityWaitTimeoutEnabled, activityWaitTimeoutDays = s.Policy.ActivityWaitTimeoutDays,
         requireAdministratorApproval = s.Policy.RequireAdministratorApproval,
         seerrManagedDeletionAcknowledged = s.Policy.SeerrManagedDeletionAcknowledged, suspended = s.Policy.Suspended, accountOverrideCount = s.Policy.Accounts.Count,
         preferencesCount = s.Preferences.Count, connectionRevision = s.Seerr.Revision,

@@ -5,6 +5,39 @@ namespace DeletionQueue.Infrastructure;
 
 public static class SeerrOwnership
 {
+    // A singular requester is metadata only, never a grant of consent/authority.
+    // Missing, malformed or mixed owners must remain unknown, not guessed.
+    public static async Task<Guid?> RequesterAsync(JsonElement info, bool is4K,
+        Func<int, CancellationToken, Task<JsonElement>> loadUser, Func<Guid, bool> enabledUser, CancellationToken ct)
+    {
+        var owners=await RequesterIdsAsync(info,is4K,loadUser,enabledUser,ct);
+        return owners is {Length:1}?owners[0]:null;
+    }
+    public static async Task<Guid[]?> RequesterIdsAsync(JsonElement info,bool is4K,
+        Func<int,CancellationToken,Task<JsonElement>> loadUser,Func<Guid,bool> enabledUser,CancellationToken ct)
+    {
+        if (info.ValueKind != JsonValueKind.Object || !info.TryGetProperty("requests", out var requests) ||
+            requests.ValueKind != JsonValueKind.Array || requests.GetArrayLength() > 64) return null;
+        var requesters = new HashSet<Guid>();
+        var owners = new Dictionary<int, Guid>();
+        foreach (var request in requests.EnumerateArray()) {
+            ct.ThrowIfCancellationRequested();
+            if (request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("is4k", out var edition) ||
+                edition.ValueKind is not (JsonValueKind.True or JsonValueKind.False) || Number(request,"status") is not (1 or 2 or 3 or 4 or 5)) return null;
+            if (edition.GetBoolean() != is4K) continue;
+            if (Number(request,"id") <= 0 || !request.TryGetProperty("requestedBy", out var owner) || Number(owner,"id") <= 0) return null;
+            var ownerId = Number(owner,"id");
+            if (!owners.TryGetValue(ownerId, out var mapped)) {
+                var record = await loadUser(ownerId,ct);
+                if (Number(record,"id") != ownerId || !Guid.TryParse(Text(record,"jellyfinUserId"),out mapped) ||
+                    mapped == Guid.Empty || !enabledUser(mapped)) return null;
+                owners[ownerId] = mapped;
+            }
+            requesters.Add(mapped);
+        }
+        return requesters.Order().ToArray();
+    }
+
     public static async Task<bool> OwnsAsync(JsonElement info, Guid caller, bool is4K, bool series,
         Func<int, CancellationToken, Task<JsonElement>> loadUser, CancellationToken ct)
     {

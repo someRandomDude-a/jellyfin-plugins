@@ -18,6 +18,14 @@ Interrupted staging, cutover and source-retirement phases resume to the same sta
 
 `pwsh -File scripts/test-plugin.ps1 -Plugin notifications` runs the notification backend, frontend and migration/common suites. `pwsh -File scripts/test-plugin-package.ps1 -Plugin notifications` checks all three platform packages. Notifications has its own release task and shares the combined architecture feeds with the other plugins.
 
+## Optional Web Push and live updates
+
+Administrators can enable **Notifications → Web Push** and set a `mailto:` or HTTPS VAPID contact. Each user then explicitly enables browser notifications in the bell's settings on HTTPS (or localhost). Pushes contain only fixed generic text, never media details, user identities or action capabilities. Device subscriptions and VAPID private keys are protected; disabling removes subscriptions/jobs. The plugin's narrow service-worker scope does not replace Jellyfin's native worker. See [setup, supported services and limitations](../../docs/web-push.md).
+
+Open pages also receive content-free socket invalidations using short-lived single-use grants, with native reauthentication and polling fallback. Native session tokens never appear in socket URLs. Actual browser-vendor-to-device Push delivery remains subject to OS/browser support and has not been physically certified by the local fixtures.
+
+Notification layouts can optionally archive after the first server-recorded view (`ExpireAfterViewHours`, 1–8760). Repeated views do not renew the clock; History retains archived rows without executable commands. Library additions support master/all/requested/favourite categories and native-authorized cached thumbnails; requester/favourite audiences are never forwarded to shared Discord channels.
+
 ## Compact inbox and producer presentation
 
 ### Updating an existing notification
@@ -30,7 +38,7 @@ The inbox uses compact expandable rows and loads older pages as you scroll (with
 
 Routine UI feedback does not automatically open the menu. Transient client feedback is account-bound, never persisted and cleared at authentication/account boundaries. Consent, destructive operations and security confirmation remain explicit. Administrator events require the administrator producer scope, resolve recipients through the host, and are filtered again on reads/counts/delivery after demotion. Deletion Queue request notices additionally recheck live native media access through the owning plugin; missing ownership adapters fail closed.
 
-Media embeds and audio/toast interaction remain follow-ups. This work does not certify real Discord delivery or the owner's Enhanced right-click markup.
+Arbitrary rich-media embeds and audio remain out of scope; native library thumbnails and bounded opt-in toasts are supported. This work does not certify real Discord delivery or the owner's Enhanced right-click markup.
 
 ## Internal plugin interface
 

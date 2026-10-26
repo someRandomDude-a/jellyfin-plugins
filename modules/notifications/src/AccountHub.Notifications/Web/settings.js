@@ -83,6 +83,12 @@
                 await loadSettings();
             });
             const catalogPanel = make('details'); catalogPanel.className = 'suiteCard'; catalogPanel.append(make('summary', 'Registered notification types'));
+            const pushPanel=make('details');pushPanel.append(make('summary','Web Push'));
+            const pushEnabled=control('Allow opt-in browser notifications',false,null,'Off by default. Devices must explicitly opt in on HTTPS (or localhost). Push services receive only a generic signal, never media details. Disabling removes subscriptions and queued pushes; users must enroll again.');
+            let pushRevision=0;
+            const pushContact=control('Push service contact','',null,'A mailto: administrator email or HTTPS contact URL. Push services receive this VAPID contact, not users’ addresses.');pushContact.input.maxLength=512;
+            pushPanel.append(pushEnabled.root,pushContact.root,button('Save Web Push',async()=>{await request('settings/notifications/push','PUT',{revision:pushRevision,enabled:pushEnabled.value(),subject:pushContact.value()});await loadPush();}));
+            async function loadPush(){if(disposed)return;const value=await request('settings/notifications/push','GET');if(disposed)return;pushRevision=value.revision;pushEnabled.input.checked=value.enabled;pushContact.input.value=value.subject||'';}
             const catalogList = make('div'); catalogPanel.append(catalogList);
             let typesLoading, typesLoaded = false;
             function loadTypes(reload = false) {
@@ -101,9 +107,10 @@
                     const expand = control('Expandable details', type.layout.expandable);
                     const message = control('Message template', type.layout.messageTemplate || '', null, 'Optional plain text. Use {media} for the title and {days} for a removal delay. Blank keeps the plugin message.'); message.input.maxLength = 400;
                     const toast = control('Toast seconds', type.layout.toastSeconds || 0, null, '0 disables short popups. Up to 10 seconds; the notification stays in the inbox.'); toast.input.min = 0; toast.input.max = 10;
-                    section.append(density.root, length.root, expand.root, message.root, toast.root, button('Save layout', async () => {
-                        if (!length.input.reportValidity() || !toast.input.reportValidity()) throw Error('Check summary length and toast duration.');
-                        await request('settings/notifications/types/layout', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, layout: { density: density.value(), summaryLength: length.value(), expandable: expand.value(), messageTemplate: message.value() || null, toastSeconds: toast.value() } }); catalog.revision++;
+                    const expiry=control('Archive after viewing (hours)',type.layout.expireAfterViewHours||0,null,'0 keeps notifications until dismissed. Applies to new publications; archived entries remain in History.');expiry.input.min=0;expiry.input.max=8760;
+                    section.append(density.root, length.root, expand.root, message.root, toast.root,expiry.root, button('Save layout', async () => {
+                        if (!length.input.reportValidity() || !toast.input.reportValidity()||!expiry.input.reportValidity()) throw Error('Check layout durations and summary length.');
+                        await request('settings/notifications/types/layout', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, layout: { density: density.value(), summaryLength: length.value(), expandable: expand.value(), messageTemplate: message.value() || null, toastSeconds: toast.value(),expireAfterViewHours:expiry.value()||null } }); catalog.revision++;
                     })); catalogList.append(section);
                 }
                 if (!catalogList.children.length) catalogList.append(make('p', 'No plugin notification types registered yet.'));
@@ -113,13 +120,14 @@
             editor.replaceChildren(make('h2', 'Delivery routes'), retention.root, list,
                 button('Add route', async () => addRoute()), save, button('Reload', async () => { await loadSettings(); await loadDeliveries(); if (catalogPanel.open) await loadTypes(true); }),
                 button('Send sanitized test', async () => { await request('settings/notifications/test', 'POST', {}); await loadDeliveries(); }), status, catalogPanel, deliveries,
-                button('Previous deliveries', async () => { skip = Math.max(0, skip - 25); await loadDeliveries(); }), button('Next deliveries', async () => { skip += 25; await loadDeliveries(); }));
+                 button('Previous deliveries', async () => { skip = Math.max(0, skip - 25); await loadDeliveries(); }), button('Next deliveries', async () => { skip += 25; await loadDeliveries(); }),pushPanel);
             root.replaceChildren(editor);
             const cleanup = () => { if (disposed) return; disposed = true; signal?.removeEventListener('abort', cleanup); eraseSecrets(); root.replaceChildren(); root.removeAttribute('aria-busy'); };
             signal?.addEventListener('abort', cleanup, { once: true });
             if (signal?.aborted) cleanup();
             try { await loadSettings(); await loadDeliveries(); } catch (error) { if (!disposed) status.textContent = error.message; }
             try { await loadTypes(); } catch { /* Older compatibility hosts need not expose a registry. */ }
+            try{await loadPush();}catch{pushPanel.hidden=true;}
             if (!disposed) { editor.disabled = false; root.setAttribute('aria-busy', 'false'); }
             return cleanup;
         }

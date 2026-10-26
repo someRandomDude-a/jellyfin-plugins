@@ -29,6 +29,8 @@ public static class Endpoints
         services.AddDataProtection(); // Host MUST configure a persistent, protected key ring.
         services.TryAddSingleton<NotificationStore>();
         services.TryAddSingleton<NotificationService>();
+        services.TryAddSingleton<LiveNotifications>();
+        services.TryAddSingleton<WebPush>();
         services.TryAddSingleton<IngressLimiter>();
         services.TryAddSingleton<SecurityIngress>();
         services.TryAddSingleton<WebhookSender>();
@@ -65,6 +67,18 @@ public static class Endpoints
             return Results.Stream(stream, "text/javascript");
         }).AllowAnonymous();
         var user = endpoints.MapGroup(prefix + "/notifications").RequireAuthorization();
+        endpoints.MapGet(prefix+"/notifications/push/sw.js",(HttpContext c)=>{
+            c.Response.Headers.CacheControl="no-cache";
+            return Results.Stream(typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.push-worker.js")!,"text/javascript");
+        }).AllowAnonymous();
+        user.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{var id=await User(c,h);var config=s.PushSettings();return Json(Contract.Success(new{config.Enabled,config.PublicKey,devices=s.PushTargets(id).Select(t=>t.Id)}));}));
+        user.MapPost("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{
+            var id=await User(c,h);var subscription=JsonSerializer.Deserialize<PushSubscription>(await Body(c,4096),Contract.Json)??throw new NotificationException("invalid_request","Missing subscription");
+            return Json(Contract.Success(new{id=s.SavePush(id,subscription)}));
+        }));
+        user.MapDelete("/push/{id}",(string id,HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{s.RemovePush(await User(c,h),id);return Json(Contract.Success(new{status="disabled"}));}));
+        user.MapPost("/live-ticket",(HttpContext c,INotificationHost h,LiveNotifications live)=>Guard(async()=>Json(Contract.Success(new{ticket=live.Issue(c,await User(c,h)),expiresInSeconds=30}))));
+        endpoints.MapGet(prefix+"/notifications/live",(HttpContext c,INotificationHost h,NotificationStore s,LiveNotifications live)=>live.ConnectAsync(c,h,s)).AllowAnonymous();
         user.MapGet("", (HttpContext c, NotificationStore s, INotificationHost h, NotificationService service) => Guard(async () =>
         {
             var id = await User(c, h);
@@ -112,7 +126,7 @@ public static class Endpoints
             var rule = JsonSerializer.Deserialize<Preference>(await Body(c, 4096), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing preference");
             s.SetPreference(id, rule); return Json(Contract.Success(new { status = "updated" }));
         }));
-        foreach (var action in new[] { "read", "dismiss" })
+        foreach (var action in new[] { "read", "viewed", "dismiss" })
         {
             var dismiss = action == "dismiss";
             user.MapPost("/{id:guid}/" + action, (Guid id, HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
@@ -129,6 +143,12 @@ public static class Endpoints
         }));
 
         var admin = endpoints.MapGroup(prefix + "/settings/notifications").RequireAuthorization();
+        admin.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{await Admin(c,h,false);var config=s.PushSettings();return Json(Contract.Success(new{config.Revision,config.Enabled,config.PublicKey,config.Subject}));}));
+        admin.MapPut("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{
+            await Admin(c,h,true);using var body=JsonDocument.Parse(await Body(c,4096));var revision=body.RootElement.GetProperty("revision").GetInt64();var enabled=body.RootElement.GetProperty("enabled").GetBoolean();
+            var subject=body.RootElement.TryGetProperty("subject",out var contact)?contact.GetString():null;
+            await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.push.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);s.ConfigurePush(revision,enabled,subject);return Json(Contract.Success(new{status="updated"}));
+        }));
         admin.MapGet("", (HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
         { await Admin(c, h, false); return Json(Contract.Success(s.Settings())); }));
         admin.MapPut("", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>

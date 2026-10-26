@@ -21,22 +21,26 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     {
         "admin.css" => Resource("admin.css", "text/css"),
         "integrated.js" => Resource("integrated.js", "application/javascript"),
+        "timeline.js" => Resource("timeline.js", "application/javascript"),
+        "timeline.css" => Resource("timeline.css", "text/css"),
         "integrated.css" => Resource("integrated.css", "text/css"),
         _ => NotFound()
     };
 
     [HttpGet("proposals")]
-    public IActionResult List([FromQuery] int skip = 0, [FromQuery] int take = 50, [FromQuery] string view = "all")
+    public IActionResult List([FromQuery] int skip = 0, [FromQuery] int take = 50, [FromQuery] string view = "all",[FromQuery]string scope="visible")
     {
         var caller = identity.Caller(User);
+        if(scope is not ("visible" or "all-users"))throw new QueueException("InvalidPagination");
+        if(scope=="all-users")caller=identity.Caller(User,administrator:true);
         if (skip < 0 || take is < 1 or > 100) throw new QueueException("InvalidPagination");
         var state = runtime.Read();
         if (view is not ("all" or "active" or "history")) throw new QueueException("InvalidPagination");
-        foreach (var proposal in state.Proposals) QueueRules.Expire(proposal, clock.GetUtcNow());
+        foreach (var proposal in state.Proposals) QueueRules.Expire(state, proposal, clock.GetUtcNow());
         return Ok(state.Proposals.Where(p => targets.Accessible(caller.Id, p))
             .Where(p => view == "all" || (view == "history" ? p.Terminal : !p.Terminal))
-            .OrderByDescending(p => p.CreatedAt).Skip(skip).Take(take)
-            .Select(p => QueueRules.Project(state, p, caller.Id, clock.GetUtcNow())).ToArray());
+            .OrderByDescending(p => view=="history"?p.ClosedAt??p.CreatedAt:p.CreatedAt).Skip(skip).Take(take)
+            .Select(p => {var projected=QueueRules.Project(state,p,caller.Id,clock.GetUtcNow());return scope=="all-users"?projected with{RequesterLabel=p.RequiresAutomaticRuleValidation&&p.RequesterId is null?"Automation · requester unknown":users.GetUserById(p.RequesterId??p.OwnerId)?.Username??"Requester unavailable"}:projected;}).ToArray());
     }
 
     [HttpGet("proposals/{id:guid}")]
@@ -115,7 +119,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             state = runtime.Read();
             matching = state.Proposals.Where(p => p.Target.JellyfinItemId == id && targets.Accessible(caller.Id, p)).ToArray();
         }
-        foreach (var p in matching) QueueRules.Expire(p, now);
+        foreach (var p in matching) QueueRules.Expire(state, p, now);
         var authority = QueueRules.Authority(state, caller.Id);
         var canPropose = authority != ProposalAuthority.Denied;
         string? reason = canPropose ? null : "ProposalNotPermitted";
@@ -191,7 +195,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         var caller = identity.Caller(User);
         runtime.Write(body.CommandId, caller.Id.ToString(), "PreferencesChanged", state =>
         { _ = identity.Caller(User); QueueRules.UpdatePreferences(state, caller.Id, body.Revision, body.DelayHours, body.Notifications);
-            QueueRules.UpdatePersonalTimelines(state, caller.Id, body.ActivityDays ?? state.Preferences[caller.Id].ActivityDays, body.AdministratorApprovalDays ?? state.Preferences[caller.Id].AdministratorApprovalDays); return true; });
+            QueueRules.UpdatePersonalTimelines(state, caller.Id, body.ActivityDays ?? state.Preferences[caller.Id].ActivityDays, body.AdministratorApprovalDays ?? state.Preferences[caller.Id].AdministratorApprovalDays,body.RecentHistoryDays); return true; });
         return Preferences();
     }
 
@@ -223,9 +227,10 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     [HttpGet("me/integration")]
     public IActionResult IntegrationState([FromServices] HubAvailability hub)
     {
-        _ = identity.Caller(User);
+        var caller = identity.Caller(User);
         var state = runtime.Read();
         return Ok(new { ApiVersion = "1", HubAvailable = hub.Ready,
+            IsAdministrator=caller.Administrator,RecentHistoryDays=state.Preferences.GetValueOrDefault(caller.Id)?.RecentHistoryDays is >0 and var days?days:state.Policy.RecentHistoryDays,
             DeviceBell = state.Hub.DeviceBell, EnhancedRequestsEnabled = enhanced.RequestsPageEnabled });
     }
 
@@ -247,7 +252,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     [HttpGet("admin/status")]
     public async Task<IActionResult> AdminStatus(CancellationToken ct)
     {
-        _ = identity.Caller(User, administrator: true);
+        var caller = identity.Caller(User, administrator: true);
         if (!runtime.Available) return Ok(new { StorageAvailable = false, ExecutionAvailable = false, Mode = QueueRuntime.ReleaseMode });
         var state = runtime.Read();
         var notificationsReady = await new AccountHub.Api.NotificationsClient(HttpContext.RequestServices).ReadyForRegisteredTypesAsync(ct);
@@ -266,7 +271,8 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
              Enhanced = new { ConnectionAvailable = enhanced.Discover() is not null },
             Accounts = users.GetUsers().OrderBy(u => u.Username, StringComparer.OrdinalIgnoreCase).Take(500).Select(u => new { u.Id, u.Username, EffectiveAuthority = QueueRules.Authority(state, u.Id), Account = identity.Account(u.Id),
                  PreferencesRevision = state.Preferences.GetValueOrDefault(u.Id)?.Revision ?? 0 }).ToArray(),
-            Proposals = state.Proposals.TakeLast(200).ToArray(), ActivityEvidence = state.Activity.TakeLast(500).ToArray(),
+             Proposals = state.Proposals.TakeLast(200).ToArray(), ActivityEvidence = state.Activity.TakeLast(500).ToArray(),
+             ProposalProgress = state.Proposals.TakeLast(200).ToDictionary(p=>p.Id,p=>QueueRules.Project(state,p,caller.Id,clock.GetUtcNow())),
             AdministratorApprovalSnapshots = state.Proposals.TakeLast(200).ToDictionary(p => p.Id, p => QueueRules.AdministratorSnapshot(state, p)),
             MonitoringLimits = new { Accounts = 500, Proposals = 200, Activity = 500 },
             Journal = runtime.History(),

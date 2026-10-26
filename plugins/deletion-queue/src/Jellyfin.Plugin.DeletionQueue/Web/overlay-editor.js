@@ -25,7 +25,7 @@
             layer('text', { x: 0, y: base.position === 'top' ? 0 : 1 - base.bandHeight, width: 1, height: base.bandHeight, text: base.text, color: base.foreground, fontSize: base.fontSize })
         ];
         let selected = layers.at(-1)?.id, history = [], future = [], gesture, disposed = false, snap = true, sampleDate = 'YYYY-MM-DD', snapGuides = [];
-        const root = node('div'); root.className = 'dq-canvas-editor'; parent.append(root);
+        const root = node('div'); root.className = 'dq-canvas-editor';root.dataset.layout=portrait?'portrait':'landscape';root.dataset.zoom='fit'; parent.append(root);
         const toolbar = node('div'); toolbar.className = 'dq-canvas-toolbar'; toolbar.setAttribute('aria-label', 'Overlay editing tools'); root.append(toolbar);
         function button(label, run) { const holder = node('div'); holder.innerHTML = '<button is="emby-button" type="button" class="raised"></button>'; const b = holder.firstElementChild; b.textContent = label; b.onclick = run; toolbar.append(b); return b; }
         const snapshot = () => ({ layers: clone(layers), selected });
@@ -46,10 +46,10 @@
         const viewport = node('div'); viewport.className = 'dq-canvas-viewport'; workspace.append(viewport);
         const canvas = node('div'); canvas.className = 'dq-canvas-artboard dq-canvas-grid'; canvas.style.aspectRatio = portrait ? '2 / 3' : '16 / 9'; canvas.tabIndex = 0; canvas.setAttribute('role', 'group'); canvas.setAttribute('aria-label', (portrait ? 'Portrait' : 'Landscape') + ' overlay canvas'); viewport.append(canvas);
         const zoom = control(toolbar, 'Zoom', '', 'fit', [['fit', 'Fit'], ['.5', '50%'], ['1', '100%'], ['1.5', '150%'], ['2', '200%']]); zoom.parentElement.classList.add('dq-canvas-zoom');
-        zoom.onchange = () => { canvas.style.width = zoom.value === 'fit' ? '100%' : (portrait ? 320 : 560) * Number(zoom.value) + 'px'; canvas.style.maxWidth = zoom.value === 'fit' ? '34rem' : 'none'; paint(); };
+        zoom.onchange = () => {root.dataset.zoom=zoom.value; canvas.style.width = zoom.value === 'fit' ? '100%' : (portrait ? 320 : 560) * Number(zoom.value) + 'px'; canvas.style.maxWidth = zoom.value === 'fit' ? '' : 'none'; paint(); };
         const inspector = node('aside'); inspector.className = 'dq-canvas-inspector'; inspector.append(node('h4', 'Layer properties')); workspace.append(inspector);
-        const hint = node('p', 'Select a layer, then drag, resize or rotate it. Arrow keys nudge; Shift uses larger steps. Ctrl/Cmd+Z undoes. Server preview confirms the final PNG.'); hint.className = 'dq-art-muted'; root.append(hint);
-        const inputs = {}, text = control(inspector, 'Layer text', 'textarea', ''); text.maxLength = 120; text.title='{date} · {days} · {hours} · {quality}. Unknown schedules show pending.';inputs.text = text;
+        const help=node('details');help.className='dq-canvas-help';help.append(node('summary','Canvas help'));const hint = node('p', 'Select a layer, then drag, resize or rotate it. Arrow keys nudge; Shift uses larger steps. Ctrl/Cmd+Z undoes. Server preview confirms the final PNG.'); hint.className = 'dq-art-muted';help.append(hint); root.append(help);
+        const inputs = {}, text = control(inspector, 'Layer text', 'textarea', '');text.parentElement.classList.add('dq-property-text'); text.maxLength = 120; text.title='{date} · {days} · {hours} · {quality}. Unknown schedules show pending.';inputs.text = text;
         inputs.cornerRadius=control(inspector,'Corner radius (%)','number',0);inputs.cornerRadius.min=0;inputs.cornerRadius.max=50;inputs.cornerRadius.step=1;
         const coordinates = node('div'); coordinates.className = 'dq-canvas-coordinates'; inspector.append(coordinates);
         for (const [key, label] of [['x', 'X (%)'], ['y', 'Y (%)'], ['width', 'Width (%)'], ['height', 'Height (%)']]) { const input = control(coordinates, label, 'number', 0); input.min = key === 'width' || key === 'height' ? 4 : 0; input.max = 100; input.step = '.1'; inputs[key] = input; }
@@ -65,8 +65,8 @@
             });
         });
         const alignTools = node('div'); alignTools.className = 'dq-canvas-align'; inspector.append(alignTools);
-        for (const [label, change] of [['Align left', item => { item.x = 0; }], ['Center horizontally', item => { item.x = (1 - item.width) / 2; }], ['Align right', item => { item.x = 1 - item.width; }], ['Align top', item => { item.y = 0; }], ['Center vertically', item => { item.y = (1 - item.height) / 2; }], ['Align bottom', item => { item.y = 1 - item.height; }]]) { const b = node('button', label); b.type = 'button'; b.onclick = () => { const item = chosen(); if (item) commit(() => change(item)); }; alignTools.append(b); }
-        function inspectorValues() { const item = chosen(); for (const [key, input] of Object.entries(inputs)) { input.disabled = !item || item.kind !== 'text' && ['text', 'fontSize', 'align', 'bold'].includes(key) || key==='cornerRadius'&&item?.kind!=='rectangle'; if (item && document.activeElement !== input) input.value = ['x', 'y', 'width', 'height', 'fontSize','cornerRadius'].includes(key) ? Number(((item[key]||0) * 100).toFixed(2)) : String(item[key]); } }
+        for (const [index,[label, change]] of [['Align left', item => { item.x = 0; }], ['Center horizontally', item => { item.x = (1 - item.width) / 2; }], ['Align right', item => { item.x = 1 - item.width; }], ['Align top', item => { item.y = 0; }], ['Center vertically', item => { item.y = (1 - item.height) / 2; }], ['Align bottom', item => { item.y = 1 - item.height; }]].entries()) { const b = node('button'); b.type = 'button';b.title=label;b.setAttribute('aria-label',label);const icon=node('span',['align_horizontal_left','align_horizontal_center','align_horizontal_right','align_vertical_top','align_vertical_center','align_vertical_bottom'][index]);icon.className='material-icons';icon.setAttribute('aria-hidden','true');b.append(icon); b.onclick = () => { const item = chosen(); if (item) commit(() => change(item)); }; alignTools.append(b); }
+        function inspectorValues() { const item = chosen(); for (const [key, input] of Object.entries(inputs)) { const irrelevant=!!item&&(item.kind !== 'text' && ['text', 'fontSize', 'align', 'bold'].includes(key) || key==='cornerRadius'&&item.kind!=='rectangle');input.parentElement.hidden=irrelevant;input.disabled = !item || irrelevant; if (item && document.activeElement !== input) input.value = ['x', 'y', 'width', 'height', 'fontSize','cornerRadius'].includes(key) ? Number(((item[key]||0) * 100).toFixed(2)) : String(item[key]); }for(const b of alignTools.querySelectorAll('button'))b.disabled=!item; }
         function paint() {
             canvas.replaceChildren();
             for (const item of layers) {
