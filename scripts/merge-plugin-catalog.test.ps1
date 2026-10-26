@@ -35,11 +35,11 @@ try {
     $refs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/refs' })
     if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $refs[0].body.ref -ne 'refs/heads/catalog') { throw 'Platform feeds must publish atomically to the combined branch' }
     $suite = @((Entry $a '1.2.0.0'), (Entry $b '2.1.0.0'))
-    foreach ($id in @('e0cb0eb1-93ef-4335-bae4-c729771cbbe7','85679095-3232-4b24-be55-08055a0562cd','c18d78ec-4b70-47cf-a0d2-936d987c37ba')) { $suite += Entry $id '1.0.0.0' }
+    foreach ($id in @('e0cb0eb1-93ef-4335-bae4-c729771cbbe7','85679095-3232-4b24-be55-08055a0562cd','c18d78ec-4b70-47cf-a0d2-936d987c37ba','a6429fb2-c67c-459d-b6a7-579c4a05dace')) { $suite += Entry $id '1.0.0.0' }
     ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content $next
     & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output
     $result = @(Get-Content $output -Raw | ConvertFrom-Json)
-    if ($result.Count -ne 5 -or @($result | Where-Object guid -eq $a)[0].versions.Count -ne 3 -or @($result | Where-Object guid -eq $b)[0].versions.Count -ne 2) { throw 'Suite merge lost plugin history' }
+    if ($result.Count -ne 6 -or @($result | Where-Object guid -eq $a)[0].versions.Count -ne 3 -or @($result | Where-Object guid -eq $b)[0].versions.Count -ne 2) { throw 'Suite merge lost plugin history' }
     Copy-Item $output $old -Force
     & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output
     if ((Get-Content $old -Raw) -cne (Get-Content $output -Raw)) { throw 'Suite merge not idempotent' }
@@ -60,12 +60,22 @@ try {
     if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $blobs.Count -ne 3) { throw 'Suite catalogs must publish atomically' }
     foreach ($blob in $blobs) {
         $entries = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($blob.body.content)) | ConvertFrom-Json)
-        if ($entries.Count -ne 5) { throw 'Published suite catalog lost entries' }
+        if ($entries.Count -ne 6) { throw 'Published suite catalog lost entries' }
     }
     $calls.Clear(); $rejected = $false
     try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root } catch { $rejected = $true }
     if (!$rejected -or $calls.Count) { throw 'Selected mode accepted a suite or wrote before validation' }
-    $mismatched = @($suite[0..3]) + @((Entry '1aa06e5f-4760-4397-a547-ae037cd4b722' '1.0.0.0'))
+    # An old five-plugin artifact must fail before any GitHub API call.
+    foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
+        ConvertTo-Json -InputObject @($suite[0..4]) -Depth 10 | Set-Content (Join-Path $root "manifest-$runtime.json")
+    }
+    $rejected = $false
+    try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root -AllPlugins } catch { $rejected = $true }
+    if (!$rejected -or $calls.Count) { throw 'Incomplete five-plugin suite accepted or contacted GitHub' }
+    foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
+        ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content (Join-Path $root "manifest-$runtime.json")
+    }
+    $mismatched = @($suite[0..4]) + @((Entry '1aa06e5f-4760-4397-a547-ae037cd4b722' '1.0.0.0'))
     ConvertTo-Json -InputObject $mismatched -Depth 10 | Set-Content (Join-Path $root 'manifest-win-x64.json')
     $rejected = $false
     try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root -AllPlugins } catch { $rejected = $true }

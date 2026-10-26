@@ -13,7 +13,7 @@ try {
     $identity = $null
     foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
         $incoming = @(Get-Content (Join-Path $Directory "manifest-$runtime.json") -Raw | ConvertFrom-Json)
-        $expectedCount = if ($AllPlugins) { 5 } else { 1 }
+        $expectedCount = if ($AllPlugins) { 6 } else { 1 }
         if ($incoming.Count -ne $expectedCount) { throw "Expected $expectedCount released plugin(s) in each platform catalog" }
         foreach ($entry in $incoming) {
             if (![guid]::TryParse([string]$entry.guid, [ref]([guid]::Empty)) -or !$entry.versions.Count) { throw 'Invalid catalog identity/history' }
