@@ -49,7 +49,15 @@
 .accountHubInbox .notificationAction[data-size=compact] { padding: .3em .55em; font-size: .82em; }
 .accountHubInbox .notificationPreference { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; padding-block: .4rem; border-block-end: 1px solid var(--notification-line); }
 .accountHubInbox .notificationPreference > span { flex: 1 0 8rem; }
-.accountHubInbox .notificationPreference [aria-pressed=true] { box-shadow: inset 0 -2px var(--theme-primary-color, currentColor); }
+.accountHubInbox .notificationViewTabs {display:flex;gap:.35rem;border-block-end:1px solid var(--notification-line);margin-block:.4rem;}
+.accountHubInbox .notificationViewTabs [aria-selected=true] {box-shadow:inset 0 -2px var(--theme-primary-color,currentColor);}
+.accountHubInbox button:focus-visible,.accountHubInbox summary:focus-visible {outline:2px solid var(--theme-primary-color,currentColor);outline-offset:2px;}
 .accountHubInbox .notificationSettingsStatus { font-size: .85em; }
 .accountHubInbox .notificationSettingsStatus:empty { display: none; }
+.accountHubInbox .notificationToggle {position:relative;width:2.6rem;height:1.5rem;min-width:2.6rem;border:1px solid var(--notification-line);border-radius:2rem;background:color-mix(in srgb,currentColor 15%,transparent);padding:0;cursor:pointer;}
+.accountHubInbox .notificationToggle::after {content:'';position:absolute;width:1.05rem;height:1.05rem;top:.15rem;left:.15rem;border-radius:50%;background:currentColor;transition:transform .15s;}
+.accountHubInbox .notificationToggle[aria-checked=true] {background:color-mix(in srgb,var(--theme-primary-color,#00a4dc) 65%,transparent);border-color:var(--theme-primary-color,#00a4dc);}
+.accountHubInbox .notificationToggle[aria-checked=true]::after {transform:translateX(1.05rem);}
+.accountHubInbox .notificationToggle:disabled {opacity:.45;cursor:wait;}
+.accountHubInbox .notificationBack {background:transparent;border:0;box-shadow:none;padding:.35rem;}
 @media (max-width: 600px) { .accountHubInbox { inset-inline: .5rem; width: calc(100vw - 1rem); min-height: min(60dvh, 36rem); } }

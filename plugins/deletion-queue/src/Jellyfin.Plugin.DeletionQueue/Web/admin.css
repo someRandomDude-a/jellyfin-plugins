@@ -1,4 +1,8 @@
 /* Administrator workspace layout; Jellyfin supplies control styling. */
+#deletionQueueAdmin.suiteAdmin .content-primary {max-width:none;width:100%;box-sizing:border-box;}
+#deletionQueueAdmin #dqPolicyControls:disabled {opacity:.45;}
+#deletionQueueAdmin .dq-snap-guide {position:absolute;background:var(--theme-primary-color,#00a4dc);box-shadow:0 0 3px currentColor;pointer-events:none;z-index:4;}
+#deletionQueueAdmin .dq-policy-timeline li {padding:1rem;}
 #deletionQueueAdmin .dq-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
 #deletionQueueAdmin #dqOptInDialog { inset: 0; margin: auto; max-width: min(38rem, 90vw); max-height: 80vh; overflow: auto; }
 #deletionQueueAdmin .dq-dialog-content { padding-inline: 1.5rem; }

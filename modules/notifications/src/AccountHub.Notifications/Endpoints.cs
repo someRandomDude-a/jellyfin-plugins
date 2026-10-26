@@ -69,11 +69,13 @@ public static class Endpoints
         {
             var id = await User(c, h);
             var limit = Math.Clamp(Number(c, "limit", 25), 1, 100);
-            var stored = s.Inbox(id, Number(c, "skip", 0), limit, c.Request.Query["source"], c.Request.Query["unread"] == "true", await h.IsAdministratorAsync(id, c.RequestAborted));
+            var history=c.Request.Query["history"]=="true";
+            var stored = s.Inbox(id, Number(c, "skip", 0), limit, c.Request.Query["source"], c.Request.Query["unread"] == "true", await h.IsAdministratorAsync(id, c.RequestAborted),history);
             var catalogs = service.Catalog();
             var rows = new List<InboxRow>();
             foreach (var row in stored) if (await h.CanAccessNotificationAsync(id, row.Event, c.RequestAborted)) {
                 var presented = await service.PresentAsync(id, row.Event, catalogs, c.RequestAborted);
+                if(history)presented=presented with{Commands=[]};
                 // Fanout identities are server-owned, not notification content.
                 rows.Add(row with { Event = presented with { Audience = presented.AdminOnly ? [] : [id] } });
             }

@@ -20,28 +20,28 @@
     </form>
     <h2>Permissions and safety policy</h2>
     <form id="dqPolicy">
-      <p class="dq-hint">Edit the policy along the timeline. This is an unsaved preview, not a schedule for a particular request. Save policy to apply changes.</p>
+      <div data-help="Pause eligibility for deletion. Existing proposals and history are retained. Save policy to apply changes."><label class="checkboxContainer"><input is="emby-checkbox" id="dqSuspend" type="checkbox" /><span>Pause deletion</span></label></div>
+      <fieldset id="dqPolicyControls" style="border:0;padding:0;margin:0;min-width:0"><legend class="hide">Removal policy</legend>
       <ol class="dq-policy-timeline" aria-label="Removal policy timeline">
-      <li><span class="material-icons dq-policy-icon" aria-hidden="true">playlist_add</span><h3>Request</h3><p>Verified media and permission are required to enter the queue.</p>
+      <li><span class="material-icons dq-policy-icon" aria-hidden="true">playlist_add</span><h3 data-help="Verified media and permission are required to enter the queue.">Request</h3>
       <div class="selectContainer" data-help="Choose which items users may request to remove. Per-user overrides can change this permission. Viewer consent is still required."><label for="dqAuthority">Default removal permission</label><select is="emby-select" id="dqAuthority"><option value="0">Denied</option><option value="1">Own requests</option><option value="2">Any accessible item</option></select></div>
       </li>
       <li><span class="material-icons dq-policy-icon" aria-hidden="true">manage_history</span><h3>Recent playback</h3>
       <div class="inputContainer" data-help="Consider latest playback within this many days, including unfinished playback. A complete native history check replaces a multi-day observation wait."><label for="dqDays">Playback lookback (days)</label><input is="emby-input" id="dqDays" type="number" min="1" max="365" required /></div>
-      <p id="dqLookbackPreview"></p><p>Check every relevant account and related media item. Missing records, live playback or an unhealthy collector block advancement.</p></li>
-      <li><span class="material-icons dq-policy-icon" aria-hidden="true">how_to_vote</span><h3>Consent &amp; approval</h3><p>Recent viewers must allow the current media snapshot. Viewing a request never grants consent.</p>
+       <p id="dqLookbackPreview"></p></li>
+      <li><span class="material-icons dq-policy-icon" aria-hidden="true">how_to_vote</span><h3 data-help="Recent viewers must allow the current media snapshot. Viewing a request never grants consent.">Consent &amp; approval</h3>
       <label class="checkboxContainer"><input is="emby-checkbox" id="dqRequireAdminApproval" type="checkbox" /><span>Require administrator approval for each proposal (optional)</span></label>
       <p data-help-for="#dqRequireAdminApproval">Approve each proposal in the backlog. Viewer consent and the deletion delay still apply. Activity or policy changes require a new approval.</p><p id="dqApprovalPreview"></p>
-      <div class="inputContainer"><label for="dqApprovalDays">Administrator decision timeout (days)</label><input is="emby-input" id="dqApprovalDays" type="number" min="1" max="365" value="30" required /></div><p>The approval clock starts when a verified request reaches administrator review. Approval continues to the safety delay; denial cancels immediately; timeout closes the request. Users may choose a longer personal timeout.</p></li>
+      <div id="dqApprovalOptions" class="inputContainer" data-help="The clock starts when a verified request reaches administrator review. Approval continues to the safety delay; denial or timeout closes the request. Personal settings may extend the timeout."><label for="dqApprovalDays">Decision timeout (days)</label><input is="emby-input" id="dqApprovalDays" type="number" min="1" max="365" value="30" required /></div></li>
       <li><span class="material-icons dq-policy-icon" aria-hidden="true">hourglass_top</span><h3>Safety delay</h3>
       <div class="inputContainer" data-help="Minimum two days, starting only after checks and consent pass. Fractions of a day are rounded to whole hours."><label for="dqDelayDays">Minimum delay (days)</label><input is="emby-input" id="dqDelayDays" type="number" min="2" max="365" step="any" required /></div>
       <details><summary>Fine-tune in hours</summary><div class="inputContainer"><label for="dqHours">Deletion delay (hours)</label><input is="emby-input" id="dqHours" type="number" min="48" max="8760" required /></div></details>
-      <p id="dqDelayPreview"></p><p>Personal preferences and existing delay floors may extend this wait. Playback resets the wait and requires fresh consent. Unaccepted requests expire after 30 days.</p></li>
-      <li><span class="material-icons dq-policy-icon" aria-hidden="true">auto_delete</span><h3>Verify &amp; remove</h3><p>Recheck target, access, playback, consent and the delay before claiming one removal attempt.</p>
+      <p id="dqDelayPreview"></p><p data-help-for="#dqDelayDays">Personal preferences may extend this wait. Playback resets it and requires fresh consent. Unaccepted requests expire after 30 days.</p></li>
+      <li><span class="material-icons dq-policy-icon" aria-hidden="true">auto_delete</span><h3 data-help="Target, access, playback, consent and the delay are rechecked before one removal attempt.">Verify &amp; remove</h3>
       <label class="checkboxContainer"><input is="emby-checkbox" id="dqAuto" type="checkbox" /><span>Opt in to automatic Seerr-managed deletion</span></label>
       <p id="dqSeerrDependency" class="fieldDescription"></p>
-      <div data-help="Pause eligibility for deletion while you review settings. Existing proposals and history are retained."><label class="checkboxContainer"><input is="emby-checkbox" id="dqSuspend" type="checkbox" /><span>Pause deletion eligibility</span></label></div>
-      <p>Deletion removes the movie or whole series and its files through Seerr. Request history is kept. Viewer consent and the deletion delay still apply.</p>
-      <p id="dqExecutionPreview" role="status"></p><p>Uncertain outcomes stop for review; they are never automatically resent.</p></li></ol>
+      <p data-help-for="#dqAuto">Deletes movie or whole-series files through Seerr; request history is kept. Consent and the delay still apply. Uncertain outcomes stop for review and are never automatically resent.</p>
+      <p id="dqExecutionPreview" role="status"></p></li></ol>
       <h3>Per-user settings</h3>
       <div id="dqAccounts">
         <div class="selectContainer"><label for="dqUsers">User</label><select is="emby-select" id="dqUsers"></select></div>
@@ -51,7 +51,7 @@
         <button is="emby-button" type="button" id="dqResetAllPermissions" class="raised">Reset all user permissions to global</button>
         <p data-help-for="#dqResetAllPermissions">Remove all per-user removal permissions. Personal preferences, consent, history and existing delay floors are kept. Unsaved policy edits are not saved.</p>
       </div>
-      <button is="emby-button" type="submit" class="raised button-submit">Save policy</button>
+      </fieldset><button is="emby-button" type="submit" class="raised button-submit">Save policy</button>
     </form>
     <section id="dqPresentation"><header class="dq-studio-header"><h2>Collections &amp; Overlay Studio</h2><div data-suite-jobs aria-label="Scheduled maintenance tasks"></div></header><div data-presentation-editor></div><p data-presentation-status role="status">Loading presentation settings…</p></section>
     <h2>Notifications and audit</h2>

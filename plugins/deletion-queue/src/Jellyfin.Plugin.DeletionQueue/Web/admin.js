@@ -16,6 +16,10 @@
     // Jellyfin renders Guid values without hyphens, but System.Text.Json's Guid dictionary keys require D format.
     const policyId = id => normalizedId(id).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
     function previewPolicy() {
+        el('dqPolicyControls').disabled=el('dqSuspend').checked;
+        el('dqApprovalOptions').hidden=!el('dqRequireAdminApproval').checked;
+        el('dqApprovalDays').disabled=!el('dqRequireAdminApproval').checked;
+        el('dqApprovalPreview').hidden=!el('dqRequireAdminApproval').checked;
         const days = Number(el('dqDays').value), hours = Number(el('dqHours').value);
         el('dqLookbackPreview').textContent = el('dqDays').value && days >= 1 && days <= 365 ? 'Look back ' + days + ' days from each check — not an additional waiting period.' : 'Choose a playback lookback from 1 to 365 days.';
         el('dqApprovalPreview').textContent = el('dqRequireAdminApproval').checked ? 'Advance after current viewer consent AND administrator approval.' : 'Advance after current viewer consent and all safety checks.';

@@ -43,7 +43,7 @@ public sealed class ArtworkRenderer
             canvas.Translate(width * layer.X + w / 2, height * layer.Y + h / 2); canvas.RotateDegrees(layer.Rotation);
             var rect = new SKRect(-w / 2, -h / 2, w / 2, h / 2);
             using var paint = new SKPaint { Color = SKColor.Parse(layer.Color).WithAlpha(layer.Opacity), IsAntialias = true };
-            if (layer.Kind == "rectangle") { canvas.DrawRect(rect, paint); return; }
+            if (layer.Kind == "rectangle") { var radius=Math.Min(w,h)*layer.CornerRadius;canvas.DrawRoundRect(rect,radius,radius,paint); return; }
             canvas.ClipRect(rect); using var typeface = SKTypeface.FromFamilyName("sans-serif", layer.Bold ? SKFontStyle.Bold : SKFontStyle.Normal);
             using var font = new SKFont(typeface, width * layer.FontSize);
             var lines = layer.Format(date, is4K).Split('\n');

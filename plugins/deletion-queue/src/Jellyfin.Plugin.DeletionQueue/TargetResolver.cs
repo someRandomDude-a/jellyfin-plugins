@@ -42,6 +42,13 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
             !user.HasPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled);
     }
     public string? ActivityKey(Guid itemId) => library.GetItemById(itemId) is { } item ? ActivityKey(item) : null;
+    public Guid ContextItem(Guid userId, Guid itemId) {
+        var user=users.GetUserById(userId) ?? throw new QueueException("TargetUnavailable");
+        var item=library.GetItemById<BaseItem>(itemId,user) ?? throw new QueueException("TargetUnavailable");
+        var target=item switch {Episode episode=>episode.SeriesId,Season season=>season.SeriesId,_=>itemId};
+        if(!Accessible(userId,target))throw new QueueException("TargetUnavailable");
+        return target;
+    }
     public bool Accessible(Guid userId, Guid itemId)
     {
         var user = users.GetUserById(userId);

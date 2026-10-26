@@ -8,6 +8,7 @@
     const client = () => window.ApiClient;
     const apiPrefix = document.querySelector('[data-notifications-bootstrap]')?.dataset.notificationsApi || 'AccountHub/api/v1/';
     const expanded = new Set(); let moreObserver, moreSentinel, loadMoreRequested = false;
+    let historyView=false;
     let localRows = [], localSequence = 0, settingsElement, toast, toastTimer;
     const toasted = new Set();
     const url = path => client().getUrl(apiPrefix + path);
@@ -16,6 +17,7 @@
         if (clearLocal) localRows = [];
         clearTimeout(timer); timer = null; etag = undefined; rows = [];
         generation++; skip = 0; hasMore = false; unreadCount = 0; settingsView = false;
+        historyView=false;
         expanded.clear(); moreObserver?.disconnect(); loadMoreRequested = false;
         settingsElement = null;
         toast?.remove(); toast = null; clearTimeout(toastTimer); if (clearLocal) toasted.clear();
@@ -48,6 +50,7 @@
     function close(restoreFocus = true) { if (panel) panel.hidden = true; settingsView = false; button?.setAttribute('aria-expanded', 'false'); if (restoreFocus) button?.focus(); }
     const resolveLink = link => link.startsWith('web/index.html#/') ? client().getUrl(link) : link;
     function showToast() {
+        if(historyView)return;
         const recent = rows.filter(row => !row.read && !toasted.has(row.id) && row.event.layout?.toastSeconds > 0 && Date.now() - new Date(row.event.occurredAt).getTime() < 120000);
         for (const row of recent) toasted.add(row.id);
         const row = recent[0]; if (!row || !panel?.hidden) return;
@@ -87,11 +90,14 @@
         const settings = element('button', ''); settings.className = 'paper-icon-button-light notificationSettings'; settings.setAttribute('aria-label', 'Notification settings');
         const gear = element('span', 'settings'); gear.className = 'material-icons'; gear.setAttribute('aria-hidden', 'true'); settings.append(gear);
         settings.onclick = () => { settingsView = true; render(); }; header.append(settings);
+        const tabs=element('div');tabs.className='notificationViewTabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Notification views');
+        for(const [archived,label]of [[false,'Notifications'],[true,'History']]){const tab=element('button',label);tab.className='emby-button button-flat';tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(historyView===archived));tab.onclick=()=>{if(historyView===archived)return;historyView=archived;generation++;skip=0;hasMore=false;rows=[];etag=undefined;expanded.clear();render();void poll();};tabs.append(tab);}panel.append(tabs);
         const all = element('button', 'Mark all read'); all.onclick = async () => { await request('notifications/read-all', 'POST'); for (const row of localRows) row.read = true; etag = undefined; poll(); }; panel.append(all);
         all.disabled = [...localRows, ...rows].every(row => row.read);
+        all.hidden=historyView;
         if (!rows.length && !localRows.length) panel.append(element('p', 'No notifications.'));
         const groups = { Important: [], Other: [], Older: [] };
-        for (const row of [...localRows, ...rows]) {
+        for (const row of [...localRows.filter(row=>!!row.dismissed===historyView), ...rows]) {
             const time = timestamp(row.event.occurredAt);
             const group = time.age >= 7 * 86400 ? 'Older' : row.event.adminOnly || ['warning', 'high', 'critical'].includes(row.event.severity) ? 'Important' : 'Other';
             groups[group].push({ row, time });
@@ -142,7 +148,7 @@
             const icon = element('span', 'more_vert'); icon.className = 'material-icons'; icon.setAttribute('aria-hidden', 'true'); trigger.append(icon); menu.className = 'dialog paperList notificationOptionsMenu'; menu.setAttribute('role', 'menu'); options.append(trigger, menu); item.append(options);
             options.addEventListener('toggle', () => { if (options.open) for (const other of panel.querySelectorAll?.('.notificationOptions[open]') || []) if (other !== options) other.open = false; });
             options.addEventListener('keydown', event => {
-                if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); options.open = false; trigger.focus(); }
+                if (event.key === 'Escape' && options.open) { event.preventDefault(); event.stopPropagation(); options.open = false; trigger.focus(); }
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                     event.preventDefault(); options.open = true;
                     const controls = [...menu.querySelectorAll('button:not(:disabled)')], index = controls.indexOf(document.activeElement);
@@ -150,10 +156,11 @@
                 }
             });
             for (const action of ['read', 'dismiss']) {
+                if(historyView)continue;
                 if (action === 'read' && row.read) continue;
                 const control = element('button', action === 'read' ? 'Mark read' : 'Hide notification'); control.setAttribute('role', 'menuitem');
                 control.onclick = async () => { await request('notifications/' + row.id + '/' + action, 'POST'); etag = undefined; poll(); };
-                if (row.local) control.onclick = () => { if (action === 'dismiss') localRows = localRows.filter(item => item.id !== row.id); else row.read = true; render(); paintCount(unreadCount); };
+                if (row.local) control.onclick = () => { if (action === 'dismiss') row.dismissed=true;row.read = true; render(); paintCount(unreadCount); };
                 menu.append(control);
             }
             if (row.event.source && !row.local && !row.event.adminOnly && row.event.severity !== 'critical') for (const [label, type] of [['Show fewer like this', row.event.type], ['Mute ' + ({ 'deletion-queue': 'removal notifications', 'private-syncplay': 'watch-party notifications', 'account-hub': 'account notifications' }[row.event.source] || row.event.source), '*']]) {
@@ -175,18 +182,17 @@
             moreObserver = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) next.onclick(); }, { root: panel, rootMargin: '80px' });
             moreObserver.observe(next);
         }
-        const dismiss = element('button', 'Close notifications'); dismiss.onclick = () => close(); panel.append(dismiss);
     }
     function renderSettings() {
         panel.replaceChildren(element('h2', 'Notification settings'));
-        const back = element('button', 'Back to notifications'); back.onclick = () => { settingsView = false; render(); }; panel.append(back);
+        const back = element('button');back.className='paper-icon-button-light notificationBack';back.setAttribute('aria-label','Back to notifications');back.title='Back to notifications';const arrow=element('span','arrow_back');arrow.className='material-icons';arrow.setAttribute('aria-hidden','true');back.append(arrow); back.onclick = () => { settingsView = false; render(); }; panel.append(back);
         const view = element('div'), status = element('p'); status.className = 'notificationSettingsStatus'; status.setAttribute('role', 'status'); status.textContent = 'Loading preferences…';
         settingsElement = view;
         panel.append(status, view); const started = generation, controls = [], busy = new Set(); let rules = [], loading = true;
         const active = () => settingsView && generation === started && view.isConnected;
         const same = (a, b) => a.source === b.source && a.type === b.type && a.channel === b.channel;
         const key = rule => JSON.stringify([rule.source, rule.type, rule.channel]);
-        const paint = () => { for (const entry of controls) { const enabled = rules.find(rule => same(rule, entry.rule))?.enabled ?? entry.rule.channel === 'in-app'; entry.button.disabled = loading || busy.has(key(entry.rule)); entry.button.setAttribute('aria-pressed', String(enabled === entry.rule.enabled)); } };
+        const paint = () => { for (const entry of controls) { const enabled = rules.find(rule => same(rule, entry.rule))?.enabled ?? entry.rule.channel === 'in-app'; entry.button.disabled = loading || busy.has(key(entry.rule)); entry.button.setAttribute('aria-checked', String(enabled)); } };
         async function save(rule) {
             if (loading || busy.has(key(rule))) return;
             busy.add(key(rule)); paint();
@@ -198,11 +204,8 @@
         }
         function preferenceRow(label, source, type, channel, actionName, parent) {
             const row = element('div'); row.className = 'notificationPreference'; row.append(element('span', label));
-            for (const enabled of [true, false]) {
-                const control = element('button', enabled ? 'On' : 'Muted'); control.className = 'emby-button button-flat'; control.disabled = true;
-                control.setAttribute('aria-label', (enabled ? 'Enable ' : 'Mute ') + actionName);
-                const rule = { source, type, channel, enabled }; controls.push({ button: control, rule }); control.onclick = () => save(rule); row.append(control);
-            }
+            const control=element('button');control.className='notificationToggle';control.disabled=true;control.setAttribute('role','switch');control.setAttribute('aria-label',actionName);control.setAttribute('aria-checked','false');
+            const rule={source,type,channel,enabled:true};controls.push({button:control,rule});control.onclick=()=>save({...rule,enabled:control.getAttribute('aria-checked')!=='true'});row.append(control);
             parent.append(row);
         }
         for (const channel of ['in-app', 'discord']) preferenceRow(channel === 'in-app' ? 'In-app notifications' : 'Discord notifications', '*', '*', channel, 'non-critical ' + channel + ' notifications', view);
@@ -231,7 +234,6 @@
         if (fallback && typeof fallback.href === 'string' && fallback.href.startsWith('#/')) {
             const link = element('a', 'DeletionQueue local notices'); link.href = fallback.href; panel.append(link);
         }
-        const dismiss = element('button', 'Close notifications'); dismiss.onclick = () => close(); panel.append(dismiss);
     }
     function mount() {
         if (forbidden() || !client()?.accessToken?.() || !client()?.getCurrentUserId?.()) { clear(true); return false; }
@@ -296,11 +298,11 @@
                 // from an earlier page after the user's permissions change.
                 const collected = [];
                 for (let offset = 0; offset <= skip; offset += 100) {
-                    const page = await request('notifications?skip=' + offset + '&limit=100'); collected.push(...page.notifications);
+                    const page = await request('notifications?skip=' + offset + '&limit=100'+(historyView?'&history=true':'')); collected.push(...page.notifications);
                     response = { ...page, notifications: collected, etag: undefined };
                     if (!page.hasMore) { skip = offset; break; }
                 }
-            } else response = await request('notifications?skip=' + skip + '&limit=100', 'GET', undefined, etag ? { 'If-None-Match': etag } : {});
+            } else response = await request('notifications?skip=' + skip + '&limit=100'+(historyView?'&history=true':''), 'GET', undefined, etag ? { 'If-None-Match': etag } : {});
             if (identity !== activeIdentity || generation !== activeGeneration || forbidden()) return;
             if (!response.unchanged) {
                 rows = append ? [...new Map([...rows, ...response.notifications].map(row => [row.id, row])).values()] : response.notifications;
@@ -319,6 +321,13 @@
         if (!paused && generation === activeGeneration) timer = setTimeout(poll, delay);
     }
     const resume = () => { paused = false; poll(); };
+    // Settings refreshes can remove the focused control, returning focus to body.
+    // Respect nested menus that consume Escape before closing the inbox.
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !event.defaultPrevented && panel && !panel.hidden) {
+            event.preventDefault(); close();
+        }
+    });
     document.addEventListener('pointerdown', event => {
         for (const menu of panel?.querySelectorAll?.('.notificationOptions[open]') || []) if (!menu.contains(event.target)) menu.open = false;
         if (panel && !panel.hidden && !panel.contains(event.target) && !button?.contains(event.target)) close(false);

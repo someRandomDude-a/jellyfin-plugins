@@ -134,6 +134,17 @@ public sealed class ProductionGatewayTests : IDisposable
         };
         return new(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
     }
+    [Fact] public void EpisodeContextRequiresAccessToTheEpisodeAndItsParentSeries() {
+        var series=new MediaBrowser.Controller.Entities.TV.Series{Id=Guid.NewGuid()};
+        var episode=new MediaBrowser.Controller.Entities.TV.Episode{Id=Guid.NewGuid(),SeriesId=series.Id};
+        var episodeVisible=true;var seriesVisible=true;
+        var library=Fake<ILibraryManager>((m,a)=>m.Name=="GetItemById"?(Guid)a[0]! == episode.Id?(episodeVisible?episode:null):(Guid)a[0]! == series.Id?(seriesVisible?series:null):null:throw new NotSupportedException());
+        var users=Fake<IUserManager>((m,_)=>m.Name=="GetUserById"?owner:throw new NotSupportedException());
+        var resolver=new TargetResolver(library,users,null!,null!,null!);
+        Assert.Equal(series.Id,resolver.ContextItem(owner.Id,episode.Id));
+        seriesVisible=false;Assert.Throws<QueueException>(()=>resolver.ContextItem(owner.Id,episode.Id));
+        seriesVisible=true;episodeVisible=false;Assert.Throws<QueueException>(()=>resolver.ContextItem(owner.Id,episode.Id));
+    }
     [Fact] public async Task ContextMenuProjectionIsItemScopedAndPermissionsResetRequiresLiveAdministratorAndRevision()
     {
         var id = await Seed();

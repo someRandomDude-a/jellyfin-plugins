@@ -22,6 +22,7 @@
 .dq-status { flex: 0 0 auto; font-size: .72em; padding: .25em .65em; border-radius: 1rem; background: color-mix(in srgb, currentColor 12%, transparent); }
 .dq-status[data-status=Blocked] { background: color-mix(in srgb, #e8b75c 22%, transparent); }
 .dq-status[data-status=Ready], .dq-status[data-status=Completed] { background: color-mix(in srgb, #3baf75 22%, transparent); }
+.dq-status[data-status=Cancelled], .dq-status[data-status=Expired] { background:color-mix(in srgb,#df6570 25%,transparent); }
 .dq-help { position: relative; display: inline-flex; flex: 0 0 auto; }
 .dq-help .dq-help-button { display: inline-grid; place-items: center; width: 1.4rem; height: 1.4rem; min-width: 0; padding: 0; margin: 0; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 50%; cursor: help; }
 .dq-help .dq-help-text { position: absolute; inset-inline-end: 0; inset-block-start: 100%; z-index: 5; width: min(22rem, calc(100vw - 3rem)); max-height: 12rem; overflow: auto; box-sizing: border-box; padding: .8rem; margin: .3rem 0; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: .6rem; font-size: .85em; line-height: 1.5; }
@@ -41,9 +42,11 @@
 .dq-timeline [data-state=cancelled] { --dq-state-color: #df6570; font-weight: 600; }
 .dq-timeline [data-state=pending], .dq-timeline [data-state=stopped] { opacity: .6; }
 .dq-timeline [aria-current=step] .dq-checkpoint-icon { box-shadow: 0 0 0 2px var(--dq-state-color, currentColor); }
-.dq-media-marker { position: absolute; inset-inline-start: var(--dq-position); top: -3.1em; transform: translateX(-50%); text-align: center; border-radius: .6em; padding: .2em .45em; background: transparent; border-bottom: 2px solid currentColor; }
+.dq-media-marker { position:absolute; inset-inline-start:var(--dq-position);top:-.4em;transform:translateX(-50%);width:.65em;height:.65em;border:2px solid currentColor;border-radius:50%;background:var(--theme-primary-color,#5bc4e8);box-shadow:0 0 .7em currentColor;z-index:2; }
 .dq-media-marker[data-stopped=true] { border-color: #df6570; }
-.dq-media-marker[data-checkpoint] { top: calc(var(--dq-marker-lane, 0) * var(--dq-lane-height) - 1.7em); transform: translateX(65%); }
+.dq-media-marker[data-checkpoint] { top:-.4em;transform:translateX(-50%); }
+.dq-travelled {position:absolute;top:-2px;inset-inline-start:0;height:2px;background:var(--theme-primary-color,#5bc4e8);box-shadow:0 0 .6em var(--theme-primary-color,#5bc4e8);pointer-events:none;}
+.dq-travelled[data-cancelled=true]{background:color-mix(in srgb,#df6570 100%,transparent);box-shadow:0 0 .6em #df6570;}
 .dq-media-marker[data-completed=true] { border-color: #3baf75; }
 .dq-marker-label { display: block; white-space: nowrap; font-size: .85em; }
 .dq-checkpoint-label, .dq-timeline time, .dq-checkpoint-date { display: block; overflow-wrap: anywhere; }
@@ -58,6 +61,7 @@
 .dq-context-section .dq-context-action { width: 100%; text-align: start; }
 .dq-context-action .listItemIcon { background: none; border-radius: 0; }
 .dq-media-action > .material-icons, .dq-context-action .material-icons { background: transparent; box-shadow: none; }
+.dq-context-section .dq-context-action .actionSheetItemIcon { background:transparent!important; background-image:none!important; box-shadow:none!important; border-radius:0; }
 .dq-context-section .dq-context-action:not([data-removal-status]):not([aria-pressed=true]):not(:hover):not(:focus-visible) { background: transparent; }
 .dq-context-section[hidden] { display: none; }
 .dq-media-action[hidden] { display: none; }

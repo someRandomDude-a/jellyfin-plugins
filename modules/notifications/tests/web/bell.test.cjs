@@ -18,6 +18,7 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(c => c !== this); this.parentElement = null; }
         get isConnected() { return this === body || this === header || !!this.parentElement?.isConnected; }
         setAttribute(k, v) { this.attrs[k] = v; }
+        getAttribute(k) { return this.attrs[k] ?? null; }
         addEventListener(k, v) { (this.events ??= {})[k] = v; }
         focus() { focused = this; }
         getClientRects() { return [{}]; }
@@ -59,6 +60,28 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
     return { calls, timers, all, window, listeners, rerun: () => vm.runInContext(source, context), get focused() { return focused; } };
 }
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
+test('only open notification options consume Escape so the next Escape can close the inbox', async () => {
+    const h = harness(); await settle();
+    const options = h.all().find(e => e.className === 'notificationOptions');
+    let consumed = 0;
+    const event = { key: 'Escape', preventDefault() { consumed++; }, stopPropagation() { consumed++; } };
+    options.open = true; options.events.keydown(event);
+    assert.equal(options.open, false); assert.equal(consumed, 2);
+    options.events.keydown(event); assert.equal(consumed, 2);
+});
+test('Escape closes settings after a refresh loses control focus without consuming nested Escape', async () => {
+    const h = harness(); await settle();
+    const bell = h.all().find(e => e.dataset.notificationsBell);
+    const panel = h.all().find(e => e.id === 'account-hub-inbox');
+    bell.onclick();
+    h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick(); await settle();
+    let prevented = false;
+    h.listeners.keydown({ key: 'Escape', defaultPrevented: true, preventDefault() { prevented = true; } });
+    assert.equal(panel.hidden, false); assert.equal(prevented, false);
+    h.listeners.keydown({ key: 'Escape', defaultPrevented: false, preventDefault() { prevented = true; } });
+    assert.equal(panel.hidden, true); assert.equal(prevented, true); assert.equal(h.focused, bell);
+    bell.onclick(); assert.equal(panel.hidden, false);
+});
 test('removal commands run inline with projected revision and snapshot without closing the menu', async () => {
     const h = harness({ inbox: () => ({ hasMore: false, notifications: [{ id: 'request', event: { title: 'Movie', body: 'Awaiting consent', commands: [
         { id: 'allow', label: 'Allow', revision: 4, snapshot: 'fresh', enabled: true, selected: true },
@@ -115,14 +138,14 @@ test('source mute only changes the current source in-app preference', async () =
 test('settings show current choices and can restore a previously muted source', async () => {
     const h = harness({ preferences: [{ source: 'deletion-queue', type: '*', channel: 'in-app', enabled: false }] }); await settle();
     h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick(); await settle();
-    assert(h.all().some(e => e.tag === 'button' && e.attrs['aria-label'] === 'Enable non-critical in-app notifications' && e.attrs['aria-pressed'] === 'true'));
+    assert(h.all().some(e => e.tag === 'button' && e.attrs['aria-label'] === 'non-critical in-app notifications' && e.attrs['role']==='switch' && e.attrs['aria-checked'] === 'true'));
     const enable = h.all().find(e => e.attrs['aria-label'] === 'Unmute deletion-queue · * · in-app'); assert(enable); await enable.onclick(); await settle();
     const saved = h.calls.find(call => call.options.method === 'PUT');
     assert.deepEqual(JSON.parse(saved.options.body), { source: 'deletion-queue', type: '*', channel: 'in-app', enabled: true });
 });
 test('silent inbox refresh does not rebuild an active preference editor', async () => {
     const h = harness(); await settle(); h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick(); await settle();
-    const before = h.all().find(e => e.attrs['aria-label'] === 'Enable non-critical in-app notifications');
+    const before = h.all().find(e => e.attrs['aria-label'] === 'non-critical in-app notifications');
     const reads = h.calls.filter(call => call.url.endsWith('/preferences')).length;
     h.listeners.focus(); await settle();
     assert(h.all().includes(before)); assert.equal(h.calls.filter(call => call.url.endsWith('/preferences')).length, reads);
@@ -169,7 +192,7 @@ test('episode-specific preference saves do not replace unrelated or global choic
     const h = harness({ preferences: [global] }); await settle();
     h.all().find(e => e.attrs['aria-label'] === 'Notification settings').onclick();
     await settle();
-    const control = h.all().find(e => e.tag === 'button' && e.attrs['aria-label'] === 'Mute new episodes on in-app');
+    const control = h.all().find(e => e.tag === 'button' && e.attrs['aria-label'] === 'new episodes on in-app');
     assert(control); await control.onclick(); await settle();
     const write = h.calls.find(c => c.options.method === 'PUT'); assert(write);
     assert(write.url.endsWith('/preferences/rule'));

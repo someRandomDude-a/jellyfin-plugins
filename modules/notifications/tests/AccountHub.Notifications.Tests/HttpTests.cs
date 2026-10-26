@@ -52,6 +52,14 @@ public sealed class HttpTests
         Assert.Equal(1, calls);
         f.Store.Mark(f.Host.Alice, id, true);
         Assert.Equal(HttpStatusCode.NotFound, (await alice.PostAsync(Base + $"/notifications/{id}/actions", Body("allow"))).StatusCode);
+        Assert.Empty(f.Store.Inbox(f.Host.Alice,0,25,null,false));
+        Assert.Single(f.Store.Inbox(f.Host.Alice,0,25,null,false,history:true));
+        using var archived=JsonDocument.Parse(await alice.GetStringAsync(Base+"/notifications?history=true"));
+        var entry=archived.RootElement.GetProperty("data").GetProperty("notifications").EnumerateArray().Single();
+        Assert.True(entry.GetProperty("dismissed").GetBoolean());Assert.True(entry.GetProperty("read").GetBoolean());
+        Assert.Empty(entry.GetProperty("event").GetProperty("commands").EnumerateArray());
+        using var other=JsonDocument.Parse(await bob.GetStringAsync(Base+"/notifications?history=true"));
+        Assert.Empty(other.RootElement.GetProperty("data").GetProperty("notifications").EnumerateArray());
     }
     [Fact]
     public async Task InboxDoesNotExposeOtherRecipientsOfTheSameEvent()

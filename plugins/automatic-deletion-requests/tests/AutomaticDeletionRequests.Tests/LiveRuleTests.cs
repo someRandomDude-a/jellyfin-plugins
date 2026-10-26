@@ -29,7 +29,7 @@ public sealed class LiveRuleTests
             var store = new RuleStore(paths); var actor = new User("fixture", "auth", "reset") { Id = Guid.NewGuid() };
             var movie = new Movie { Id = Guid.NewGuid(), Name = "Old movie", ProductionYear = 1990 }; var inScope = true;
             var users = Fake<IUserManager>((m, _) => m.Name switch { "GetUserById" => actor, "GetUserDto" => new UserDto { Id = actor.Id, Policy = new UserPolicy { IsAdministrator = true } }, _ => throw new NotSupportedException() });
-            var library = Fake<ILibraryManager>((m, _) => m.Name == "GetItemList" ? inScope ? new BaseItem[] { movie } : Array.Empty<BaseItem>() : throw new NotSupportedException());
+            var library = Fake<ILibraryManager>((m, _) => m.Name == "GetVirtualFolders" ? VirtualFolders(m,store.Read(s=>s.Configuration.LibraryId)) : m.Name == "GetItemList" ? inScope ? new BaseItem[] { movie } : Array.Empty<BaseItem>() : throw new NotSupportedException());
             var rule = new Rule("old", "Old movies", true, "all", [new("year", "less", JsonSerializer.SerializeToElement(2000))]);
             store.Write(s => { s.Configuration = new(1, true, actor.Id, Guid.NewGuid(), 24, [rule]); return true; });
             var runner = new RuleRunner(store, library, users, new(provider)); var check = Contract.Serialize(new AutomaticRuleCheck(actor.Id, movie.Id, rule.Id));
@@ -52,7 +52,8 @@ public sealed class LiveRuleTests
             var actor=new User("fixture","auth","reset"){Id=Guid.NewGuid()};var scope=Guid.NewGuid();
             var movie=new Movie{Id=Guid.NewGuid(),Name="Fixture",ProductionYear=1990};
             var users=Fake<IUserManager>((m,_)=>m.Name switch {"GetUserById"=>actor,"GetUserDto"=>new UserDto{Id=actor.Id,Policy=new UserPolicy{IsAdministrator=true}},_=>throw new NotSupportedException()});
-            var library=Fake<ILibraryManager>((m,a)=>m.Name=="GetItemList"&&((InternalItemsQuery)a[0]!).ParentId==scope?new BaseItem[]{movie}:Array.Empty<BaseItem>());
+            var rootExists=true;var queryCount=0;
+            var library=Fake<ILibraryManager>((m,a)=>{if(m.Name=="GetVirtualFolders")return VirtualFolders(m,rootExists?scope:Guid.Empty);if(m.Name!="GetItemList")throw new NotSupportedException();queryCount++;return ((InternalItemsQuery)a[0]!).ParentId==scope?new BaseItem[]{movie}:Array.Empty<BaseItem>();});
             var rule=new Rule("r","Rule",true,"all",[new("year","less",JsonSerializer.SerializeToElement(2000))]);
             var filter=new LibraryFilter("a","Filter",scope,rule with{Id="predicate"},[rule.Id]);
             store.Write(s=>{s.Configuration=new(1,true,actor.Id,Guid.Empty,24,[rule]){Filters=[filter,filter with{Id="b"}]};return true;});
@@ -65,8 +66,16 @@ public sealed class LiveRuleTests
             using(var result=JsonDocument.Parse(await runner.ValidateAsync(request,default)))Assert.False(result.RootElement.GetProperty("matches").GetBoolean());
             candidates=JsonSerializer.SerializeToElement(await runner.TestableAsync(filter,"Fixture",default));Assert.Empty(candidates.GetProperty("items").EnumerateArray());
             movie.ProductionYear=1990;
+            rootExists=false;var before=queryCount;
+            await Assert.ThrowsAsync<InvalidOperationException>(()=>runner.ValidateAsync(request,default));Assert.Equal(before,queryCount);
+            await Assert.ThrowsAsync<InvalidOperationException>(()=>runner.TestableAsync(filter,"Fixture",default));Assert.Equal(before,queryCount);
+            rootExists=true;
             store.Write(s=>{s.Configuration=s.Configuration with{Revision=2,Filters=[]};return true;});
             using(var result=JsonDocument.Parse(await runner.ValidateAsync(request,default)))Assert.False(result.RootElement.GetProperty("matches").GetBoolean());
         } finally {if(Directory.Exists(root))Directory.Delete(root,true);}
+    }
+    private static object VirtualFolders(MethodInfo method,Guid id) {
+        var folders=new List<MediaBrowser.Model.Entities.VirtualFolderInfo>{new(){ItemId=id.ToString()}};
+        return method.ReturnType.IsArray?folders.ToArray():folders;
     }
 }

@@ -148,7 +148,7 @@
             explanation(panel.content);
             if (get(preview, 'requestOnly')) panel.content.append(node('p', 'Declines this unfulfilled Seerr request. History is kept.', 'dq-hint'));
             if (!get(preview, 'executionAvailable')) panel.content.append(node('p', 'Removal is paused until safety checks complete.', 'dq-warning'));
-            panel.content.append(button('Request removal', async () => {
+            panel.content.append(button(get(preview,'kind')===1||get(preview,'kind')==='Series'?'Request removal of entire series':'Request removal', async () => {
                 const p = await api('proposals', 'POST', { commandId: command(), selection: get(preview, 'selection'),
                     fingerprint: get(preview, 'fingerprint'), snapshot: get(preview, 'snapshot') });
                 if (alive(panel)) panel.d.close();
@@ -189,6 +189,7 @@
             return true;
         }).map(point => {
             const key = get(point, 'key');
+            if (key === 'closed' && terminal) return { ...point, state: get(p, 'status') === 'Completed' ? 'complete' : 'cancelled', label: get(p, 'status') === 'Completed' ? 'Completed' : get(p, 'status'), at: get(point, 'at') || get(p, 'closedAt') || get(original.find(step => get(step, 'key') === 'confirmed'), 'at') };
             if (key === 'closed' && !['Cancelled', 'Expired'].includes(get(p, 'status'))) return { ...point, label: 'Confirm removal & completed', at: get(point, 'at') || get(original.find(step => get(step, 'key') === 'confirmed'), 'at') };
             if (key === 'checks' && !['Inactive', 'Consent and activity'].includes(get(point, 'label'))) return { ...point, label: 'Consent and activity' };
             if (key === 'requested') {
@@ -241,9 +242,15 @@
                 const spacing = checkpoints.some(step => get(step, 'key') === 'approval') ? 32 : 22;
                 while (occupied.some(previous => previous.lane === lane && Math.abs(previous.x - x) < spacing)) lane++;
                 occupied.push({ x, lane }); step.style.setProperty('--dq-position', x + '%'); step.style.setProperty('--dq-lane', lane);
-                if (get(point, 'dateLabel')) step.append(node('span', get(point, 'dateLabel'), 'dq-checkpoint-date'));
-                if (at) { const time = node('time', at.toLocaleDateString()); time.dateTime = at.toISOString(); step.append(time); }
-                else step.append(node('span', get(point, 'state') === 'current' ? 'In progress' : ['complete', 'cancelled'].includes(get(point, 'state')) ? 'Date not recorded' : get(point, 'state') === 'stopped' ? 'Stopped' : 'Pending', 'dq-checkpoint-date'));
+                step.tabIndex = 0;
+                if (at) {
+                    const days = Math.round((at - (evaluated || new Date())) / 86400000);
+                    const time = node('time', index === 0 ? at.toLocaleDateString() : ended && get(point,'key')!=='closed' && ['cancelled','stopped','pending'].includes(get(point,'state')) ? 'Stopped' : days === 0 ? 'Today' : days > 0 ? 'In ' + days + ' days' : Math.abs(days) + ' days ago');
+                    time.dateTime = at.toISOString(); time.title = (get(point,'dateLabel') ? get(point,'dateLabel')+' · ' : '')+at.toLocaleString(); step.title = time.title;
+                    const relative = time.textContent;
+                    const showDate = () => { time.textContent = at.toLocaleString(); }, hideDate = () => { time.textContent = relative; };
+                    step.addEventListener('mouseenter', showDate); step.addEventListener('mouseleave', hideDate); step.addEventListener('focus', showDate); step.addEventListener('blur', hideDate);step.append(time);
+                } else step.append(node('span', get(point, 'state') === 'cancelled' ? 'Complete' : ended ? 'Stopped' : get(point, 'state') === 'current' ? 'Pending' : get(point, 'state') === 'complete' ? 'Complete' : 'Pending', 'dq-checkpoint-date'));
                 datedNodes.append(step);
             }
         }
@@ -253,20 +260,21 @@
             let pendingIndex = checkpoints.findIndex(point => get(point, 'state') === 'current');
             if (pendingIndex < 0) pendingIndex = checkpoints.findIndex(point => get(point, 'state') === 'pending');
             const followStage = !ended && pendingIndex >= 0 && (!now || dated.length < 2 || finish === start || !date(get(checkpoints[pendingIndex], 'at')));
-            const markerPosition = followStage ? positions[pendingIndex] : now ? position(now.getTime()) : null;
+            const markerPosition = ended ? 100 : followStage ? positions[pendingIndex] : now ? position(now.getTime()) : null;
+            const completedIndex = checkpoints.reduce((last,point,index)=>['complete','cancelled'].includes(get(point,'state'))?index:last,0);
+            const progress = ended ? 100 : markerPosition ?? positions[completedIndex];
+            const travelled = node('div',undefined,'dq-travelled');travelled.style.width=progress+'%';travelled.dataset.cancelled=String(ended&&get(p,'status')!=='Completed');track.append(travelled);
             if (markerPosition !== null && (followStage || Math.abs(markerPosition - positions[0]) >= 8)) {
                 const completed = get(p, 'status') === 'Completed';
                 const marker = node('div', undefined, 'dq-media-marker'); marker.dataset.stopped = String(ended && !completed); marker.dataset.completed = String(completed); marker.style.setProperty('--dq-position', markerPosition + '%');
                 if (followStage) { marker.dataset.checkpoint = get(checkpoints[pendingIndex], 'key'); marker.style.setProperty('--dq-marker-lane', occupied[pendingIndex].lane); }
                 const closedIndex = checkpoints.findIndex(point => get(point, 'key') === 'closed');
                 if (ended && closedIndex >= 0 && Math.abs(markerPosition - positions[closedIndex]) < 8) { marker.dataset.checkpoint = 'closed'; marker.style.setProperty('--dq-marker-lane', occupied[closedIndex].lane); }
-                const icon = node('span', get(p, 'mediaKind') === 'Series' ? 'tv' : 'movie', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
-                marker.append(icon, node('span', completed ? 'Removed' : ended ? 'Stopped here' : 'Now', 'dq-marker-label'));
-                marker.title = followStage ? 'Now · ' + get(checkpoints[pendingIndex], 'label') : (ended ? 'Request ended · ' : 'Current date · ') + now.toLocaleDateString(); marker.setAttribute('aria-label', marker.title); track.append(marker);
+                marker.title = followStage ? 'Now · ' + get(checkpoints[pendingIndex], 'label') : (ended ? 'Request ended · ' : 'Current date · ') + (now ? now.toLocaleDateString() : 'Date not recorded'); marker.setAttribute('aria-label', marker.title); track.append(marker);
             }
         }
         const closed = get(p, 'closureExplanation');
-        if (closed) content.append(node('p', closed + (get(p, 'closedCheckpoint') ? ' Stopped during ' + (get(p, 'closedCheckpoint') === 'delay' ? 'the safety delay.' : get(p, 'closedCheckpoint') === 'approval' ? 'administrator review.' : 'consent and activity checks.') : ' The original stopping checkpoint was not recorded.'), 'dq-closure'));
+        if (closed) timeline.setAttribute('aria-description', closed);
         content.append(timeline);
         const centerMarker = () => {
             const marker = timeline.querySelector('.dq-media-marker');
@@ -290,10 +298,10 @@
         const label = get(p, 'statusLabel') || ({ Blocked: 'Blocked', Waiting: 'Waiting', Ready: 'Ready for removal', Claimed: 'Removing', Uncertain: 'Needs review', FilesDeleted: 'Removal confirmed', Completed: 'Completed', Cancelled: 'Cancelled', Expired: 'Expired' })[status] || 'Pending checks';
         const help = get(p, 'statusHelp') || ({ ActivityCoverageIncomplete: 'Viewing-activity checks are not complete yet.', ConsentRequired: 'Required consent is missing or no longer current.', AdministratorApprovalRequired: 'Administrator approval is required.', DelayRequired: 'The safety delay must pass before removal.', RequestExpired: 'This request was not accepted within 30 days.', AdministratorDenied: 'This request was denied and closed.' })[get(p, 'reason')] || 'Removal is waiting for safety checks. No removal time is confirmed.';
         const badge = node('span', label, 'dq-status'); badge.dataset.status = status;
-        heading.append(node('h3', get(p, 'title')), badge, statusHelp(help)); content.append(heading);
+        heading.append(node('h3', get(p, 'title')), badge, statusHelp(get(p,'closureExplanation') || help)); content.append(heading);
         if (get(p, 'stage') && get(p, 'stage') !== 'History') content.append(node('span', get(p, 'stage'), 'dq-stage'));
         const scheduled = date(get(p, 'scheduledFor'));
-        if (scheduled) content.append(node('p', (status === 'Ready' ? 'Eligible since · ' : 'Scheduled no earlier than · ') + scheduled.toLocaleDateString(), 'dq-schedule'));
+        if (scheduled && !['Completed','Cancelled','Expired'].includes(status)) { const days=Math.ceil((scheduled-(date(get(p,'evaluatedAt'))||new Date()))/86400000);const summary=node('p',days>0?'Earliest removal in '+days+' days':'Safety delay elapsed','dq-schedule');summary.title=scheduled.toLocaleString();content.append(summary); }
         else if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) content.append(node('p', 'Not scheduled yet', 'dq-hint'));
         const answer = get(p, 'ownAnswer');
         if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) {
@@ -301,8 +309,8 @@
             if (get(p, 'canConsent') !== false) for (const [label, value] of [['Allow', 0], ['Keep', 1]]) {
                 const control = button(label, async () => {
                     await api('proposals/' + id + '/consent', 'POST', { commandId: command(), revision, snapshot: get(p, 'ownSnapshot'), answer: value });
-                    window.dispatchEvent(new Event('suite-removal-changed')); await loadNotices();
                     const updated = await api('proposals/' + id + '/status'); if (content.isConnected) { content.replaceChildren(); renderProposal(updated, content); }
+                    window.dispatchEvent(new Event('suite-removal-changed')); void loadNotices().catch(()=>{});
                 }, 'emby-button button-flat');
                 control.dataset.answer = value === 0 ? 'allow' : 'keep';
                 control.setAttribute('aria-pressed', String(answer === value || answer === (value === 0 ? 'Yes' : 'No'))); actions.append(control);
@@ -475,7 +483,7 @@
                 schedule(); throw new Error('This media changed. Reopen its removal action.');
             }
             const queued = get(itemStates.get(id)?.data, 'proposals')?.[0];
-            return queued ? proposal(get(queued, 'id')) : propose(id);
+            return queued ? proposal(get(queued, 'id')) : propose(guid(get(itemStates.get(id)?.data,'targetItemId')) || id);
         }, cls + ' dq-media-action dq-web-owned');
         b.dataset.dqItem = id; b.hidden = true; b.setAttribute('aria-label', 'Request removal'); b.title = 'Request removal';
         b.replaceChildren(node('span', 'delete_outline', 'material-icons')); b.firstChild.setAttribute('aria-hidden', 'true');
@@ -764,7 +772,7 @@
             content.replaceChildren();
             const proposals = get(result, 'proposals') || [];
             if (!proposals.length) {
-                if (get(result, 'canPropose')) { action('Request removal', 'delete_outline', () => propose(captured.id)); section.hidden = false; }
+                if (get(result, 'canPropose')) { action(get(result,'wholeSeries')?'Request removal of entire series':'Request removal', 'delete_outline', () => propose(guid(get(result,'targetItemId'))||captured.id)); section.hidden = false; }
                 else section.remove();
                 return;
             }

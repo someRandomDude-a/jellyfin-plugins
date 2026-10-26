@@ -106,6 +106,19 @@ public sealed class MediaPresentationTests : IDisposable
         Assert.Throws<QueueException>(() => (layer with { Text = "{path}" }).Validate());
         Assert.Throws<QueueException>(() => (template with { Layers = Enumerable.Range(0, 13).Select(i => layer with { Id = i.ToString() }).ToArray() }).Validate());
     }
+    [Fact] public void CountdownTokensAndRoundedRectanglesAreBoundedAndNeverInventSchedules() {
+        var now=DateTimeOffset.Parse("2026-10-26T12:00:00Z");
+        var layer=new OverlayLayer("countdown",Text:"{days} days / {hours} hours / {quality}");layer.Validate();
+        Assert.Equal("2 days / 25 hours / 4K",layer.Format(now.AddHours(25),true,now));
+        Assert.Equal("0 days / 0 hours / Standard",layer.Format(now.AddHours(-1),false,now));
+        Assert.Contains("pending",layer.Format(null,false,now));
+        var template=new OverlayTemplate(Text:"Removal in {days} days");template.Validate();Assert.Equal("Removal in 2 days",template.Format(now.AddHours(25),false,now));
+        var shape=new OverlayLayer("shape",Kind:"rectangle",X:0,Y:0,Width:1,Height:1,Color:"#123456"){CornerRadius=.25f};
+        using var rendered=SKBitmap.Decode(new ArtworkRenderer().Render(bytes,new OverlayTemplate{Layers=[shape]},"sample"));
+        Assert.Equal(SKColors.Navy,rendered.GetPixel(0,0));Assert.Equal(SKColor.Parse("#123456"),rendered.GetPixel(120,180));
+        Assert.Throws<QueueException>(()=>(shape with{CornerRadius=float.NaN}).Validate());
+        Assert.Throws<QueueException>(()=>(shape with{CornerRadius=.51f}).Validate());
+    }
     [Fact] public async Task FreePositionLayeredOverlaysStillRestoreTheOriginalNativePointerAndBytes() {
         var template = new OverlayTemplate { Layers = [new("date", Text: "Removal {date}", X: .1f, Y: .2f, Width: .8f, Height: .2f, Rotation: 12)] };
         await service.SaveAsync(new MediaPresentationSettings(OverlaysEnabled: true) { Portrait = template }, () => {}, default);

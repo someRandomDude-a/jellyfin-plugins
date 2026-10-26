@@ -95,13 +95,14 @@ const http = require('node:http');
             await page.locator('#account-hub-inbox').waitFor({ state: 'visible' });
             await page.getByRole('button', { name: 'Notification settings', exact: true }).click();
             await page.getByRole('heading', { name: 'Notification settings', exact: true }).waitFor();
-            const muteInApp = page.getByRole('button', { name: 'Mute non-critical in-app notifications', exact: true });
+            const muteInApp = page.getByRole('switch', { name: 'non-critical in-app notifications', exact: true });
             await muteInApp.click();
-            await page.waitForFunction(() => document.querySelector('[aria-label="Mute non-critical in-app notifications"]')?.getAttribute('aria-pressed') === 'true');
+            await page.waitForFunction(() => document.querySelector('[aria-label="non-critical in-app notifications"]')?.getAttribute('aria-checked') === 'false');
             await page.getByText('Muted sources and types', { exact: true }).click();
             await page.getByRole('button', { name: 'Unmute * · * · in-app', exact: true }).click();
-            await page.waitForFunction(() => document.querySelector('[aria-label="Enable non-critical in-app notifications"]')?.getAttribute('aria-pressed') === 'true');
-            await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
+            await page.waitForFunction(() => document.querySelector('[aria-label="non-critical in-app notifications"]')?.getAttribute('aria-checked') === 'true');
+            await page.keyboard.press('Escape');
+            await page.locator('#account-hub-inbox').waitFor({ state: 'hidden' });
             const inboxPattern = '**/Notifications/api/v1/notifications?*';
             const actionPattern = '**/Notifications/api/v1/notifications/*/actions';
             let selectedAnswer = 'allow', inlineActions = 0;
@@ -151,7 +152,9 @@ const http = require('node:http');
                     await inbox.locator('section').first().locator('.notificationOptions > summary').click();
                     await inbox.screenshot({ path: process.env.ADMIN_SCREENSHOTS + '/notifications-menu-' + width + '.png' });
                 }
-                await page.getByRole('button', { name: 'Close notifications', exact: true }).click();
+                await page.keyboard.press('Escape');
+                if (await inbox.isVisible()) await page.keyboard.press('Escape'); // Close an open options menu first.
+                await inbox.waitFor({ state: 'hidden' });
             }
             await page.unroute(inboxPattern);
             await page.unroute(actionPattern); assert(inlineActions >= 2);
@@ -281,7 +284,8 @@ const http = require('node:http');
         assert.equal(await selectedRow.locator('.dq-timeline li').count(), 3);
         assert.equal(await selectedRow.locator('[aria-current=step]').getAttribute('data-checkpoint'), 'delay');
         assert.equal(await selectedRow.locator('.dq-timeline time').first().getAttribute('datetime'), '2026-10-20T12:00:00.000Z');
-        assert.equal(await selectedRow.locator('.dq-media-marker .material-icons').textContent(), 'tv');
+        assert.equal(await selectedRow.locator('.dq-media-marker .material-icons').count(), 0, 'Media position is a compact dot, not an icon');
+        assert.equal(await selectedRow.locator('.dq-travelled').count(),1,'Completed track must be highlighted');
         assert(await selectedRow.evaluate(e => parseFloat(e.querySelector('[data-checkpoint=checks]').style.getPropertyValue('--dq-position')) < parseFloat(e.querySelector('.dq-media-marker').style.getPropertyValue('--dq-position'))), 'Media marker must reflect server time relative to dated nodes');
         for (const width of [320, 1280]) {
             await page.setViewportSize({ width, height: 900 });
@@ -385,6 +389,11 @@ const http = require('node:http');
                 await selector.selectOption(ruleId);
                 const source=page.locator('.ar-source');await source.waitFor();assert.equal(await source.locator('.ar-socket').count(),0,'Upstream filter connections must be locked in rule mode');
                 assert(await page.locator('.ar-wires path[data-execution=true]').count()>0);
+                const skin=await page.addStyleTag({content:'#automaticDeletionAdmin {color:rgb(170,195,210);--theme-primary-color:rgb(180,90,170)} #automaticDeletionAdmin .ar-circuit.paperList,#automaticDeletionAdmin .ar-block.paperList {background-color:rgb(32,42,52)}'});
+                assert.equal(await page.locator('.ar-circuit').evaluate(e=>getComputedStyle(e).color),'rgb(170, 195, 210)','Canvas must inherit skin text colour');
+                assert.equal(await page.locator('.ar-circuit').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(32, 42, 52)','Native paperList surface must accept skin overrides');
+                assert.equal(await page.locator('.ar-block[data-kind=condition] .ar-output').evaluate(e=>getComputedStyle(e).color),'rgb(180, 90, 170)','Sockets must follow the skin accent');
+                await skin.evaluate(e=>e.remove());
             }
             if (name === 'DeletionQueueAdmin') {
                 const editor = page.locator('#dqPresentation');

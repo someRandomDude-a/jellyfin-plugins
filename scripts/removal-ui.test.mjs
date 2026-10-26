@@ -45,6 +45,18 @@ test('menus omit non-actionable removal sections and unidentified Requests cards
         assert.equal(menu.querySelector('.dq-context-section'), null);
     } finally { f.dom.window.close(); }
 });
+test('episode context removal explicitly previews the parent series, never an episode or season deletion', async () => {
+    const series='33333333333333333333333333333333';
+    const f=await fixture(false,{removal:{canPropose:true,wholeSeries:true,targetItemId:series,proposals:[]}});
+    try {
+        f.d.querySelector('.itemAction').dispatchEvent(new f.w.MouseEvent('contextmenu',{bubbles:true}));
+        const menu=f.d.createElement('div');menu.className='actionSheet';menu.getClientRects=()=>[{}];menu.innerHTML='<div class="actionSheetScroller"></div>';f.d.body.append(menu);await tick();
+        const action=menu.querySelector('.dq-context-action');assert.equal(action.textContent.includes('Request removal of entire series'),true);
+        action.click();menu.remove();await tick();
+        assert(f.calls.some(c=>c.path.endsWith('/targets/items/'+series+'/preview')));
+        assert(!f.calls.some(c=>c.method==='DELETE'||c.path.endsWith('/proposals')));
+    }finally{f.dom.window.close();}
+});
 test('thumbnails stay untouched and queued context menus show timeline and revisioned consent/Undo actions', async () => {
     const f = await fixture(false, { removal: { canPropose: true, proposals: [{ id: 'request', status: 'Waiting', statusLabel: 'Scheduled', revision: 9,
         ownSnapshot: 'current-snapshot', ownAnswer: 1, canUndo: true,
@@ -105,7 +117,7 @@ test('Now follows the pending stage when only the requested date is known', asyn
         f.d.querySelector('.dq-local-shortcut').click(); await tick();
         const marker = f.d.querySelector('.dq-media-marker'); assert(marker);
         assert.equal(marker.dataset.checkpoint, 'checks'); assert.equal(marker.style.getPropertyValue('--dq-position'), '50%');
-        assert.equal(marker.querySelector('.dq-marker-label').textContent, 'Now');
+        assert.equal(marker.children.length,0); assert.match(marker.getAttribute('aria-label'),/Now/);
     } finally { f.dom.window.close(); }
 });
 test('timeline scales dated nodes and the media marker without inventing pending dates', async () => {
@@ -120,7 +132,8 @@ test('timeline scales dated nodes and the media marker without inventing pending
         assert.equal(f.d.querySelector('[data-checkpoint=requested]').style.getPropertyValue('--dq-position'), '0%');
         const x = key => parseFloat(f.d.querySelector('[data-checkpoint=' + key + ']').style.getPropertyValue('--dq-position'));
         assert(Math.abs(x('checks') - 100 / 6) < .001); assert(Math.abs(x('delay') - 200 / 3) < .001);
-        const marker = f.d.querySelector('.dq-media-marker'); assert(Math.abs(parseFloat(marker.style.getPropertyValue('--dq-position')) - 100 / 3) < .001); assert.equal(marker.querySelector('.material-icons').textContent, 'tv');
+        const marker = f.d.querySelector('.dq-media-marker'); assert(Math.abs(parseFloat(marker.style.getPropertyValue('--dq-position')) - 100 / 3) < .001); assert.equal(marker.children.length,0);
+        const stage=f.d.querySelector('[data-checkpoint=delay]'); assert.match(stage.textContent,/In 2 days/);stage.dispatchEvent(new f.dom.window.Event('mouseenter'));assert(stage.querySelector('time').textContent.includes(':'));stage.dispatchEvent(new f.dom.window.Event('mouseleave'));assert.match(stage.textContent,/In 2 days/);
         assert.equal(x('removing'), 100); assert.equal(f.d.querySelector('[data-checkpoint=removing] time'), null);
         assert.equal(f.d.querySelector('.dq-timing'), null); assert(!f.d.querySelector('.dq-timeline time').textContent.includes(':'));
     } finally { f.dom.window.close(); }
@@ -133,10 +146,11 @@ test('History marks the real cancellation time relative to the abandoned deletio
     ] }] });
     try {
         f.d.querySelector('.dq-local-shortcut').click(); await tick();
-        assert.equal(f.d.querySelector('.dq-media-marker').style.getPropertyValue('--dq-position'), '25%');
-        assert.equal(f.d.querySelector('.dq-marker-label').textContent, 'Stopped here');
-        assert.match(f.d.querySelector('.dq-closure').textContent, /Undo.*safety delay/);
-        assert.match(f.d.querySelector('[data-checkpoint=delay]').textContent, /Abandoned earliest date/);
+        assert.equal(f.d.querySelector('.dq-media-marker').style.getPropertyValue('--dq-position'), '100%');
+        assert.equal(f.d.querySelector('.dq-marker-label'),null);
+        assert.equal(f.d.querySelector('.dq-closure'),null);assert.match(f.d.querySelector('.dq-help-text').textContent,/Undo/);
+        assert.match(f.d.querySelector('[data-checkpoint=delay]').title,/Abandoned earliest date/);
+        assert.equal(f.d.querySelector('[data-checkpoint=closed]').dataset.state,'cancelled');assert(!f.d.body.textContent.includes('In progress'));
     } finally { f.dom.window.close(); }
 });
 test('Calendar merges dated removals into native events with a Deletion Date filter and no sidebar queue', async () => {
@@ -207,7 +221,7 @@ test('scheduled rows show a qualified removal date and milestone dates below the
     ] }] });
     try {
         f.d.querySelector('.dq-local-shortcut').click(); await tick(); const row = f.d.querySelector('.dq-queue-row');
-        assert.match(row.querySelector('.dq-schedule').textContent, /Scheduled no earlier than/);
+        assert.match(row.querySelector('.dq-schedule').textContent, /Earliest removal in .* days/);
         assert.equal(row.lastElementChild.className, 'dq-timeline'); assert.equal(row.querySelector('[data-checkpoint=delay] time').dateTime, '2026-11-05T15:00:00.000Z');
         assert.equal(row.querySelector('[data-checkpoint=confirmed]'), null);
         const reads = f.calls.filter(call => call.path.endsWith('/proposals')).length;

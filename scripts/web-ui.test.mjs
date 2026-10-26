@@ -8,6 +8,14 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
+test('Automation chrome defers surfaces and typography to native skins',async()=>{
+    const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
+    assert(!/#151a24|#e3e9f3|#182131|#252e3e|font-family\s*:/i.test(html));
+    assert.match(html,/--theme-primary-color/);assert.match(html,/background:var\(--ar-canvas-surface\)/);
+    assert(!html.includes('A thoughtful way'));assert(!html.includes('03 · Review'));
+    const canvas=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js');
+    assert(canvas.includes('ar-circuit dialog paperList'));assert(canvas.includes("if(!n)return"));
+});
 test('Circuit input cards are locked, repositionable and selectable for path tests; traces colour ports and wires', async () => {
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;
     try {
@@ -24,6 +32,12 @@ test('Circuit input cards are locked, repositionable and selectable for path tes
         editor.trace({start:true,c0:false,group:false,delete:false,'filter:scope':true});
         assert(w.document.querySelector('.ar-wires path[data-signal=false]'));assert(w.document.querySelector('.ar-socket[data-signal=false]'));
         assert(w.document.querySelector('.ar-wires path[data-signal=true]'));
+        const viewport=w.document.querySelector('.ar-viewport'),pan=rule.circuit.panX;
+        viewport.dispatchEvent(new w.MouseEvent('pointerdown',{bubbles:true,button:1,clientX:10,clientY:10}));
+        viewport.dispatchEvent(new w.MouseEvent('pointermove',{bubbles:true,clientX:50,clientY:30}));viewport.dispatchEvent(new w.MouseEvent('pointerup',{bubbles:true}));assert.equal(rule.circuit.panX,pan+40);
+        const wire=w.document.querySelector('.ar-wires path[data-target=group]');wire.dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}));
+        const insert=[...w.document.querySelectorAll('.ar-canvas-menu button')].find(b=>b.textContent==='Insert NOT');assert(insert);insert.click();assert(rule.circuit.nodes.some(n=>n.kind==='not'));
+        assert(w.document.querySelector('.ar-logic-gate svg path'));
         editor.dispose();assert.equal(w.document.querySelectorAll('.ar-circuit').length,0);
     }finally{w.close();}
 });
@@ -33,14 +47,14 @@ test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save
     let config = { revision: 0, enabled: false, actorId: '00000000-0000-0000-0000-000000000000', libraryId: '00000000-0000-0000-0000-000000000000', intervalHours: 24, rules: [] };
     const actor = '11111111-1111-1111-1111-111111111111', library = '22222222-2222-2222-2222-222222222222';
     const pascal = value => Array.isArray(value) ? value.map(pascal) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key[0].toUpperCase() + key.slice(1), pascal(item)])) : value;
-    w.ApiClient = { getUrl: p => p, ajax: async options => { if (options.type === 'POST') return { matches: [{ title: '<img src=x onerror=alert(1)>', ruleId: config.rules[0].id, alreadySubmitted: false }] }; if (options.type === 'PUT') { const body = JSON.parse(options.data); writes.push(body); config = { ...body.configuration, revision: 1 }; } return { configuration: pascal(config), actors: [{ Id: actor, name: 'Library administrator' }], libraries: [{ id: library, Name: 'Movies' }], queueAvailable: true, status: 'Preview' }; } };
+    w.ApiClient = { getUrl: p => p, ajax: async options => { if(options.url.includes('/media/testable'))return {items:[]};if(options.url.includes('/media?'))return []; if (options.type === 'POST') return { matches: [{ title: '<img src=x onerror=alert(1)>', ruleId: config.rules[0].id, alreadySubmitted: false }] }; if (options.type === 'PUT') { const body = JSON.parse(options.data); writes.push(body); config = { ...body.configuration, revision: 1 }; } return { configuration: pascal(config), actors: [{ Id: actor, name: 'Library administrator' }], libraries: [{ id: library, Name: 'Movies' }], queueAvailable: true, status: 'Preview' }; } };
     try {
         w.CSS ||= {}; w.CSS.escape ||= x=>x;
         w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/routing.js'));
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.js')); await turn(); await turn();
-        assert.match(d.querySelector('#arRuleCards').textContent, /No cards/);
+        assert.match(d.querySelector('#arRuleCards').textContent, /Movies/);
         assert.match(d.querySelector('#arActor').textContent, /Library administrator/); assert.match(d.querySelector('#arLibrary').textContent, /Movies/);
         d.querySelector('#arEnabled').checked = true; d.querySelector('#arForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
         assert.equal(writes.length, 0); assert.match(d.querySelector('#arStatus').textContent, /Choose a request owner/);

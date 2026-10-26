@@ -106,6 +106,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     public async Task<IActionResult> ItemRemoval(Guid id, [FromServices] SeerrExecutionGateway? gateway = null)
     {
         var caller = identity.Caller(User);
+        var selectedId=id;id=targets.ContextItem(caller.Id,id);
         if (!targets.Accessible(caller.Id, id)) throw new QueueException("TargetUnavailable");
         var state = runtime.Read(); var now = clock.GetUtcNow();
         var matching = state.Proposals.Where(p => p.Target.JellyfinItemId == id && targets.Accessible(caller.Id, p)).ToArray();
@@ -130,7 +131,7 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             } catch (QueueException e) { canPropose = false; reason = e.Code; }
         }
         return Ok(new {
-            CanPropose = canPropose, Reason = reason,
+            CanPropose = canPropose, Reason = reason, TargetItemId=id, WholeSeries=selectedId!=id,
             Proposals = matching.Where(p => !p.Terminal).OrderByDescending(p => p.CreatedAt)
                 .Select(p => QueueRules.Project(state, p, caller.Id, now)).ToArray()
         });

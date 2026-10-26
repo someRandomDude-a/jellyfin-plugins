@@ -160,14 +160,14 @@ public sealed partial class NotificationStore
             return result;
         });
 
-    public IReadOnlyList<InboxRow> Inbox(Guid user, int skip, int limit, string? source, bool unread, bool includeAdmin = true) => Run(c =>
+    public IReadOnlyList<InboxRow> Inbox(Guid user, int skip, int limit, string? source, bool unread, bool includeAdmin = true, bool history = false) => Run(c =>
     {
         using var cmd = Command(c, """
-            SELECT id,event,is_read,dismissed FROM nh_inbox WHERE user_id=$0 AND dismissed=0
+            SELECT id,event,is_read,dismissed FROM nh_inbox WHERE user_id=$0 AND dismissed=$6
             AND ($1=0 OR is_read=0) AND ($2 IS NULL OR json_extract(event,'$.source')=$2)
             AND ($5=1 OR json_extract(event,'$.adminOnly')=0)
             ORDER BY created DESC,rowid DESC LIMIT $3 OFFSET $4
-            """, user, unread, source, Math.Clamp(limit, 1, 100), Math.Clamp(skip, 0, 100000), includeAdmin);
+            """, user, unread, source, Math.Clamp(limit, 1, 100), Math.Clamp(skip, 0, 100000), includeAdmin, history);
         using var r = cmd.ExecuteReader(); var rows = new List<InboxRow>();
         while (r.Read()) rows.Add(new(Guid.Parse(r.GetString(0)), JsonSerializer.Deserialize<NotificationEvent>(r.GetString(1), Contract.Json)! with { Audience = [] }, r.GetBoolean(2), r.GetBoolean(3)));
         return rows;
@@ -178,7 +178,7 @@ public sealed partial class NotificationStore
     });
     public long Unread(Guid user, bool includeAdmin = true) => Run(c => long.Parse(Scalar(c, "SELECT count(*) FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 AND ($1=1 OR json_extract(event,'$.adminOnly')=0)", user, includeAdmin)!));
     public bool Mark(Guid user, Guid id, bool dismiss) => Run(c => Execute(c, dismiss
-        ? "UPDATE nh_inbox SET dismissed=1 WHERE id=$0 AND user_id=$1"
+        ? "UPDATE nh_inbox SET dismissed=1,is_read=1 WHERE id=$0 AND user_id=$1"
         : "UPDATE nh_inbox SET is_read=1 WHERE id=$0 AND user_id=$1", id, user) > 0);
     public void ReadAll(Guid user) => Run(c => Execute(c, "UPDATE nh_inbox SET is_read=1 WHERE id IN (SELECT id FROM nh_inbox WHERE user_id=$0 AND is_read=0 LIMIT 1000)", user));
     public Preference[] Preferences(Guid user) => Run(c => JsonSerializer.Deserialize<Preference[]>(Scalar(c, "SELECT json FROM nh_preferences WHERE user_id=$0", user) ?? "[]", Contract.Json)!);

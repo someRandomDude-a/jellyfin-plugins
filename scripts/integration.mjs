@@ -373,6 +373,10 @@ try {
         assert.equal(repeated.data.data.status,'duplicate');
         assert.equal((await request(endpoint+'notifications/unread-count')).data.data.count,before+1,'Producer replay must not duplicate the inbox');
         await request(endpoint+'producer/notifications',{method:'POST',auth:null,body:publication,expected:[400,401,403]});
+        await request(endpoint+'notifications/'+inbox[0].id+'/dismiss',{method:'POST'});
+        const archived=(await request(endpoint+'notifications?history=true')).data.data.notifications;
+        assert(archived.some(row=>row.id===inbox[0].id&&row.dismissed&&row.read),'Dismissed notification must remain in recipient history');
+        assert(!(await request(endpoint+'notifications')).data.data.notifications.some(row=>row.id===inbox[0].id),'Dismissed notification must leave the active inbox');
         if(process.argv.includes('--notifications-restart')) {
             docker('restart',name);
             base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;

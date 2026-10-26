@@ -15,6 +15,11 @@ namespace Jellyfin.Plugin.AutomaticDeletionRequests;
 
 public static class NativeAccess
 {
+    public static void RequireLibraries(ILibraryManager library,IEnumerable<Guid> ids) {
+        var selected=ids.Distinct().ToArray();if(selected.Length==0)return;
+        var roots=library.GetVirtualFolders().Select(f=>Guid.TryParse(f.ItemId,out var id)?id:Guid.Empty).Where(id=>id!=Guid.Empty).ToHashSet();
+        if(selected.Any(id=>id==Guid.Empty||!roots.Contains(id)))throw new InvalidOperationException("Library scope unavailable");
+    }
     public static bool Administrator(IUserManager users, Guid id) {
         var user = users.GetUserById(id); if (user is null) return false;
         var policy = users.GetUserDto(user).Policy;
@@ -29,6 +34,7 @@ public sealed class RuleRunner(RuleStore store, ILibraryManager library, IUserMa
 {
     public async Task<object> TestableAsync(LibraryFilter filter,string search,CancellationToken ct) {
         RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[]) {Filters=[filter with{Outputs=[]}]});
+        NativeAccess.RequireLibraries(library,[filter.LibraryId]);
         if(search.Length>100)throw new InvalidOperationException("Search too long");
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(20));
         var query=new InternalItemsQuery{ParentId=filter.LibraryId,Recursive=true,IncludeItemTypes=[BaseItemKind.Movie,BaseItemKind.Series],SearchTerm=search,Limit=51};
@@ -51,6 +57,7 @@ public sealed class RuleRunner(RuleStore store, ILibraryManager library, IUserMa
     public async Task<object> TestAsync(Rule rule, Guid itemId, Guid libraryId, CancellationToken ct, LibraryFilter[]? filters=null) {
         RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule]) { Filters=filters?.Select(f=>f with{Outputs=f.Outputs.Where(id=>id==rule.Id).ToArray()}).ToArray() });
         if(rule.Circuit is null || itemId==Guid.Empty || libraryId==Guid.Empty)throw new InvalidOperationException("Select media and a circuit");
+        NativeAccess.RequireLibraries(library,new[]{libraryId}.Concat((filters??[]).Select(f=>f.LibraryId)));
         var item=library.GetItemList(new InternalItemsQuery { ParentId=libraryId,Recursive=true,ItemIds=[itemId],IncludeItemTypes=[BaseItemKind.Movie,BaseItemKind.Series],Limit=2 }).SingleOrDefault() ?? throw new InvalidOperationException("Media outside selected library");
         var evidence=NativeFacts(item);var config=store.Read(s=>s.Configuration);
         if(RuleEngine.GetConditions(rule).Concat((filters??[]).SelectMany(f=>RuleEngine.GetConditions(f.Predicate))).Any(c=>c.Field.StartsWith("seerr.",StringComparison.Ordinal))) {
@@ -86,6 +93,7 @@ public sealed class RuleRunner(RuleStore store, ILibraryManager library, IUserMa
             var rule = snapshot.Rules.SingleOrDefault(r => r.Id == request.RuleId && r.Enabled);
             if (!snapshot.Enabled || rule is null || snapshot.ActorId != request.ActorId || !NativeAccess.Administrator(users, snapshot.ActorId)) return Contract.Serialize(new { matches = false });
             var routes=Routes(snapshot,rule);
+            NativeAccess.RequireLibraries(library,routes.Select(f=>f.LibraryId));
             var memberships=routes.ToDictionary(f=>f.Id,f=>library.GetItemList(new InternalItemsQuery { ParentId=f.LibraryId,Recursive=true,ItemIds=[request.ItemId],IncludeItemTypes=[BaseItemKind.Movie,BaseItemKind.Series],Limit=2 }).Any(i=>i.Id==request.ItemId));
             var item = routes.Where(f=>memberships[f.Id]).SelectMany(f=>library.GetItemList(new InternalItemsQuery {ParentId=f.LibraryId,Recursive=true,ItemIds=[request.ItemId],Limit=2})).FirstOrDefault(i=>i.Id==request.ItemId);
             if (item is null) return Contract.Serialize(new { matches = false });
@@ -104,6 +112,7 @@ public sealed class RuleRunner(RuleStore store, ILibraryManager library, IUserMa
             var snapshot = store.Read(s => s.Configuration); RuleEngine.Validate(snapshot);
             if (snapshot.LibraryId == Guid.Empty && snapshot.Filters is null) throw new InvalidOperationException("Choose a library first");
             if (!preview && (!snapshot.Enabled || !NativeAccess.Administrator(users, snapshot.ActorId) || !queue.Available)) throw new InvalidOperationException("Automation is disabled or dependencies are unavailable");
+            NativeAccess.RequireLibraries(library,snapshot.Rules.Where(r=>r.Enabled).SelectMany(r=>Routes(snapshot,r)).Select(f=>f.LibraryId));
             var scopes = snapshot.Rules.Where(r=>r.Enabled).SelectMany(r=>Routes(snapshot,r)).Select(f=>f.LibraryId).Distinct().ToDictionary(id=>id,id=>library.GetItemList(new InternalItemsQuery { ParentId=id,Recursive=true,IncludeItemTypes=[BaseItemKind.Movie,BaseItemKind.Series],Limit=201 }).ToArray());
             if(scopes.Values.Any(items=>items.Length>200))throw new InvalidOperationException("Preview capacity exceeded; no requests submitted. Narrow the library scope.");
             var now = DateTimeOffset.UtcNow; var matches = new List<object>(); var count = 0;
@@ -156,6 +165,7 @@ public sealed class RuleController(RuleStore store, RuleRunner runner, IUserMana
     [HttpGet("media")] public IActionResult Media([FromQuery]Guid libraryId,[FromQuery]string search="") {
         NativeAccess.Require(users,User);Response.Headers.CacheControl="no-store";
         if(libraryId==Guid.Empty||search.Length>100)return BadRequest();
+        NativeAccess.RequireLibraries(library,[libraryId]);
         return Ok(library.GetItemList(new InternalItemsQuery{ParentId=libraryId,Recursive=true,SearchTerm=search,IncludeItemTypes=[BaseItemKind.Movie,BaseItemKind.Series],Limit=50}).Select(i=>new{i.Id,title=i.Name,year=i.ProductionYear}));
     }
     [HttpGet] public IActionResult Get() {
