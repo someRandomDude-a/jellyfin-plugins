@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "9f6504c9c620b79c88345ff7a606c19c",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/AutomaticDeletionRequests-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:28:31.1235976Z"
+      },
+      {
         "timestamp": "2026-10-26T04:04:38.5394218Z",
         "version": "0.1.14.0",
         "targetAbi": "12.3.0.0",
@@ -25,6 +33,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "26c0e3d23417a6f748ceac4fd83718e6",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/Notifications-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:28:38.042463Z"
+      },
       {
         "timestamp": "2026-10-26T04:04:42.4688449Z",
         "version": "0.1.14.0",
@@ -99,6 +115,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "52c3a3b4b847a3d1b115bd18af3a3191",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/AccountHub-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:28:49.9428231Z"
+      },
       {
         "timestamp": "2026-10-26T04:04:50.7597554Z",
         "version": "0.1.14.0",
@@ -190,6 +214,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "bd4cdb19eee010087401e61a275b6cff",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/DiscordBridge-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:28:57.0480018Z"
+      },
+      {
         "timestamp": "2026-10-26T04:04:55.4799127Z",
         "version": "0.1.14.0",
         "targetAbi": "12.3.0.0",
@@ -280,6 +312,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "7e53d226bbd841e551dfb4f1b0fc40b7",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/PrivateSyncPlay-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:29:00.4510322Z"
+      },
+      {
         "timestamp": "2026-10-26T04:04:58.14296Z",
         "version": "0.1.14.0",
         "targetAbi": "12.3.0.0",
@@ -369,6 +409,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "version": "0.1.15.0",
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "checksum": "dce9779bd04d4c34f0e9e43f97bcf093",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/DeletionQueue-0.1.15.0-win-x64.zip",
+        "timestamp": "2026-10-26T09:29:05.9224987Z"
+      },
       {
         "timestamp": "2026-10-26T04:05:04.8281315Z",
         "version": "0.1.14.0",
