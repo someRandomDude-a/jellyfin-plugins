@@ -49,6 +49,25 @@ public static class QueueRules
         return proposal;
     }
 
+    public static Proposal ProposeAutomatically(QueueState state, Account actor, VerifiedTarget target, DateTimeOffset now)
+    {
+        RequireProposalAuthority(state, actor, target, true);
+        foreach (var p in state.Proposals) Expire(p, now);
+        if (state.Proposals.Any(p => p.Target.Key == target.Key && (p.Status == ProposalStatus.Cancelled || p.Reason == "AdministratorDenied")))
+            throw new QueueException("PriorRemovalDeclined");
+        var existing = state.Proposals.SingleOrDefault(p => !p.Terminal && (p.Target.Key == target.Key ||
+            target.DestructiveScopeKey is not null && p.Target.DestructiveScopeKey == target.DestructiveScopeKey));
+        if (existing is not null) {
+            if (existing.Target.Fingerprint != target.Fingerprint) throw new QueueException("TargetChanged");
+            return existing; // Matching again is not a user's consent, approval or renewed expiry.
+        }
+        var created = Propose(state, actor with { Administrator = false }, target, true, Snapshot(state, target, actor.Id), now);
+        created.Consents.Remove(actor.Id); // An administrator enabling automation has not watched or voted.
+        created.AdministratorApproval = null;
+        created.RequiresAutomaticRuleValidation = true;
+        return created;
+    }
+
     public static void Consent(QueueState state, Guid id, Account caller, long revision,
         string snapshot, Answer answer, bool accessible, DateTimeOffset now)
     {
@@ -163,6 +182,7 @@ public static class QueueRules
             : state.Policy.Suspended ? "Suspended"
             : !evidence.OwnerAuthorized ? "OwnerNotAuthorized"
             : !evidence.TargetVerified ? "TargetVerificationRequired"
+            : proposal.RequiresAutomaticRuleValidation && !evidence.AutomaticRuleVerified ? "AutomaticRuleVerificationRequired"
             : (!CoverageComplete(state, now) && !evidence.NativeHistoryVerified) || !evidence.CompleteActivityScan ? "ActivityCoverageIncomplete"
             : !evidence.LocalCheckpointVerified ? "LocalCheckpointRequired"
             : !evidence.SeerrDelegationVerified ? "SeerrDelegationRequired" : null;

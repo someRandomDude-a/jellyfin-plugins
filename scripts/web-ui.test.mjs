@@ -8,6 +8,54 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
+test('Circuit input cards are locked, repositionable and selectable for path tests; traces colour ports and wires', async () => {
+    const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;
+    try {
+        w.CSS ||= {};w.CSS.escape ||= x=>x;
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        const rule={match:'all',conditions:[{field:'year',operator:'less',value:2000}]};let chosen;
+        const editor=w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{},{sources:[{id:'scope',name:'Old movies'}],onSource:s=>{chosen=s.id;}});
+        const card=w.document.querySelector('.ar-source');assert.equal(card.querySelectorAll('.ar-socket').length,0);
+        card.click();assert.equal(chosen,'scope');
+        const title=card.querySelector('header');const x=parseFloat(card.style.left);
+        title.onpointerdown(new w.MouseEvent('pointerdown',{bubbles:true,clientX:20,clientY:20}));
+        title.onpointermove(new w.MouseEvent('pointermove',{bubbles:true,clientX:70,clientY:40}));
+        title.onpointerup();assert.equal(rule.circuit.sources.scope.x,x+50);
+        editor.trace({start:true,c0:false,group:false,delete:false,'filter:scope':true});
+        assert(w.document.querySelector('.ar-wires path[data-signal=false]'));assert(w.document.querySelector('.ar-socket[data-signal=false]'));
+        assert(w.document.querySelector('.ar-wires path[data-signal=true]'));
+        editor.dispose();assert.equal(w.document.querySelectorAll('.ar-circuit').length,0);
+    }finally{w.close();}
+});
+test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save while editing', async () => {
+    const html = await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' }); const w = dom.window, d = w.document, writes = [];
+    let config = { revision: 0, enabled: false, actorId: '00000000-0000-0000-0000-000000000000', libraryId: '00000000-0000-0000-0000-000000000000', intervalHours: 24, rules: [] };
+    const actor = '11111111-1111-1111-1111-111111111111', library = '22222222-2222-2222-2222-222222222222';
+    const pascal = value => Array.isArray(value) ? value.map(pascal) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key[0].toUpperCase() + key.slice(1), pascal(item)])) : value;
+    w.ApiClient = { getUrl: p => p, ajax: async options => { if (options.type === 'POST') return { matches: [{ title: '<img src=x onerror=alert(1)>', ruleId: config.rules[0].id, alreadySubmitted: false }] }; if (options.type === 'PUT') { const body = JSON.parse(options.data); writes.push(body); config = { ...body.configuration, revision: 1 }; } return { configuration: pascal(config), actors: [{ Id: actor, name: 'Library administrator' }], libraries: [{ id: library, Name: 'Movies' }], queueAvailable: true, status: 'Preview' }; } };
+    try {
+        w.CSS ||= {}; w.CSS.escape ||= x=>x;
+        w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/routing.js'));
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.js')); await turn(); await turn();
+        assert.match(d.querySelector('#arRuleCards').textContent, /No cards/);
+        assert.match(d.querySelector('#arActor').textContent, /Library administrator/); assert.match(d.querySelector('#arLibrary').textContent, /Movies/);
+        d.querySelector('#arEnabled').checked = true; d.querySelector('#arForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
+        assert.equal(writes.length, 0); assert.match(d.querySelector('#arStatus').textContent, /Choose a request owner/);
+        d.querySelector('#arEnabled').checked = false; d.querySelector('#arActor').value = actor; d.querySelector('#arLibrary').value = library;
+        d.querySelector('#arAddRule').click();d.querySelector('#arNewTitle').value='Old media';d.querySelector('#arNewCreate').click(); assert.equal(writes.length, 0);
+        let select = d.querySelector('.ar-block[data-kind=condition] select'); select.value = 'seerr.ownRequest'; select.dispatchEvent(new w.Event('change'));
+        const draft = JSON.parse(d.querySelector('#arRules').value); assert.equal(draft.rules[0].conditions[0].field, 'seerr.ownRequest'); assert.equal(draft.rules[0].conditions[0].value, true);
+        assert.equal(writes.length, 0); assert.equal(d.querySelector('#arEnabled').checked, false);
+        d.querySelector('#arForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
+        assert.equal(writes.length, 1); assert.equal(writes[0].configuration.enabled, false); assert.equal(writes[0].configuration.rules[0].enabled, false);
+        assert.equal(writes[0].configuration.actorId, actor); assert.equal(writes[0].configuration.libraryId, library);
+        d.querySelector('#arPreview').click(); await turn(); assert.equal(d.querySelectorAll('.ar-match-card').length, 1); assert.equal(d.querySelectorAll('#arResult img').length, 0); assert.match(d.querySelector('#arResult').textContent, /Preview only/); assert.equal(writes.length, 1);
+        d.querySelector('#automaticDeletionAdmin').dispatchEvent(new w.Event('viewhide')); assert.equal(d.querySelector('#arRules').value, ''); assert.equal(d.querySelector('#arRuleCards').children.length, 0);
+    } finally { dom.window.close(); }
+});
 test('Deletion Queue hides routing mode and confirms permissions-only reset using the saved revision', async () => {
     const html = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
@@ -21,6 +69,7 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         if (options.url.endsWith('/admin/status')) return status;
         if (options.url.endsWith('/settings')) return { ok: true, data: { revision: 'saved-settings', hubFallbackAfterMinutes: 10 } };
         if (options.url.endsWith('/dependencies')) return { data: { items: [] } };
+        if (options.url.endsWith('/seerr/test')) return { working: true, version: '3.0.0', message: 'Authenticated saved connection verified.' };
         return {};
     } };
     try {
@@ -28,6 +77,8 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         await turn(); await turn();
         assert.equal(d.querySelector('#deletionQueueAdmin').getAttribute('aria-busy'), 'false');
         assert.equal(d.querySelector('#dqNotificationMode'), null); assert(!d.body.textContent.includes('Notification mode'));
+        assert.equal(d.querySelector('#dqEnhancedStatus').textContent, ''); assert.equal(d.querySelector('#dqEnhanced').disabled, false);
+        d.querySelector('#dqEnhanced').click(); await turn(); assert.match(d.querySelector('#dqEnhancedStatus').textContent, /exactly one/); assert.equal(calls.filter(c => c.type !== 'GET').length, 0);
         const button = d.querySelector('#dqResetAllPermissions'); button.click(); await turn();
         assert.equal(calls.filter(c => c.type !== 'GET').length, 0);
         d.querySelector('#dqAuthority').value = '2'; confirmed = true; button.click(); await turn(); await turn();
@@ -48,6 +99,8 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
         assert.equal(savedPolicy.policy.delayHours, 72); assert.equal(savedPolicy.policy.activityDays, 30); assert.equal(savedPolicy.policy.requireAdministratorApproval, true);
         d.querySelector('#dqHubSettings').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn(); await turn();
         const settings = calls.find(c => c.type === 'PUT'); assert(settings); assert(!('notificationMode' in JSON.parse(settings.data)));
+        d.querySelector('#dqKey').value = 'draft-secret-must-not-be-tested'; d.querySelector('#dqTestConnection').click(); await turn();
+        const testRequest = calls.find(c => c.url.endsWith('/seerr/test')); assert.equal(testRequest.dataType, 'json'); assert.deepEqual(JSON.parse(testRequest.data), {}); assert.match(d.querySelector('#dqConnectionResult').textContent, /saved connection/); assert.equal(d.querySelector('#dqKey').value, 'draft-secret-must-not-be-tested');
     } finally { dom.window.close(); }
 });
 // The source may come from either Git checkout convention. JavaScript's dot

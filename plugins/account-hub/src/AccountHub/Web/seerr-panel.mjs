@@ -21,7 +21,7 @@ export async function mountSeerrPanel(root, { request, make, field, table, butto
         const data = await request('seerr/connection'); if (!current('connection', epoch)) return;
         configured = !!data.baseUrl && data.keyConfigured === true;
         connection.replaceChildren(make('h3', 'Connection and capabilities'), make('p', data.capabilities ? 'Verified Seerr ' + data.capabilities.version + ' via ' + data.capabilities.source + '. Connection identity: ' + data.capabilities.fingerprint : 'Not verified. Configure the URL/API key in Settings, then discover. HTTP/private-network access requires explicit approval.'),
-            ...(data.warnings || []).map(w => make('p', w)), dependent('Discover / verify connection', async () => { await request('seerr/test', 'POST', {}); await loadConnection(); if (selected) await edit(); }));
+            ...(data.warnings || []).map(w => make('p', w)), dependent('Test connection', async () => { await request('seerr/test', 'POST', {}); await loadConnection(); if (selected) await edit(); }));
     }
     async function loadPeople() {
         const epoch = ++epochs.people;

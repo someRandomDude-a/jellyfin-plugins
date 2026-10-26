@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')][string]$Plugin,
+param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests')][string]$Plugin,
     [string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -18,6 +18,10 @@ Run '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
 Run '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
 Run 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-publish.test.ps1','-ProtocolOnly')
 switch ($Plugin) {
+    'automatic-deletion-requests' {
+        DotnetTest 'plugins/automatic-deletion-requests/tests/AutomaticDeletionRequests.Tests/AutomaticDeletionRequests.Tests.csproj'
+        Run '.' node @('--test','--test-name-pattern=[Aa]utomatic','scripts/web-ui.test.mjs')
+    }
     'notifications' {
         DotnetTest 'plugins/notifications/tests/Notifications.Tests/Notifications.Tests.csproj'
         DotnetTest 'modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj'
@@ -39,6 +43,7 @@ switch ($Plugin) {
         DotnetTest 'plugins/deletion-queue/tests/DeletionQueue.Tests/DeletionQueue.Tests.csproj'
         DotnetTest 'modules/notifications/tests/AccountHub.Notifications.Tests/AccountHub.Notifications.Tests.csproj'
         Run '.' node @('--test','scripts/removal-ui.test.mjs')
+        Run '.' node @('--test','scripts/presentation-ui.test.mjs')
         Run 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release-metadata.ps1')
         Run 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release.ps1','-Runtime','all','-Tag','v0.1.0.6')
     }

@@ -33,6 +33,8 @@ public sealed class Plugin : BasePlugin, IHasWebPages
         yield return new PluginPageInfo
         { Name = "DeletionQueueAdmin.js", EmbeddedResourcePath = GetType().Namespace + ".Web.admin.js" };
         yield return new PluginPageInfo { Name = "DeletionQueueAdminUI.js", EmbeddedResourcePath = "Suite.Web.admin-ui.js" };
+        yield return new PluginPageInfo { Name = "DeletionQueuePresentation.js", EmbeddedResourcePath = GetType().Namespace + ".Web.presentation.js" };
+        yield return new PluginPageInfo { Name = "DeletionQueueOverlayEditor.js", EmbeddedResourcePath = GetType().Namespace + ".Web.overlay-editor.js" };
     }
 }
 
@@ -53,6 +55,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<LiveIdentity>();
         services.AddSingleton<TargetResolver>();
         services.AddSingleton<NotificationCommands>();
+        services.AddSingleton<AutomaticRequests>();
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.DeletionRequestsClient.ServiceKey,
+            (sp, _) => sp.GetRequiredService<AutomaticRequests>().SubmitAsync);
         AccountHub.Api.NotificationIntegration.RegisterNotificationCommands(services, "deletion-queue", sp => sp.GetRequiredService<NotificationCommands>().DispatchAsync);
         AccountHub.Api.NotificationIntegration.RegisterNotificationAccess(services, "deletion-queue", sp => (user, json, _) =>
         {
@@ -68,6 +73,12 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<ISeerrClientFactory, SeerrClientFactory>();
         services.AddSingleton<ActivityFence>();
         services.AddSingleton<ActivityInventory>();
+        services.AddSingleton<ArtworkRenderer>();
+        services.AddSingleton<MediaPresentationService>();
+        services.AddSingleton<RemovalMaintenanceService>();
+        services.AddSingleton<AccountHub.Api.AutomaticRuleValidationClient>();
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.DeletionRequestsClient.CollectionsServiceKey,
+            (sp, _) => async (_, ct) => { await sp.GetRequiredService<MediaPresentationService>().SyncAsync(ct, syncArtwork: false); return "{}"; });
         services.AddTransient<SeerrExecutionGateway>();
         services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, WebInjection>();
         services.AddHostedService<ActivityWorker>();

@@ -24,6 +24,7 @@ const http = require('node:http');
     let phase = 'login';
     try {
         const page = await browser.newPage();
+        const pageErrors = []; page.on('pageerror', error => pageErrors.push(error.message));
         await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=AccountHub');
         await page.locator('#txtManualName').fill('suite-admin');
         await page.locator('#txtManualPassword').fill('Disposable-Only-Suite-9714!');
@@ -344,8 +345,9 @@ const http = require('node:http');
         await require('./enhanced-calendar-acceptance.cjs')(page);
         await page.evaluate(() => document.querySelector('#dq-installed-contract')?.remove());
         const adminPages = [];
-        for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
+        for (const [name, ready] of [['AccountHub', '.hubTabs'], ['privateSyncPlay', '#pspSave'], ['DiscordBridge', '.bridgeSettings'], ['DeletionQueueAdmin', '#dqPolicy'], ...(process.env.THEME_TEST_AUTOMATIC === 'true' ? [['AutomaticDeletionRequests', '#arForm']] : []), ...(ownsNotifications ? [['Notifications', '[data-notification-settings] button']] : [])]) {
             phase = 'admin/' + name;
+            const errorStart = pageErrors.length;
             let releaseNotifications;
             const settingsPattern = '**/Notifications/api/v1/settings/notifications';
             if (name === 'Notifications') {
@@ -355,7 +357,74 @@ const http = require('node:http');
             await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=' + name);
             await page.locator(ready).first().waitFor();
             if (name !== 'Notifications') await page.waitForLoadState('networkidle');
+            await page.waitForFunction(() => [...document.querySelectorAll('.suiteAdmin:not(.hide) .suiteIntegrationBadge')].some(e => e.getClientRects().length && /v\d+\./.test(e.textContent)));
+            for (const id of ['account-hub','notifications','discord','private-syncplay','deletion-queue','automatic']) if (id !== 'automatic' || process.env.THEME_TEST_AUTOMATIC === 'true') {
+                const badge = page.locator('.suiteAdmin:visible .suiteIntegrationBadge[data-plugin="'+id+'"]');
+                assert.match(await badge.textContent(), /v\d+\./, name + ': missing installed version for ' + id);
+            }
             if (name === 'AccountHub') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+            if (name === 'AutomaticDeletionRequests') {
+                await page.locator('#arForm[aria-busy="false"]').waitFor();
+                assert.equal(await page.locator('#arEnabled').isChecked(), false);
+                await page.getByRole('button', { name: 'New card', exact: true }).click();
+                await page.locator('#arNewTitle').fill('Browser rule');
+                await page.locator('#arNewDescription').fill('Disposable canvas verification');
+                await page.locator('#arNewCreate').click();
+                await page.locator('.ar-block[data-kind=condition]').waitFor();
+                const condition=page.locator('.ar-block[data-kind=condition]'),before=await condition.evaluate(e=>parseFloat(e.style.left));
+                await condition.locator('header').scrollIntoViewIfNeeded();
+                const header=await condition.locator('header').boundingBox();
+                await page.mouse.move(header.x+40,header.y+12);await page.mouse.down();await page.mouse.move(header.x+90,header.y+42,{steps:4});await page.mouse.up();
+                assert((await condition.evaluate(e=>parseFloat(e.style.left)))>before,'Node dragging must change persisted coordinates');
+                await page.getByRole('button', { name: 'New card', exact: true }).click();
+                await page.locator('#arNewType').selectOption('filter');await page.locator('#arNewTitle').fill('Browser library filter');await page.locator('#arNewCreate').click();
+                await page.locator('#arRuleCards label').filter({hasText:'Browser rule'}).click();
+                assert(await page.getByLabel('Browser rule',{exact:true}).isChecked(),'Filter output must attach the rule');
+                const selector=page.getByLabel('Select card',{exact:true});
+                const ruleId=await selector.locator('option').evaluateAll(options=>options.find(o=>o.textContent==='Rule · Browser rule').value);
+                await selector.selectOption(ruleId);
+                const source=page.locator('.ar-source');await source.waitFor();assert.equal(await source.locator('.ar-socket').count(),0,'Upstream filter connections must be locked in rule mode');
+                assert(await page.locator('.ar-wires path[data-execution=true]').count()>0);
+            }
+            if (name === 'DeletionQueueAdmin') {
+                const editor = page.locator('#dqPresentation');
+                try { await editor.getByRole('button', { name: 'Preview portrait', exact: true }).waitFor(); }
+                catch (error) { throw new Error(error.message + ' · Presentation status: ' + await editor.locator('[data-presentation-status]').textContent()); }
+                const copy = page.getByRole('button', { name: 'Copy Jellyfin Enhanced connection', exact: true });
+                try { await page.locator('#deletionQueueAdmin[aria-busy="false"] #dqEnhanced:enabled').waitFor(); }
+                catch (error) { throw new Error('Monitoring settings were not ready: ' + await page.locator('#dqError').textContent() + ' · ' + error.message); }
+                assert.equal(await page.locator('#dqEnhancedStatus').textContent(), ''); assert(await copy.isEnabled(), 'Enhanced copy control must remain enabled when its optional provider is absent'); await copy.click();
+                assert.match(await page.locator('#dqEnhancedStatus').textContent(), /exactly one/);
+                const connectionTest = page.waitForResponse(r => r.url().endsWith('/admin/seerr/test') && r.request().method() === 'POST');
+                await page.locator('#dqKey').fill('disposable-draft-not-sent'); await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+                const tested = await connectionTest; assert.equal(tested.status(), 200); assert.deepEqual(tested.request().postDataJSON(), {});
+                assert.match(await page.locator('#dqConnectionResult').textContent(), /Save a Seerr/); await page.locator('#dqKey').fill('');
+                const studio = editor.locator('.dq-canvas-editor').first(), artboard = studio.locator('.dq-canvas-artboard');
+                await studio.getByRole('button', { name: 'Add text', exact: true }).click();
+                const box = await studio.locator('.dq-canvas-selected').boundingBox(), board = await artboard.boundingBox();
+                await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + board.width * .05, box.y + box.height / 2 + board.height * .05, { steps: 3 }); await page.mouse.up();
+                assert(Number(await studio.getByLabel('X (%)', { exact: true }).inputValue()) > 12, 'Canvas drag must update normalized layer geometry');
+                await studio.getByRole('button', { name: 'Undo', exact: true }).click();
+                assert.equal(Number(await studio.getByLabel('X (%)', { exact: true }).inputValue()), 10);
+                await studio.getByRole('button', { name: 'Delete layer', exact: true }).click();
+                for (const [layout, width, height] of [['portrait', 480, 720], ['landscape', 800, 450]]) {
+                    const preview = page.waitForResponse(r => r.url().endsWith('/presentation/preview') && r.request().method() === 'POST');
+                    await editor.getByRole('button', { name: 'Preview ' + layout, exact: true }).click();
+                    const response = await preview; assert.equal(response.status(), 200); assert(response.headers()['content-type'].includes('image/png'), 'Expected native PNG preview, got ' + response.headers()['content-type']);
+                    const image = editor.getByAltText(layout[0].toUpperCase() + layout.slice(1) + ' sample artwork preview');
+                    await image.evaluate(img => img.decode());
+                    assert.deepEqual(await image.evaluate(img => [img.naturalWidth, img.naturalHeight]), [width, height]);
+                }
+                for (const width of [320, 1280]) {
+                    await page.setViewportSize({ width, height: 900 });
+                    assert(await editor.evaluate(e => e.scrollWidth <= e.clientWidth + 2), 'Presentation editor overflows at ' + width);
+                }
+                const journal = page.locator('#dqJournal').locator('..'); await journal.locator(':scope > summary').click();
+                await journal.locator('.suiteJsonTree').waitFor(); assert(await journal.locator('.suiteJsonTree details').count() > 1, 'Journal must provide transaction blocks');
+                await journal.getByRole('button', { name: 'JSON code', exact: true }).click(); assert(await journal.locator('.suiteJsonKey').count() > 0, 'Journal code must be syntax highlighted'); await journal.locator(':scope > summary').click();
+                const taskLink = editor.locator('.suiteJobBadge').first(); assert.match(await taskLink.textContent(), /Daily/); await taskLink.click(); await page.waitForURL(/#\/dashboard\/tasks\//);
+                await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=DeletionQueueAdmin'); await page.locator('#dqPresentation .dq-canvas-editor').first().waitFor(); await page.waitForLoadState('networkidle');
+            }
             if (name === 'Notifications') {
                 const root = page.locator('#notificationsAdmin [data-notification-settings]');
                 const catalog = root.locator('[data-notification-editor] > details');
@@ -405,6 +474,7 @@ const http = require('node:http');
                 await page.locator('#pspForm[aria-busy="false"] #pspSave:enabled').waitFor();
                 await page.unroute(pattern);
             }
+            if (name === 'AutomaticDeletionRequests' || name === 'DeletionQueueAdmin') assert.deepEqual(pageErrors.slice(errorStart), [], name + ': native editor errors');
             const help = page.locator('.suiteAdmin:visible .suiteHelpButton:visible').first(); await help.waitFor();
             for (const width of [320, 1280]) {
                 await page.setViewportSize({ width, height: 900 });

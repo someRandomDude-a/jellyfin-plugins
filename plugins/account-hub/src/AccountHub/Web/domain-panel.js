@@ -183,6 +183,14 @@ export function mountDomainPanel(root, client, { key, signal, dependency, onMuta
             const baseUrl = field('Seerr base URL', settings.seerr?.baseUrl || ''), apiKey = field('Replacement Seerr API key (blank keeps stored key)', '', { secret: true }), clear = field('Explicitly clear stored Seerr API key', false);
             group.append(node('p', settings.seerr?.keyConfigured ? 'A key is configured. It is never read back.' : 'No key configured.'));
             formFields(group, { baseUrl, apiKey, clear }); editor.append(group);
+            const test = button('Test saved connection', async () => {
+                const view = epoch;
+                const response = await fetch(client.getUrl('DeletionQueue/admin/seerr/test'), { method: 'POST', signal: life.signal, credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + client.accessToken() + '"', 'Content-Type': 'application/json' }, body: '{}' });
+                const body = await response.json(); if (disposed || view !== epoch) return;
+                if (!response.ok) throw Error('Saved connection could not be tested. Check administrator access and Deletion Queue availability.');
+                message.textContent = body.message || 'Connection test completed. Draft values were not sent.';
+            });
+            test.title = 'Tests Deletion Queue’s saved connection. Save draft URL/key changes first; a test never sends unsaved credentials.'; group.append(test);
             seerr = () => {
                 if (clear.value() && apiKey.value()) throw Error('Do not supply a replacement key while clearing.');
                 const changedUrl = baseUrl.value() !== (settings.seerr?.baseUrl || '');

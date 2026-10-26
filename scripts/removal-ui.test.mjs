@@ -70,6 +70,7 @@ test('queue is an icon with inline selected actions, a small badge and no Load m
     const f = await fixture(false, { integration: { deviceBell: false }, proposals: [{ id: 'request', title: 'Movie', status: 'Blocked', reason: 'ActivityCoverageIncomplete', ownAnswer: 0, canUndo: true, revision: 2, ownSnapshot: 's', stage: 'Consent' }] });
     try {
         const shortcut = f.d.querySelector('.dq-local-shortcut'); assert(shortcut); assert.equal(shortcut.getAttribute('aria-label'), 'Deletion queue'); assert.equal(shortcut.textContent, 'auto_delete');
+        assert.equal(shortcut.nextElementSibling, f.d.querySelector('.headerUserButton'), 'Queue shortcut belongs immediately left of the user button');
         shortcut.click(); await tick(); const modal = f.d.querySelector('dialog');
         assert.equal(modal.querySelector('.dq-status').textContent, 'Blocked'); assert(!modal.textContent.includes('Your removal request')); assert(!modal.textContent.includes('Your answer')); assert(!modal.textContent.includes('Load more'));
         assert.equal(modal.querySelector('[data-answer=allow]').getAttribute('aria-pressed'), 'true');

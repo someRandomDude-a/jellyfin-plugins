@@ -9,6 +9,8 @@
     <ProjectReference Include="../AccountHub.HostFixture/AccountHub.HostFixture.csproj" />
     <PackageReference Include="Jellyfin.Controller" Version="$(PluginSdkVersion)" />
     <PackageReference Include="Jellyfin.Model" Version="$(PluginSdkVersion)" />
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /></ItemGroup>
   <ItemGroup>

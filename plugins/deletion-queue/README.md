@@ -21,6 +21,24 @@ A Jellyfin Server plugin with integrated media/request removal actions, inline N
 
 ## Build and test
 
+### Collections and reversible artwork (preview)
+
+Dashboard settings include an opt-in pending-removal collection (existing or plugin-created) and **Collections & Overlay Studio** with separate portrait/landscape artboards. Select text/rectangle layers to drag, resize, rotate, align, reorder, duplicate or delete them; use snapping, keyboard nudging, undo/redo and zoom. Layer properties edit colors, opacity and text styling. Native server-rendered PNG previews confirm font fitting/output. Up to 12 bounded layers and four text lines per layer are supported; existing single-band settings remain compatible. This covers pending manual and automated requests. Unknown schedule placeholders say **pending**, never an invented date. Native image pointers serve generated artwork to Jellyfin clients, without modifying original files.
+
+Top badges show plugin versions and distinguish loaded/available providers from actual readiness or explicit connection-test results. **Test connection** verifies the saved Seerr key and Jellyfin server association using reads only; save draft changes first. **Copy Jellyfin Enhanced connection** explains unavailable/ambiguous configuration only when clicked. Native task badges link to the real task screens and reflect edited triggers. Diagnostic JSON/journals can be browsed as collapsible blocks or syntax-highlighted code.
+
+Original bytes are separately preserved under plugin-owned storage. Disabling or closing requests restores verified original pointers and removes only plugin-added collection members; collections and pre-existing memberships are retained. Administrator artwork changes are reported as conflicts and are never overwritten. Missing originals can be served from preserved backups. Back up the plugin data directory along with its authenticated state.
+
+Before uninstalling, disable presentation and run collection maintenance plus the artwork restoration task (or Sync / restore now) until owned overlays/memberships are restored. Resolve reported conflicts first. Do not delete the plugin's artwork data while native image pointers still reference it; uninstalling is not an automatic restoration hook.
+
+Preview limits: 1000 artwork receipts, 1000 descendants per series, 20 image changes per interactive sync (up to 1000 in the cancellable daily artwork task), 8 MiB/16 million pixels per image and 512 MiB plugin artwork storage. JPEG/PNG/WebP/GIF/BMP are supported; rotated EXIF images are skipped, and animated inputs produce a static first-frame PNG. Backups/generated files are retained conservatively (no automatic purge yet); reaching capacity stops new artwork generation, not deletion authorization or restoration. The renderer uses Jellyfin 12.3's own SkiaSharp runtime; no competing Skia binaries are shipped. Native pointer persistence across arbitrary clients/restarts remains subject to installed acceptance evidence in the root review status.
+
+### Daily maintenance jobs
+
+**Dashboard → Scheduled Tasks → Deletion Queue** exposes separate daily jobs: automatic rules/collection processing (02:00, supplied by Automatic Deletion Requests), verification/due removals/collection maintenance (03:00), and overlay generation/restoration (04:00). Defaults use Jellyfin's local scheduled-task clock; edit triggers or use Run now in the native Dashboard. Minute polling workers no longer perform these jobs. Continuous playback capture and immediate safety invalidation remain active. Artwork can lag the live request state until its next job or explicit Sync; the date is always conditional.
+
+Every advancement requires fresh target, native playback/session, permission, current consent, optional administrator approval and policy evidence. Automated requests additionally require their originating rule to remain enabled, in scope and matching current evidence. The execution coordinator obtains fresh evidence again before claiming and immediately before dispatch; rule conditions are also checked at dispatch. A past date never bypasses these checks, disabled deletion opt-in or durable uncertain-claim protections. Startup recovery never resends an attempt.
+
 Requires the **.NET 10 SDK**. The shared build target is **Jellyfin Server/Web 12.3**. Installed local checks use Linux amd64; this is not certification of every skin, Enhanced version or server platform.
 
 ```powershell
@@ -49,7 +67,7 @@ Linux ARM64 and Windows x64 have separate catalogs because Jellyfin cannot choos
 2. Set global/per-user proposal permission using the user dropdown. **Reset selected user** restores inherited permission and default personal preferences, preserving proposals, consent, history and existing deadline floors. Optionally enable **Require administrator approval for each proposal** and approve/revoke in the backlog. Approvals are bound to the target, activity and policy; the approver's current admin role and visibility are rechecked before dispatch.
 3. Use **Request removal** on a movie/whole-series detail page, media card, right-click menu or supported Enhanced request. Review the title/quality, then confirm. Duplicate submissions register consent on the existing active request, retaining its original owner and expiry; repeated current Yes consent is idempotent.
 4. Open the **notification bell in Jellyfin's top bar** to review proposals, explicitly allow/keep media, Undo your own unclaimed proposal, mark notices read or change preferences. Viewing/Help/notification polling never records activity or consent.
-5. If desired, explicitly enable **automatic Seerr-managed deletion** and confirm the real-deletion warning. Old preview-only opt-ins cannot activate this transport. A complete bounded native Jellyfin last-played scan (including unfinished playback and related series items across all accounts) can verify the activity window immediately after collector startup; a new multi-day observation wait is not required when that scan succeeds. Current consent and the minimum two-day eligible delay still apply. Missing/incomplete inventory, an unhealthy collector or clock, and active playback fail closed. Eligible targets are rechecked daily, after domain changes, on explicit status inspection, and before scheduled execution; incomplete checks retry after five minutes rather than continuously rescanning.
+5. If desired, explicitly enable **automatic Seerr-managed deletion** and confirm the real-deletion warning. Old preview-only opt-ins cannot activate this transport. A complete bounded native Jellyfin last-played scan (including unfinished playback and related series items across all accounts) can verify the activity window immediately after collector startup; a new multi-day observation wait is not required when that scan succeeds. Current consent and the minimum two-day eligible delay still apply. Missing/incomplete inventory, an unhealthy collector or clock, and active playback fail closed. Fresh verification runs in the daily maintenance task, on explicit status inspection, and again before execution. Failed checks remain blocked until another successful verification; use Scheduled Tasks → Run now to retry earlier.
 
 An ASP.NET startup filter injects same-origin resources into Web without modifying Web files. File Transformation is not required. The full queue is embedded in Enhanced's Requests page, not a second standalone application. The popout's **Open full queue** action appears only when the enabled Enhanced plugin reports its Requests page enabled; users are not shown missing-dependency instructions. Administrator settings explain this integration. Native TV/mobile clients that do not load Jellyfin Web are not modified. Unsupported Web/Enhanced markup may omit controls rather than replacing native commands.
 
@@ -111,3 +129,7 @@ After stopping the test proxy, remove **only this test project's disposable cont
 - [Native-page verification](docs/jellyfin-12-native-pages.md)
 - [Recovery and stopped backups](docs/recovery.md)
 - [Host isolation, hostile input and themed notifications](docs/safety-review.md)
+
+## Credits
+
+Collection and overlay workflows were inspired by [Maintainerr](https://github.com/Maintainerr/Maintainerr) (MIT). This is an independent implementation; no upstream source or artwork is bundled.

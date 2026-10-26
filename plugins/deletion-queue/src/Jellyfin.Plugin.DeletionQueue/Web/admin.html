@@ -1,21 +1,22 @@
 <!DOCTYPE html>
 <html><head><title>Deletion queue</title></head><body>
-<div id="deletionQueueAdmin" data-role="page" class="page type-interior pluginConfigurationPage suiteAdmin" data-require="emby-input,emby-button,emby-checkbox,emby-select">
+<div id="deletionQueueAdmin" data-suite-plugin="deletion-queue" data-role="page" class="page type-interior pluginConfigurationPage suiteAdmin" data-require="emby-input,emby-button,emby-checkbox,emby-select,emby-textarea">
   <link rel="stylesheet" href="../DeletionQueue/assets/admin.css" />
   <div data-role="content"><div class="content-primary">
     <h1>Deletion queue</h1>
-    <p>Notifications is required for new removal requests. Install and enable it, then restart Jellyfin.</p>
-    <p id="dqMode" role="status">Loading safety status…</p>
+    <span id="dqMode" hidden></span>
+    <div id="dqDependencyStatus" data-suite-integrations role="status"></div>
     <button is="emby-button" type="button" id="dqRefresh" class="raised">Refresh monitoring</button>
     <p id="dqError" role="alert"></p>
-    <p id="dqDependencyStatus" class="fieldDescription" role="status">Local policy, evidence and notifications are independent. Checking optional integrations…</p>
     <h2>Seerr connection</h2>
     <form id="dqConnection">
       <div class="inputContainer"><label for="dqUrl">Seerr base URL</label><input is="emby-input" id="dqUrl" type="url" required placeholder="https://seerr.example.com" /></div>
       <div class="inputContainer" data-help="Leave blank to keep the saved key. Credentials are encrypted. Use HTTPS or a trusted private network."><label for="dqKey">API key</label><input is="emby-input" id="dqKey" type="password" autocomplete="new-password" /></div>
       <button is="emby-button" type="submit" class="raised button-submit">Save connection</button>
-      <button is="emby-button" type="button" id="dqEnhanced" class="raised">Use Jellyfin-Enhanced connection</button>
-      <p id="dqEnhancedStatus">Checking for an enabled Enhanced plugin with one configured Seerr server…</p>
+      <button is="emby-button" type="button" id="dqTestConnection" class="raised">Test connection</button>
+      <button is="emby-button" type="button" id="dqEnhanced" class="raised">Copy Jellyfin Enhanced connection</button>
+      <p id="dqConnectionResult" role="status" aria-live="polite"></p>
+      <p id="dqEnhancedStatus" role="status" aria-live="polite"></p>
     </form>
     <h2>Permissions and safety policy</h2>
     <form id="dqPolicy">
@@ -52,6 +53,7 @@
       </div>
       <button is="emby-button" type="submit" class="raised button-submit">Save policy</button>
     </form>
+    <section id="dqPresentation"><header class="dq-studio-header"><h2>Collections &amp; Overlay Studio</h2><div data-suite-jobs aria-label="Scheduled maintenance tasks"></div></header><div data-presentation-editor></div><p data-presentation-status role="status">Loading presentation settings…</p></section>
     <h2>Notifications and audit</h2>
     <form id="dqHubSettings">
       <label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="dqHubEnabled" /><span>Enable optional Account Hub integration</span></label>
@@ -67,5 +69,7 @@
   </div></div>
   <script src="configurationpage?name=DeletionQueueAdminUI.js"></script>
   <script src="configurationpage?name=DeletionQueueAdmin.js"></script>
+  <script src="configurationpage?name=DeletionQueueOverlayEditor.js"></script>
+  <script src="configurationpage?name=DeletionQueuePresentation.js"></script>
 </div>
 </body></html>

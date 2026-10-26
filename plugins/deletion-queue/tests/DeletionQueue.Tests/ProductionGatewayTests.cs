@@ -1,6 +1,7 @@
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using AccountHub.Api;
 using DeletionQueue.Core;
 using DeletionQueue.Infrastructure;
 using Jellyfin.Database.Implementations.Entities;
@@ -14,6 +15,7 @@ using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Users;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DeletionQueue.Tests;
 
@@ -52,6 +54,10 @@ public sealed class ProductionGatewayTests : IDisposable
     private bool otherRequestOwner;
     private int declines;
     private bool nativeGone;
+    private bool wrongSeerrServer;
+    private readonly ServiceProvider rulesProvider;
+    private int ruleChecks;
+    private int denyRuleAt = int.MaxValue;
 
     public ProductionGatewayTests()
     {
@@ -82,7 +88,11 @@ public sealed class ProductionGatewayTests : IDisposable
         targets = new TargetResolver(library, users, runtime, host, clients);
         identity = new LiveIdentity(users);
         var inventory = new ActivityInventory(library, users, data, sessions, runtime, targets, clock);
-        gateway = new SeerrExecutionGateway(runtime, targets, identity, inventory, fence, clock, clients);
+        var ruleServices = new ServiceCollection();
+        ruleServices.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AutomaticRuleValidationClient.ServiceKey,
+            (_, _) => (_, _) => Task.FromResult(Contract.Serialize(new { matches = ++ruleChecks < denyRuleAt })));
+        rulesProvider = ruleServices.BuildServiceProvider();
+        gateway = new SeerrExecutionGateway(runtime, targets, identity, inventory, fence, clock, clients, new(rulesProvider));
         runtime.Write(Guid.NewGuid(), "fixture", "Configure", state =>
         {
             state.Seerr = new() { BaseUrl = "https://seerr.invalid", ApiKey = "synthetic-key", JellyfinServerId = "fixture-server" };
@@ -110,7 +120,8 @@ public sealed class ProductionGatewayTests : IDisposable
         Assert.Equal(HttpMethod.Get, request.Method);
         var json = request.RequestUri!.AbsolutePath switch
         {
-            "/api/v1/settings/jellyfin" => """{"serverId":"fixture-server"}""",
+            "/api/v1/settings/jellyfin" => wrongSeerrServer ? """{"serverId":"different-server"}""" : """{"serverId":"fixture-server"}""",
+            "/api/v1/status" => """{"version":"3.0.0"}""",
             "/api/v1/user/1" => $$$"""{"jellyfinUserId":"{{{owner.Id}}}"}""",
             "/api/v1/user/2" => $$$"""{"jellyfinUserId":"{{{restricted.Id}}}"}""",
             "/api/v1/request/9" => JsonSerializer.Serialize(new { id = 9, status = declines > 0 ? 3 : pendingOnly ? 1 : 2, is4k = false, requestedBy = new { id = otherRequestOwner ? 2 : 1 }, media = new { id = 42, tmdbId = 1, mediaType = "movie" } }),
@@ -274,5 +285,29 @@ public sealed class ProductionGatewayTests : IDisposable
         if (stillAdministrator) { await coordinator.ExecuteAsync(id, default); Assert.Equal(1, deletes); }
         else { await Assert.ThrowsAsync<QueueException>(() => coordinator.ExecuteAsync(id, default)); Assert.Equal(0, deletes); }
     }
-    public void Dispose() { runtime.Dispose(); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    [Theory] [InlineData(1)] [InlineData(2)] [InlineData(3)]
+    public async Task ChangedAutomaticRuleBlocksPreclaimPreDispatchAndFinalDispatch(int denyAt) {
+        administrator = true; var id = await Seed(); Due(); denyRuleAt = denyAt;
+        runtime.Write(Guid.NewGuid(), "fixture", "AutomaticOrigin", state => { var p = QueueRules.Find(state, id); p.RequiresAutomaticRuleValidation = true; p.AutomaticRuleId = "fixture-rule"; return true; });
+        var coordinator = new ExecutionCoordinator(runtime, gateway, clock);
+        if (denyAt == 1) await Assert.ThrowsAsync<QueueException>(() => coordinator.ExecuteAsync(id, default));
+        else await coordinator.ExecuteAsync(id, default);
+        Assert.Equal(0, deletes); Assert.Equal(denyAt, ruleChecks);
+        if (denyAt > 1) { Assert.Equal(ProposalStatus.Uncertain, QueueRules.Find(runtime.Read(), id).Status); await Assert.ThrowsAsync<QueueException>(() => coordinator.ExecuteAsync(id, default)); }
+    }
+    [Fact] public async Task SavedSeerrConnectionTestVerifiesAuthenticationIdentityAndVersionWithoutWrites() {
+        administrator = true;
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("Jellyfin-IsApiKey", "false"), new("Jellyfin-UserId", owner.Id.ToString())], "fixture"));
+        var host = Fake<IServerApplicationHost>((m, _) => m.Name == "get_SystemId" ? "fixture-server" : throw new NotSupportedException());
+        var controller = new Jellyfin.Plugin.DeletionQueue.Api.QueueController(runtime, identity, targets, null!, host, clock, null!) { ControllerContext = new() { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = principal } } };
+        var before = runtime.History().Count;
+        async Task<JsonElement> Test(ISeerrClientFactory factory) => JsonSerializer.SerializeToElement(Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.TestSeerr(factory, default)).Value, HubWire.Json);
+        var good = await Test(new Factory(Send)); Assert.True(good.GetProperty("working").GetBoolean()); Assert.Equal("3.0.0", good.GetProperty("version").GetString());
+        wrongSeerrServer = true; Assert.False((await Test(new Factory(Send))).GetProperty("working").GetBoolean());
+        var failed = await Test(new Factory(_ => new(HttpStatusCode.Forbidden) { Content = new StringContent("synthetic-key must never be returned") }));
+        Assert.False(failed.GetProperty("working").GetBoolean()); Assert.DoesNotContain("synthetic-key", failed.GetRawText());
+        Assert.Equal(before, runtime.History().Count); Assert.Equal(0, deletes); Assert.Equal(0, declines);
+        administrator = false; await Assert.ThrowsAsync<QueueException>(() => controller.TestSeerr(new Factory(Send), default));
+    }
+    public void Dispose() { rulesProvider.Dispose(); runtime.Dispose(); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
 }

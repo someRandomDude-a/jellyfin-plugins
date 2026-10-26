@@ -67,6 +67,8 @@ public sealed record ExecutionClaim(Guid Id, DateTimeOffset At, string TargetFin
 
 public sealed class Proposal
 {
+    public bool RequiresAutomaticRuleValidation { get; set; }
+    public string? AutomaticRuleId { get; set; }
     public bool Inactive { get; set; }
     public DateTimeOffset? ActivityVerifiedAt { get; set; }
     public DateTimeOffset? ApprovalWaitingSince { get; set; }
@@ -97,6 +99,7 @@ public sealed class Proposal
 
 public sealed class QueueState
 {
+    public MediaPresentationState Presentation { get; set; } = new();
     public int Schema { get; set; } = 1;
     public HubSettings Hub { get; set; } = new();
     public List<IntegrationEvent> Outbox { get; set; } = [];
@@ -131,6 +134,7 @@ public sealed record EvaluationEvidence(
     bool OwnerAuthorized, bool TargetVerified, bool CompleteActivityScan,
     bool LocalCheckpointVerified, bool SeerrDelegationVerified, bool AdministratorAuthorized = false)
 {
+    public bool AutomaticRuleVerified { get; init; }
     public bool NativeHistoryVerified { get; init; }
 }
 

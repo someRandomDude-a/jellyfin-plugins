@@ -5,6 +5,7 @@ $stage = Join-Path $root 'stage'
 $validator = Join-Path $PSScriptRoot 'validate-release-set.ps1'
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 $plugins = @{
+    AutomaticDeletionRequests = 'a6429fb2-c67c-459d-b6a7-579c4a05dace'
     Notifications = 'c18d78ec-4b70-47cf-a0d2-936d987c37ba'
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'; DiscordBridge = '4b047046-a550-4415-b204-4206f1f18201'
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'; DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'

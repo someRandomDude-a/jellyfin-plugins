@@ -16,7 +16,7 @@ public sealed class HubOutbox(string path)
         using var command = db.CreateCommand();
         command.CommandText = "PRAGMA user_version";
         var version = Convert.ToInt32(command.ExecuteScalar());
-        if (version is not (0 or 1 or 2)) { db.Dispose(); throw new InvalidDataException("Unsupported integration store version."); }
+        if (version is not (0 or 1 or 2)) throw new InvalidDataException("Unsupported integration store version.");
         command.CommandText = """
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=FULL;

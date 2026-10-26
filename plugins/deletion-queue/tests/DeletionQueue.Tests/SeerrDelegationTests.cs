@@ -14,6 +14,23 @@ public sealed class SeerrDelegationTests
         { Calls++; return Task.FromResult(send(request)); }
     }
     private static JsonElement Json(string s) => JsonDocument.Parse(s).RootElement.Clone();
+    private sealed class DeadlineContent : HttpContent
+    {
+        public bool SawDeadline;
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => throw new InvalidOperationException("A body deadline is required");
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken ct) {
+            SawDeadline = ct.CanBeCanceled; Assert.True(SawDeadline);
+            await stream.WriteAsync("{}"u8.ToArray(), ct);
+        }
+    }
+    [Fact] public async Task SeerrBodyReadsHaveADeadlineEvenWithoutCallerCancellation() {
+        using var content = new DeadlineContent();
+        using var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = content });
+        using var client = new SeerrClient(new Uri("https://seerr.invalid"), "fixture-secret", handler);
+        await client.StatusAsync(CancellationToken.None);
+        Assert.True(content.SawDeadline); Assert.Equal(1, handler.Calls);
+    }
 
     [Theory] [InlineData(false)] [InlineData(true)]
     public async Task TransportUsesOnlyTheSeerrFileDeletionEndpointAndRequires204(bool is4K)

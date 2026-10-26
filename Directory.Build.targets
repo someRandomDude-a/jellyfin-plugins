@@ -1,7 +1,7 @@
 <Project>
   <Import Project="$(MSBuildThisFileDirectory)Jellyfin.Target.props" Condition="'$(JellyfinVersion)' == ''" />
   <!-- One SDK target and SQLitePCL family in combined test hosts. -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' == 'AccountHub' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.Notifications' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DiscordBridge' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.PrivateSyncPlay' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DeletionQueue'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'AccountHub' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.Notifications' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DiscordBridge' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.PrivateSyncPlay' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DeletionQueue' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.AutomaticDeletionRequests'">
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)shared/Web/admin-ui.js" LogicalName="Suite.Web.admin-ui.js" />
   </ItemGroup>
   <ItemGroup>

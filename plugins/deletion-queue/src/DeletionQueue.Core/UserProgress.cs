@@ -7,7 +7,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
     public static string Checkpoint(Proposal p) => p.Status is ProposalStatus.Waiting or ProposalStatus.Ready ? "delay" : p.Reason == "AdministratorApprovalRequired" ? "approval" : "checks";
     public static string PublicReason(string reason) => reason switch {
         "ActivityCoverageIncomplete" or "ConsentRequired" or "AdministratorApprovalRequired" or "PlaybackActive" or "Suspended" or "PolicyChanged" or
-        "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
+        "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "AutomaticRuleVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
         "AdministratorApprovalExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
         _ => "VerificationRequired"
     };
@@ -73,6 +73,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
         "Suspended" or "PolicyChanged" => "Removal is paused while the current policy and safety requirements are checked.",
         "ClockUnverified" => "The server clock could not be verified. Removal is paused until timing checks recover.",
         "OwnerNotAuthorized" => "This request no longer meets the required access or ownership checks.",
+        "AutomaticRuleVerificationRequired" => "The originating automatic rule must still be enabled and match current evidence. Missing or changed conditions block progress.",
         "TargetVerificationRequired" or "VerificationRequired" => "The media target and current safety conditions still need verification.",
         "LocalCheckpointRequired" => "The queue's storage checkpoint could not be verified. Removal is paused.",
         "SeerrDelegationRequired" => "The configured removal service could not be verified. Removal is paused.",

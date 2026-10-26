@@ -41,7 +41,7 @@ jobs:
           docker ps -aq --filter 'label=jellyfin.suite.tunnel-test=true' | xargs -r docker rm -f
   suite:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:

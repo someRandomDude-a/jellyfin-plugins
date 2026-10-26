@@ -1,4 +1,5 @@
 using DeletionQueue.Core;
+using DeletionQueue.Infrastructure;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
@@ -243,14 +244,15 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
     }
 
     [HttpGet("admin/status")]
-    public IActionResult AdminStatus()
+    public async Task<IActionResult> AdminStatus(CancellationToken ct)
     {
         _ = identity.Caller(User, administrator: true);
         if (!runtime.Available) return Ok(new { StorageAvailable = false, ExecutionAvailable = false, Mode = QueueRuntime.ReleaseMode });
         var state = runtime.Read();
+        var notificationsReady = await new AccountHub.Api.NotificationsClient(HttpContext.RequestServices).ReadyForRegisteredTypesAsync(ct);
         return Ok(new
         {
-            StorageAvailable = true, ExecutionAvailable = true, Mode = QueueRuntime.ReleaseMode,
+            StorageAvailable = true, ExecutionAvailable = true, Mode = QueueRuntime.ReleaseMode, NotificationsReady = notificationsReady,
             state.Policy, state.CoverageSince, state.LastHeartbeat, state.CoverageHealthy, state.ClockHealthy,
             state.CoverageProblem, CollectorHealthy = runtime.CollectorHealthy, LocalIntegrityVerified = true, IndependentRollbackProtection = false,
             ContinuousWindowCollected = QueueRules.CoverageComplete(state, clock.GetUtcNow()),
@@ -319,6 +321,28 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
             return true;
         });
         return NoContent();
+    }
+
+    [HttpPost("admin/seerr/test")]
+    public async Task<IActionResult> TestSeerr([FromServices] ISeerrClientFactory clients, CancellationToken ct)
+    {
+        _ = identity.Caller(User, administrator: true); Response.Headers.CacheControl = "no-store";
+        var settings = runtime.Read().Seerr;
+        if (settings.BaseUrl.Length == 0 || settings.ApiKey.Length == 0) return Ok(new { working = false, message = "Save a Seerr URL and API key first.", version = (string?)null });
+        try {
+            using var client = clients.Create(settings);
+            var connection = await client.JellyfinSettingsAsync(ct);
+            var matches = connection.TryGetProperty("serverId", out var id) && id.ValueKind == System.Text.Json.JsonValueKind.String && string.Equals(id.GetString(), host.SystemId, StringComparison.OrdinalIgnoreCase);
+            string? version = null;
+            if (matches) try { var status = await client.StatusAsync(ct); if (status.TryGetProperty("version", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String && v.GetString() is { Length: > 0 and <= 80 } text && System.Text.RegularExpressions.Regex.IsMatch(text, @"^v?\d+\.\d+(?:\.\d+)?(?:[-+][A-Za-z0-9.-]+)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)) version = text; }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch { /* Version discovery is optional; authenticated identity verification is not. */ }
+            _ = identity.Caller(User, administrator: true);
+            if (runtime.Read().Seerr.Revision != settings.Revision) throw new QueueException("RevisionChanged");
+            return Ok(new { working = matches, version, message = matches ? "Authenticated Seerr connection and Jellyfin server identity verified. No media or requests changed." : "Seerr authenticated, but its Jellyfin server identity does not match this server." });
+        } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (QueueException) { throw; }
+        catch { return Ok(new { working = false, version = (string?)null, message = "Connection could not be verified. Check the saved URL/key, Seerr permissions and outbound network access. No changes were made." }); }
     }
 
     [HttpPost("admin/users/{id:guid}/reset")]

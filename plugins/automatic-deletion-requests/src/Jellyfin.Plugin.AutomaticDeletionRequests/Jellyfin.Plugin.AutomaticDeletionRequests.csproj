@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>Jellyfin.Plugin.AutomaticDeletionRequests</AssemblyName><Version>0.1.0</Version></PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)" ExcludeAssets="runtime" />
+    <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" />
+    <EmbeddedResource Include="Web/*" />
+  </ItemGroup>
+</Project>

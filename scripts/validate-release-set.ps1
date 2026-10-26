@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Tag, [string]$Repository = 'someRandomDude-a/jellyfin-plugins',
-    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')][string]$Plugin = 'all', [string]$ReleaseTag = '')
+    [ValidateSet('all','account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests')][string]$Plugin = 'all', [string]$ReleaseTag = '')
 $ErrorActionPreference = 'Stop'
 if ($Tag -notmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected immutable vX.Y.Z tag' }
 $version = $Matches[1] + '.0'
@@ -9,13 +9,14 @@ $downloadTag = [Uri]::EscapeDataString($ReleaseTag)
 $targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid repository' }
 $plugins = @{
+    AutomaticDeletionRequests = 'a6429fb2-c67c-459d-b6a7-579c4a05dace'
     Notifications = 'c18d78ec-4b70-47cf-a0d2-936d987c37ba'
     AccountHub = 'bc9c3d3e-6da3-4ee5-91cd-c429d58ad901'
     DiscordBridge = '4b047046-a550-4415-b204-4206f1f18201'
     PrivateSyncPlay = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'
     DeletionQueue = '3de88ba1-6d5c-49f5-854b-65a72f473f21'
 }
-$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue'; 'notifications'='Notifications' }
+$assets = @{ 'account-hub'='AccountHub'; 'discord-bridge'='DiscordBridge'; 'private-syncplay'='PrivateSyncPlay'; 'deletion-queue'='DeletionQueue'; 'notifications'='Notifications'; 'automatic-deletion-requests'='AutomaticDeletionRequests' }
 if ($Plugin -ne 'all') { $asset = $assets[$Plugin]; $plugins = @{ $asset = $plugins[$asset] } }
 $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
@@ -44,6 +45,7 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
         $archive = [IO.Compression.ZipFile]::OpenRead($zip)
         try {
             $names = @($archive.Entries | ForEach-Object FullName)
+            if ($asset -eq 'DeletionQueue' -and @($names | Where-Object { $_ -match '(?i)skia' }).Count) { throw "Host Skia runtime must not be shipped: $name" }
             if (@($names | Where-Object { $_ -match '[/\\]|(?i)(^\.env|\.(key|db|pfx|p12)$)' }).Count) { throw "Unsafe archive entry: $name" }
             foreach ($required in @('meta.json','LICENSE',"Jellyfin.Plugin.$asset.dll")) {
                 if (@($names | Where-Object { $_ -ceq $required }).Count -ne 1) { throw "Missing/duplicate required ZIP entry: $name/$required" }

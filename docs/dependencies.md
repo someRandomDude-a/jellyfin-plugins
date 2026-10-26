@@ -1,5 +1,7 @@
 # Independent plugins and optional features
 
+**Sixth-plugin preview (2026-10-26):** Automatic Deletion Requests installs independently for administrator rule configuration. New submissions require a ready Deletion Queue automation boundary, Notifications and a configured native administrator with proposal authority. Seerr evidence uses Deletion Queue's existing protected connection; no rule plugin media executor, separate credentials or automatic consent/approval is introduced. Collections and reversible artwork are opt-in Deletion Queue features for all pending requests, independent of rule ownership.
+
 **Current removal-action capability:** new Deletion Queue intake also requires Notifications health feature `commands`, in addition to the standalone owner marker, `registered-types` and `scoped-access`. Update Notifications and Deletion Queue together for the new inline controls. Existing-request consent, Undo and history remain available through the queue during provider failure. Enhanced is optional; only the full Requests/Calendar integration and full-page shortcut depend on its enabled pages.
 
 Deletion Queue now requires the standalone Notifications plugin to accept new removal requests and previews. Missing or unready Notifications blocks new intake with a repair message, not a local second inbox. Existing consent, Undo and history remain accessible for recovery. Install Notifications explicitly; no automatic Jellyfin dependency installation is claimed.
@@ -40,7 +42,7 @@ Installed/enabled metadata is not a claim that an external service or bot is con
 
 ## Combination tests
 
-`scripts/test-combinations.mjs` exercises all 32 subsets of the five currently packaged plugins, including the no-plugin baseline, on new isolated Jellyfin servers. Supplying `--security=<pinned-jf12-zip>` runs all 32 again with native Security (64 cases). Cases verify actual installed startup, standalone settings writes, rejected invalid confirmation/origin/JSON, and per-feature dependency reports. The interface matrix passed 64/64 on an earlier coordinated package set; see [current evidence and its limits](review-status.md) for newer focused checks. Live Discord messaging still needs disposable bot/guild credentials. These checks do not certify unfinished onboarding, group intent, Seerr job features or arbitrary independent version skew.
+`scripts/test-combinations.mjs` now selects all 64 subsets of six plugins, including the no-plugin baseline, on new isolated Jellyfin servers. Supplying `--security=<pinned-jf12-zip>` doubles this to 128 cases. This expanded matrix has not yet been run in full. Cases verify installed startup, standalone configuration, invalid confirmation/origin/JSON rejection and per-feature dependency reports. Historical 64/64 evidence covered an earlier, smaller coordinated set, not this expanded matrix; see [current evidence and limits](review-status.md). Live Discord messaging still needs disposable bot/guild credentials. These checks do not certify unfinished onboarding, group intent, Seerr job features or arbitrary independent version skew.
 
 ```powershell
 node scripts/test-combinations.mjs --packages=artifacts/release/v0.2.0/linux-x64 --jobs=2

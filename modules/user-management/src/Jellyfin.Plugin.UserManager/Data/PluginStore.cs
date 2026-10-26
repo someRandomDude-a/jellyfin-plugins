@@ -91,9 +91,17 @@ public sealed class PluginStore
         var builder = new SqliteConnectionStringBuilder(_connectionString);
         if (File.Exists(Path.Combine(Path.GetDirectoryName(DatabasePath)!, "installation.id"))) builder.Mode = SqliteOpenMode.ReadWrite;
         var connection = new SqliteConnection(builder.ToString());
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await connection.ExecuteAsync("PRAGMA busy_timeout=10000; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;").ConfigureAwait(false);
-        return connection;
+        try
+        {
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await connection.ExecuteAsync("PRAGMA busy_timeout=10000; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;").ConfigureAwait(false);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     // ---------------------------------------------------------------- invites

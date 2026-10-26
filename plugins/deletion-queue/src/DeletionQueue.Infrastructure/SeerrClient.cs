@@ -46,6 +46,7 @@ public sealed class SeerrClient : IDisposable
     }
     public async Task<JsonElement> UserAsync(int id, CancellationToken ct) => await GetAsync($"user/{Positive(id)}", ct);
     public async Task<JsonElement> JellyfinSettingsAsync(CancellationToken ct) => await GetAsync("settings/jellyfin", ct);
+    public async Task<JsonElement> StatusAsync(CancellationToken ct) => await GetAsync("status", ct);
     public async Task<JsonElement> MediaRecordAsync(int id, CancellationToken ct) => await GetAsync($"media/{Positive(id)}", ct);
 
     // Exactly one application-level attempt, no redirect/retry loop. Only the file endpoint, never /request or /media/{id}.
@@ -58,6 +59,10 @@ public sealed class SeerrClient : IDisposable
 
     private async Task<JsonElement> GetAsync(string path, CancellationToken ct)
     {
+        // ResponseHeadersRead ends HttpClient.Timeout coverage at the headers.
+        // Keep one deadline across DNS/connect, headers, bounded body reads and parsing.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(15)); ct = deadline.Token;
         using var response = await http.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         // Bound external data before parsing; never return raw upstream errors to users.

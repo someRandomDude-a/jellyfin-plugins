@@ -32,7 +32,7 @@ const people = { items: [{ id: 'a', username: 'Alice' }, { id: 'b', username: 'B
 test('Unconfigured Seerr greys dependent actions but retains local jobs and explains remediation', async t => {
     const calls = [];
     const { w } = await seerr(t, async path => { calls.push(path); return path === 'seerr/connection' ? { warnings: [], keyConfigured: false } : path.startsWith('users?') ? people : { items: [{ id: 'job', state: 'failed' }], total: 1, attention: 1 }; });
-    for (const label of ['Discover / verify connection', 'Manage Seerr for Alice', 'Retry after review']) { assert(find(w, label).disabled); assert.match(find(w, label).title, /API key/); }
+    for (const label of ['Test connection', 'Manage Seerr for Alice', 'Retry after review']) { assert(find(w, label).disabled); assert.match(find(w, label).title, /API key/); }
     assert(!find(w, 'Cancel follow-up').disabled);
     assert(!calls.some(p => p.startsWith('seerr/users')));
 });

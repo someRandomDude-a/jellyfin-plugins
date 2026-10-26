@@ -1,7 +1,7 @@
 name: Independent plugin release engine
 on:
   push:
-    tags: ['account-hub/v*', 'discord-bridge/v*', 'private-syncplay/v*', 'deletion-queue/v*', 'notifications/v*']
+    tags: ['account-hub/v*', 'discord-bridge/v*', 'private-syncplay/v*', 'deletion-queue/v*', 'notifications/v*', 'automatic-deletion-requests/v*']
   workflow_call:
     inputs:
       plugin:
@@ -45,11 +45,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if ($env:DISPATCH -eq 'true') {
-            if ($env:SELECTED_PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')) { throw 'Unknown plugin' }
+            if ($env:SELECTED_PLUGIN -notin @('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests')) { throw 'Unknown plugin' }
             if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Enter a version such as v0.2.0' }
             $env:RELEASE_TAG = "$env:SELECTED_PLUGIN/$env:RELEASE_TAG"
           }
-          if ($env:RELEASE_TAG -notmatch '^(account-hub|discord-bridge|private-syncplay|deletion-queue|notifications)/(v\d+\.\d+\.\d+)$') { throw 'Expected plugin/vX.Y.Z tag' }
+          if ($env:RELEASE_TAG -notmatch '^(account-hub|discord-bridge|private-syncplay|deletion-queue|notifications|automatic-deletion-requests)/(v\d+\.\d+\.\d+)$') { throw 'Expected plugin/vX.Y.Z tag' }
           $plugin = $Matches[1]; $versionTag = $Matches[2]
           git fetch --tags --force
           if ($LASTEXITCODE) { throw 'Tag fetch failed' }
@@ -59,6 +59,7 @@ jobs:
               'account-hub' = @('shared', 'modules')
               'discord-bridge' = @('shared', 'modules/security', 'modules/notifications', 'plugins/private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay.Api')
               'deletion-queue' = @('shared/AccountHub.Api')
+              'automatic-deletion-requests' = @('shared/AccountHub.Api')
               'notifications' = @('shared', 'modules/notifications')
             }
             $paths = @("plugins/$plugin", 'shared/Web', 'scripts', '.github/workflows', 'Jellyfin.Target.props', 'Directory.Build.props', 'Directory.Build.targets', 'global.json', 'LICENSE') + $dependencies[$plugin]

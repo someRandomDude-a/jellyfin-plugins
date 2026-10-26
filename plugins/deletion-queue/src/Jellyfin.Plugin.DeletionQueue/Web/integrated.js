@@ -641,6 +641,10 @@
         const headers = preferredHeader ? [preferredHeader] : [];
         document.querySelectorAll('.dq-bell, .dq-local-shortcut').forEach(n => { if (n.parentElement !== preferredHeader) n.remove(); });
         for (const header of headers.filter(h => !h.closest('.videoOsdBottom') && !h.querySelector('.headerRight'))) {
+            const place = item => {
+                const before = userAnchor?.parentElement === header ? userAnchor : null;
+                if (item.parentElement !== header || item.nextSibling !== before) header.insertBefore(item, before);
+            };
             if (twoFactorPending) {
                 header.querySelectorAll('.dq-bell, .dq-local-shortcut').forEach(n => n.remove());
                 if (!header.querySelector('.dq-two-factor')) {
@@ -655,17 +659,19 @@
                 if (!header.querySelector('.dq-local-shortcut')) {
                     const shortcut = button('', queue, 'paper-icon-button-light headerButton dq-local-shortcut dq-web-owned');
                     shortcut.title = 'Deletion queue'; shortcut.setAttribute('aria-label', 'Deletion queue'); shortcut.setAttribute('aria-haspopup', 'dialog');
-                    const icon = node('span', 'auto_delete', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); shortcut.append(icon); header.append(shortcut);
+                    const icon = node('span', 'auto_delete', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); shortcut.append(icon); place(shortcut);
                 }
+                place(header.querySelector('.dq-local-shortcut'));
                 continue;
             }
             header.querySelectorAll('.dq-local-shortcut').forEach(n => n.remove());
-            if (header.querySelector(':scope > .dq-bell')) continue;
+            const existing = header.querySelector(':scope > .dq-bell');
+            if (existing) { place(existing); continue; }
             const b = button('', center, 'emby-button button-flat headerButton dq-bell dq-web-owned');
             b.setAttribute('aria-haspopup', 'dialog');
             const icon = node('span', 'notifications', 'material-icons'); icon.setAttribute('aria-hidden', 'true');
             const badge = node('span', '', 'dq-badge'); badge.hidden = true; badge.setAttribute('aria-hidden', 'true');
-            b.append(icon, badge); header.append(b);
+            b.append(icon, badge); place(b);
         }
         updateBadges();
         if (twoFactorPending) return;

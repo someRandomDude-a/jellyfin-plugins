@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications')][string]$Plugin,
+param([Parameter(Mandatory)][ValidateSet('account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests')][string]$Plugin,
     [string]$Tag = 'v0.2.0', [string]$OutputDirectory = '')
 $ErrorActionPreference = 'Stop'
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $PSScriptRoot "../artifacts/independent-package-$Plugin-$([guid]::NewGuid().ToString('N'))" }

@@ -23,7 +23,7 @@ test('suite dispatch gates all platforms and publishes before one combined manif
     assert(manifest.includes('-Plugin $env:PLUGIN'));
 });
 test('each plugin has its own branch-selectable release dispatch',async()=>{
-    for(const plugin of ['account-hub','discord-bridge','private-syncplay','deletion-queue','notifications']) {
+    for(const plugin of ['account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests']) {
         const workflow=await read(`.github/workflows/release-${plugin}.yml`);
         assert(workflow.includes('workflow_dispatch:'));
         assert(workflow.includes(`plugin: ${plugin}`));
@@ -53,7 +53,7 @@ test('plugin test dispatch never runs the all-project solution or aggregate runn
     const script=await read('scripts/test-plugin.ps1');
     assert(!script.includes('Jellyfin.Plugins.slnx'));
     assert(!script.includes('scripts/test.ps1'));
-    for(const key of ['account-hub','discord-bridge','private-syncplay','deletion-queue','notifications'])assert(script.includes(`'${key}' {`));
+    for(const key of ['account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests'])assert(script.includes(`'${key}' {`));
     assert(script.includes('scripts/validate-release-set.test.ps1'));
     const checks=await read('.github/workflows/plugin-checks.yml');
     assert(checks.includes('--plugins=$($keys[$env:PLUGIN])'));

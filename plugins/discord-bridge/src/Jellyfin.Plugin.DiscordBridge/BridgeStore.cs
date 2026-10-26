@@ -36,7 +36,9 @@ public sealed class BridgeStore
     {
         var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false, DefaultTimeout = 5,
             Mode = File.Exists(Path.Combine(Path.GetDirectoryName(path)!, "installation.id")) ? SqliteOpenMode.ReadWrite : SqliteOpenMode.ReadWriteCreate }.ToString());
-        db.Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "PRAGMA synchronous=FULL"; cmd.ExecuteNonQuery(); return db;
+        try {
+            db.Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "PRAGMA synchronous=FULL"; cmd.ExecuteNonQuery(); return db;
+        } catch { db.Dispose(); throw; }
     }
     public (Configuration Settings, long Revision, string? Token) Read()
     {

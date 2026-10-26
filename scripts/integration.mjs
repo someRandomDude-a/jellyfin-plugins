@@ -46,8 +46,8 @@ const root = resolve(option('root') || join(process.env.TEMP || '/tmp', 'opencod
 const packages = resolve(option('packages') || 'artifacts/runtime-review/packages');
 const platform = option('platform') || 'linux/amd64';
 assert(['linux/amd64', 'linux/arm64'].includes(platform), 'Only Linux amd64/arm64 disposable Docker fixtures are supported');
-const pluginNames = { hub: 'Account Hub', discord: 'Discord Bridge', deletion: 'Deletion Queue', syncplay: 'Private SyncPlay', notifications: 'Notifications' };
-const selected = option('plugins') === 'none' ? [] : (option('plugins') || 'hub,discord,deletion,syncplay,notifications').split(',');
+const pluginNames = { hub: 'Account Hub', discord: 'Discord Bridge', deletion: 'Deletion Queue', syncplay: 'Private SyncPlay', notifications: 'Notifications', automatic: 'Automatic Deletion Requests' };
+const selected = option('plugins') === 'none' ? [] : (option('plugins') || 'hub,discord,deletion,syncplay,notifications,automatic').split(',');
 assert(selected.every(key => key in pluginNames), 'Unknown plugin selection');
 const has = key => selected.includes(key);
 const name = 'jellyfin-suite-test-' + randomUUID().slice(0, 8), keep = process.argv.includes('--keep');
@@ -300,7 +300,7 @@ try {
     rootCreated = true;
     await mkdir(join(root, 'config', 'config'), { recursive: true }); await mkdir(join(root, 'cache')); if (libraryFixture) await mkdir(join(root, 'media'));
     const manifest = JSON.parse(await readFile(join(packages, 'manifest.json'), 'utf8'));
-    assert(Array.isArray(manifest) && manifest.length >= 1 && manifest.length <= 5, 'Expected selected-plugin or aggregate package catalog');
+    assert(Array.isArray(manifest) && manifest.length >= 1 && manifest.length <= 6, 'Expected selected-plugin or aggregate package catalog');
     assert.equal(new Set(manifest.map(plugin=>plugin.name)).size,manifest.length,'Duplicate plugin package');
     assert(manifest.every(plugin=>Object.values(pluginNames).includes(plugin.name)),'Unknown plugin package');
     for(const key of selected)assert(manifest.some(plugin=>plugin.name===pluginNames[key]),'Selected plugin package missing: '+key);
@@ -335,6 +335,19 @@ try {
         const wanted = selected.some(key => pluginNames[key] === plugin.name);
         const active = installed.some(p => p.id.replaceAll('-', '') === plugin.guid.replaceAll('-', '') && p.status === 'Active');
         assert.equal(active, wanted, `${plugin.name} installed state must match selection`);
+    }
+    const scheduled = (await request('ScheduledTasks')).data;
+    for (const [plugin, key] of [['automatic', 'AutomaticDeletionRequests.RuleMaintenance'], ['deletion', 'DeletionQueue.RemovalMaintenance'], ['deletion', 'DeletionQueue.OverlayGeneration']]) {
+        const task = scheduled.find(t => t.key === key);
+        assert.equal(!!task, has(plugin), 'Native scheduled task discovery: ' + key);
+        if (!task) continue;
+        assert(task.triggers.some(t => t.type === 'DailyTrigger'), key + ' must default to a native daily trigger');
+        const before = task.lastExecutionResult?.endTimeUtc;
+        await request('ScheduledTasks/Running/' + task.id, { method: 'POST', expected: 204 });
+        await until(async () => {
+            const current = (await request('ScheduledTasks')).data.find(t => t.id === task.id);
+            return current.state === 'Idle' && current.lastExecutionResult?.endTimeUtc !== before && current.lastExecutionResult?.status === 'Completed';
+        }, 'daily scheduled task can run manually: ' + key);
     }
     for (const [key, prefix] of [['deletion', 'DeletionQueue'], ['syncplay', 'PrivateSyncPlay']]) if (has(key)) {
         const dependencies = (await request(prefix + '/admin/dependencies')).data.data.items;
@@ -374,7 +387,38 @@ try {
         assert.equal((html.match(/data-notifications-bootstrap/g)||[]).length,1);
         console.log('PASS standalone notification inbox, native authorization, read state and exclusive Web ownership');
     }
+    if (has('automatic')) {
+        await request('AutomaticDeletionRequests/admin', { auth: null, expected: [401,403] });
+        const rules = (await request('AutomaticDeletionRequests/admin')).data;
+        assert.equal(rules.configuration.enabled, false, 'Automation must be disabled by default');
+        assert.equal(rules.queueAvailable, has('deletion'));
+        const user = (await nativeFixtureUser({ Name: 'automation-nonadmin' })).data;
+        const ordinary = (await request('Users/AuthenticateByName', { method: 'POST', auth: {}, body: { Username: user.name, Pw: '' } })).data;
+        await request('AutomaticDeletionRequests/admin', { auth: { token: ordinary.accessToken }, expected: [401,403] });
+        if (has('deletion')) await request('DeletionQueue/admin/presentation', { auth: { token: ordinary.accessToken }, expected: [401,403] });
+        if (has('deletion')) await request('DeletionQueue/admin/seerr/test', { method: 'POST', body: {}, auth: { token: ordinary.accessToken }, expected: [401,403] });
+        await request('AutomaticDeletionRequests/admin', { method: 'PUT', body: { configuration: rules.configuration, confirmAutomation: false }, headers: { Origin: 'https://attacker.invalid' }, expected: 403 });
+        await request('Users/' + user.id, { method: 'DELETE', expected: 204 });
+        console.log('PASS installed automatic rules: disabled by default, dependency discovery and native administrator authorization');
+    }
     if (has('deletion')) {
+        await request('DeletionQueue/admin/presentation', { auth: null, expected: [401,403] });
+        await request('DeletionQueue/admin/seerr/test', { method: 'POST', body: {}, auth: null, expected: [401,403] });
+        assert.equal((await request('DeletionQueue/admin/seerr/test', { method: 'POST', body: {} })).data.working, false, 'An unconfigured saved connection cannot pass a test');
+        const initial = (await request('DeletionQueue/admin/presentation')).data;
+        assert.equal(initial.settings.overlaysEnabled, false); assert.equal(initial.settings.collectionEnabled, false);
+        await request('DeletionQueue/admin/presentation', { method: 'PUT', body: { settings: { ...initial.settings, collectionEnabled: true }, confirmChanges: false }, expected: [400,409] });
+        const enabled = (await request('DeletionQueue/admin/presentation', { method: 'PUT', body: { settings: { ...initial.settings, collectionEnabled: true }, confirmChanges: true } })).data;
+        await request('DeletionQueue/admin/presentation/sync', { method: 'POST', body: {}, expected: 204 });
+        const managed = (await request('DeletionQueue/admin/presentation')).data;
+        assert(managed.managedCollectionId, 'Native managed collection creation must persist its receipt');
+        assert(managed.collections.some(c => c.id === managed.managedCollectionId));
+        await request('DeletionQueue/admin/presentation', { method: 'PUT', body: { settings: initial.settings, confirmChanges: false }, expected: 409 });
+        await request('DeletionQueue/admin/presentation', { method: 'PUT', body: { settings: { ...enabled, collectionEnabled: false }, confirmChanges: false } });
+        await request('DeletionQueue/admin/presentation/sync', { method: 'POST', body: {}, expected: 204 });
+        const restored = (await request('DeletionQueue/admin/presentation')).data;
+        assert(restored.collections.some(c => c.id === managed.managedCollectionId), 'Disabling must retain the native collection');
+        console.log('PASS installed presentation defaults, confirmation/revision checks, native collection creation and non-destructive disabling');
         const preview = await request('DeletionQueue/targets/items/11111111-1111-1111-1111-111111111111/preview', { method: 'POST', body: {}, expected: [404,409,503] });
         assert.notEqual(preview.data.code, 'InvalidJson', 'Removal preview must reach dependency/target validation');
         if (!has('notifications')) assert.equal(preview.data.code, 'NotificationsRequired');
@@ -583,6 +627,30 @@ try {
         docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
         await until(async () => { try { return (await request('AccountHub/api/v1/health', { expected: null })).status === 200; } catch { return false; } }, 'Hub recovery after original database restore');
         console.log('PASS missing Hub database leaves native Jellyfin available, refuses replacement state, and recovers after original fixture restoration.');
+        if (has('automatic')) {
+            const endpoint = 'AutomaticDeletionRequests/admin';
+            const original = (await request(endpoint)).data.configuration;
+            const saved = (await request(endpoint, { method: 'PUT', body: { configuration: original, confirmAutomation: false } })).data;
+            const file = join(root, 'config', 'data', 'automatic-deletion-requests', 'rules.json');
+            assert(await exists(file + '.installed'), 'Rule state must retain its installation marker');
+            docker('stop', '--time=30', name);
+            await rename(file, file + '.preserved');
+            try {
+                docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
+                await until(async () => { try { return (await request('System/Info/Public', { auth: null, expected: null })).status === 200; } catch { return false; } }, 'native startup with missing rule state');
+                await request(endpoint, { expected: 409 });
+                await request(endpoint, { method: 'PUT', body: { configuration: saved, confirmAutomation: false }, expected: 409 });
+                assert(!await exists(file), 'Missing rule state must not silently reset configuration or receipts');
+            } finally {
+                docker('stop', '--time=30', name);
+                if (await exists(file)) await rename(file, file + '.unexpected');
+                await rename(file + '.preserved', file);
+            }
+            docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
+            await until(async () => { try { return (await request(endpoint, { expected: null })).status === 200; } catch { return false; } }, 'rule state recovery after original restoration');
+            assert.deepEqual((await request(endpoint)).data.configuration, saved);
+            console.log('PASS missing automatic-rule state fails closed across restart, preserves the installation marker and recovers only after original fixture restoration.');
+        }
     }
     if (interactiveDiscord) {
         liveStage = 'human interactive commands';
@@ -635,6 +703,7 @@ try {
             '--mount', `type=bind,source=${resolve('scripts')},target=/checks,readonly`,
             '--mount', `type=bind,source=${join(root, 'admin-screenshots')},target=/evidence`,
             '--env', 'ADMIN_SCREENSHOTS=/evidence',
+            '--env', 'THEME_TEST_AUTOMATIC=' + has('automatic'),
             '--env', 'DISPOSABLE_THEME_TEST=true', '--env', 'THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite',
             'mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a',
             '/bin/sh', '/checks/run-theme-acceptance.sh');

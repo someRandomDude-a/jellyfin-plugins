@@ -10,6 +10,7 @@
     let active = true, epoch = 0, cancelOptIn;
     let accountDraft = {};
     const value = (o, name) => o[name] ?? o[name[0].toUpperCase() + name.slice(1)];
+    const badge = (id, update) => window.SuiteAdminUI?.integration(page, id, update);
     const authorityNumber = v => ({ Denied: 0, OwnRequests: 1, AnyAccessibleItem: 2 })[v] ?? v;
     const normalizedId = id => id.replaceAll('-', '').toLowerCase();
     // Jellyfin renders Guid values without hyphens, but System.Text.Json's Guid dictionary keys require D format.
@@ -41,6 +42,7 @@
         for (const id of ['dqUsers', 'dqCoverage', 'dqBacklog', 'dqJournal']) el(id).replaceChildren();
         accountDraft = {}; el('dqResetUser').disabled = true; el('dqEnhanced').disabled = true;
         el('dqKey').value = ''; el('dqUrl').value = '';
+        el('dqEnhancedStatus').textContent = ''; el('dqConnectionResult').textContent = '';
     };
     const error = e => { if (!active || e?.name === 'AbortError') return; clearEvidence(); el('dqError').textContent = 'Operation unavailable. Refresh and review your session, revisions and integrity status.'; console.warn('Deletion queue operation failed', e?.status); };
     const request = async (path, method = 'GET', body) => {
@@ -48,7 +50,7 @@
         if (!active) throw new DOMException('View closed', 'AbortError');
         const result = await ApiClient.ajax({
         url: ApiClient.getUrl('DeletionQueue/' + path), type: method,
-        dataType: method === 'GET' ? 'json' : undefined,
+        dataType: method === 'GET' || path === 'admin/seerr/test' ? 'json' : undefined,
         contentType: 'application/json', data: body ? JSON.stringify(body) : undefined
         });
         if (!active || view !== epoch) throw new DOMException('View closed', 'AbortError');
@@ -63,6 +65,8 @@
             current = await request('admin/status');
             el('dqError').textContent = '';
             el('dqMode').textContent = value(current, 'mode');
+            badge('deletion-queue', { working: !!value(current, 'storageAvailable'), state: value(current, 'storageAvailable') ? 'Working · monitoring' : 'Unavailable', detail: value(current, 'mode') });
+            badge('notifications', { working: value(current, 'notificationsReady') === true, state: value(current, 'notificationsReady') === true ? 'Ready' : 'Not ready', detail: 'New removal requests require standalone Notifications with registered types and scoped commands. Existing consent, Undo and history remain available during provider failure.' });
             if (!value(current, 'storageAvailable')) { clearEvidence(); el('dqError').textContent = 'Storage failed integrity validation; no reset was performed.'; return; }
             const policy = value(current, 'policy');
             const seerr = value(current, 'seerr');
@@ -76,11 +80,11 @@
             try {
                 const health = await request('admin/dependencies'), dependencies = health.data.items;
                 const hub = dependencies.find(item => item.id === 'account-hub');
-                el('dqDependencyStatus').textContent = dependencies.map(item => item.name + ': ' + item.state + '. ' + (item.available ? item.reason : item.reason + ' ' + item.fix)).join(' ') + ' Local queue, evidence and notifications do not require those integrations.';
+                for (const item of dependencies) if (item.id !== 'notifications') badge(item.id, { working: item.available, state: item.available ? 'Available' : 'Unavailable', detail: item.reason + ' ' + (item.available ? '' : item.fix) });
                 for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) { el(id).disabled = !hub?.available; el(id).title = hub?.available ? '' : hub?.reason + ' ' + hub?.fix; }
             } catch {
                 if (!active || view !== epoch) return;
-                el('dqDependencyStatus').textContent = 'Optional integration health could not be verified. Check Dashboard → Plugins, enable compatible providers and restart; local queue features remain available.';
+                badge('account-hub', { working: false, state: 'Not verified', detail: 'Optional integration health could not be verified. Check Dashboard → Plugins and restart. Local queue features remain independent.' });
                 for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) el(id).disabled = true;
             }
             el('dqUrl').value = value(seerr, 'baseUrl');
@@ -90,7 +94,10 @@
             el('dqHours').value = value(policy, 'delayHours');
             el('dqDelayDays').value = value(policy, 'delayHours') / 24;
             el('dqAuto').checked = value(policy, 'automaticDeletion') && value(policy, 'seerrManagedDeletionAcknowledged');
+            const monitoringHealthy = value(current, 'clockHealthy') !== false && value(current, 'collectorHealthy') !== false && value(current, 'coverageHealthy') !== false;
+            badge('deletion-queue', { working: monitoringHealthy, state: !monitoringHealthy ? 'Needs attention' : value(policy, 'suspended') ? 'Paused' : el('dqAuto').checked ? 'Automatic · safety gated' : 'Monitoring', detail: value(current, 'mode') + ' ' + (value(current, 'coverageProblem') || '') });
             const seerrConfigured = !!value(seerr, 'baseUrl') && value(seerr, 'keyConfigured') === true;
+            badge('seerr', { name: 'Seerr API', state: seerrConfigured ? 'Saved · not tested' : 'Not configured', working: null, detail: 'Use Test connection to verify the saved key and Jellyfin server identity without changing media. Draft edits are not sent by a test.', version: null });
             el('dqAuto').disabled = !seerrConfigured && !el('dqAuto').checked;
             el('dqSeerrDependency').textContent = seerrConfigured ? 'Seerr connection is configured. Execution still requires all local safety and consent checks.' : 'Seerr-managed deletion is unavailable: configure and verify the Seerr URL and API key above, or import an enabled Enhanced connection. Monitoring, local evidence and configuration remain independent. An existing opt-in may still be switched off.';
             el('dqRequireAdminApproval').checked = value(policy, 'requireAdministratorApproval');
@@ -109,8 +116,9 @@
             el('dqResetUser').disabled = !el('dqUsers').value;
             el('dqUserAuthority').value = accountDraft[el('dqUsers').value] ?? '';
             const available = value(value(current, 'enhanced'), 'connectionAvailable');
-            el('dqEnhanced').disabled = !available;
-            el('dqEnhancedStatus').textContent = available ? 'Enhanced connection detected. Import it without exposing its API key. Later Enhanced changes require another import.' : 'No unambiguous enabled Enhanced connection found. Configure Seerr manually if Enhanced has multiple URLs or is unavailable.';
+            el('dqEnhanced').disabled = false;
+            el('dqEnhancedStatus').textContent = '';
+            badge('enhanced', { name: 'Jellyfin Enhanced', state: available ? 'Copy available' : undefined, detail: 'Optional Requests/Calendar integration and server-side Seerr connection copying. Use Copy Jellyfin Enhanced connection to check whether its connection can be copied.' });
             el('dqCoverage').textContent = JSON.stringify({
                 coverageSince: value(current, 'coverageSince'), heartbeat: value(current, 'lastHeartbeat'),
                 healthy: value(current, 'coverageHealthy'), clockHealthy: value(current, 'clockHealthy'),
@@ -157,6 +165,7 @@
         } catch (e) { error(e); } finally { if (view === epoch) { busy = false; page.setAttribute('aria-busy', 'false'); } }
     }
     el('dqRefresh').addEventListener('click', refresh);
+    el('dqRefresh').addEventListener('click', () => page.dispatchEvent(new Event('suite-status-refresh')));
     el('dqHubSettings').addEventListener('submit', async e => {
         e.preventDefault(); if (!hubCurrent || busy) return;
         try {
@@ -173,9 +182,19 @@
         if (el('dqUserAuthority').value === '') delete accountDraft[id]; else accountDraft[id] = Number(el('dqUserAuthority').value);
     });
     el('dqEnhanced').addEventListener('click', async () => {
-        if (!current || busy || !confirm('Import the current Enhanced Seerr connection? This replaces the queue connection and restarts activity coverage.')) return;
-        try { await request('admin/seerr/enhanced', 'POST', { commandId: crypto.randomUUID(), revision: value(value(current, 'seerr'), 'revision') }); await refresh(); }
-        catch (err) { error(err); }
+        if (!current || busy) return;
+        if (!value(value(current, 'enhanced'), 'connectionAvailable')) { el('dqEnhancedStatus').textContent = 'A connection cannot be copied: enable a compatible Jellyfin Enhanced plugin and configure exactly one enabled Seerr URL with a valid API key. Multiple URLs require manual selection here.'; return; }
+        if (!confirm('Copy the current Enhanced Seerr connection? This replaces the queue connection and restarts activity coverage.')) return;
+        try { await request('admin/seerr/enhanced', 'POST', { commandId: crypto.randomUUID(), revision: value(value(current, 'seerr'), 'revision') }); await refresh(); el('dqEnhancedStatus').textContent = 'Connection copied. Use Test connection to verify it.'; }
+        catch (err) { if (active && err?.name !== 'AbortError') el('dqEnhancedStatus').textContent = 'The connection could not be copied. Refresh and check Enhanced availability, your session and the saved connection revision.'; }
+    });
+    el('dqTestConnection').addEventListener('click', async () => {
+        const button = el('dqTestConnection'); if (!current || button.disabled) return;
+        button.disabled = true; el('dqConnectionResult').textContent = 'Testing the saved connection…';
+        try { const result = await request('admin/seerr/test', 'POST', {}); const working = value(result, 'working') === true;
+            el('dqConnectionResult').textContent = value(result, 'message'); badge('seerr', { name: 'Seerr API', working, state: working ? 'Verified' : 'Failed test', detail: value(result, 'message'), version: value(result, 'version') || null });
+        } catch (err) { if (active && err?.name !== 'AbortError') { el('dqConnectionResult').textContent = 'Test could not be confirmed. Check administrator authorization and saved settings, then retry manually.'; badge('seerr', { working: false, state: 'Not verified', detail: el('dqConnectionResult').textContent }); } }
+        finally { button.disabled = false; }
     });
     el('dqResetUser').addEventListener('click', async () => {
         if (!current || busy || !el('dqUsers').value || !confirm('Reset this user’s permission and personal preferences? Retained data and existing deadlines will not be reset. Other unsaved edits are not saved.')) return;

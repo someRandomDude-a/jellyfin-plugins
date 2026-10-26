@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [account-hub, discord-bridge, private-syncplay, deletion-queue, notifications]
+        plugin: [account-hub, discord-bridge, private-syncplay, deletion-queue, notifications, automatic-deletion-requests]
     uses: ./.github/workflows/plugin-checks.yml
     with:
       plugin: ${{ matrix.plugin }}

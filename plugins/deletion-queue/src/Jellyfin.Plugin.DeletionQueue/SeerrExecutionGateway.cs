@@ -4,7 +4,8 @@ using DeletionQueue.Infrastructure;
 namespace Jellyfin.Plugin.DeletionQueue;
 
 public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver targets, LiveIdentity identity,
-    ActivityInventory inventory, ActivityFence fence, TimeProvider clock, ISeerrClientFactory seerrClients) : IExecutionGateway
+    ActivityInventory inventory, ActivityFence fence, TimeProvider clock, ISeerrClientFactory seerrClients,
+    AccountHub.Api.AutomaticRuleValidationClient? automaticRules = null) : IExecutionGateway
 {
     private long observedGeneration;
     public async Task<ExecutionPreflight> PreflightAsync(Proposal proposal, CancellationToken ct)
@@ -21,8 +22,10 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         scan = scan && latest.Policy.Revision == state.Policy.Revision;
         scan = scan && latest.Preferences.Count == state.Preferences.Count && state.Preferences.All(pair => latest.Preferences.TryGetValue(pair.Key, out var pref) && pref.Revision == pair.Value.Revision);
         var current = QueueRules.Find(latest, proposal.Id);
+        var ruleVerified = await AutomaticRuleMatchesAsync(current, ct);
+        scan = scan && fence.Quiet && observedGeneration == fence.Generation;
         return new(new EvaluationEvidence(authorized, resolved.Fingerprint == proposal.Target.Fingerprint, scan, runtime.Available, true,
-            AdministratorAuthorized(latest, current)) { NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision);
+            AdministratorAuthorized(latest, current)) { AutomaticRuleVerified = ruleVerified, NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision);
     }
 
     public Task<bool> AnchorClaimAsync(ExecutionClaim claim, CancellationToken ct)
@@ -46,6 +49,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
 
     public async Task DeleteOnceAsync(Proposal proposal, CancellationToken ct)
     {
+        if (!await AutomaticRuleMatchesAsync(proposal, ct)) throw new QueueException("AutomaticRuleVerificationRequired");
         if (!fence.Quiet || observedGeneration != fence.Generation) throw new QueueException("ActivityChangedBeforeDispatch");
         var state = runtime.Read(); var p = QueueRules.Find(state, proposal.Id);
         var owner = identity.Account(p.OwnerId);
@@ -61,6 +65,10 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         if (p.Target.RequestOnly && p.Target.RequestId is { } requestId) await seerr.DeclineRequestOnceAsync(requestId, ct);
         else await seerr.DeleteFilesOnceAsync(p.Target.SeerrMediaId, p.Target.Is4K, ct);
     }
+
+    private Task<bool> AutomaticRuleMatchesAsync(Proposal proposal, CancellationToken ct) => !proposal.RequiresAutomaticRuleValidation
+        ? Task.FromResult(true) : automaticRules is null || string.IsNullOrEmpty(proposal.AutomaticRuleId)
+            ? Task.FromResult(false) : automaticRules.MatchesAsync(new(proposal.OwnerId, proposal.Target.JellyfinItemId, proposal.AutomaticRuleId), ct);
 
     private bool AdministratorAuthorized(QueueState state, Proposal proposal)
     {

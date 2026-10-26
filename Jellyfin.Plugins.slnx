@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Jellyfin.Plugin.AutomaticDeletionRequests.csproj" />
+  <Project Path="plugins/automatic-deletion-requests/tests/AutomaticDeletionRequests.Tests/AutomaticDeletionRequests.Tests.csproj" />
   <Project Path="plugins/notifications/src/Jellyfin.Plugin.Notifications/Jellyfin.Plugin.Notifications.csproj" />
   <Project Path="plugins/notifications/tests/Notifications.Tests/Notifications.Tests.csproj" />
   <Project Path="shared/AccountHub.Api/AccountHub.Api.csproj" />

@@ -11,6 +11,8 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Jellyfin.Controller" Version="$(PluginSdkVersion)" ExcludeAssets="runtime" />
     <PackageReference Include="Jellyfin.Model" Version="$(PluginSdkVersion)" ExcludeAssets="runtime" />
+    <!-- Jellyfin 12.3 supplies this exact renderer/native runtime. Do not ship a competing copy. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" ExcludeAssets="runtime" />
     <ProjectReference Include="../DeletionQueue.Infrastructure/DeletionQueue.Infrastructure.csproj" />
     <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" GlobalPropertiesToRemove="Version" />
     <EmbeddedResource Include="Web/*" />
