@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/AutomaticDeletionRequests-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:58:46.1247152Z",
+        "checksum": "6011e863dd83cd2ae3753998d3f30f0f"
+      },
+      {
         "timestamp": "2026-10-26T09:28:31.3271382Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/AutomaticDeletionRequests-0.1.15.0-linux-arm64.zip",
@@ -33,6 +41,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/Notifications-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:58:52.7126778Z",
+        "checksum": "e7099ec5dbaced1d7f04b8ea4d2631d3"
+      },
       {
         "timestamp": "2026-10-26T09:28:37.6635894Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
@@ -115,6 +131,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/AccountHub-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:59:06.1239296Z",
+        "checksum": "9bd6a91166b31b751cff6f1a6168137d"
+      },
       {
         "timestamp": "2026-10-26T09:28:51.1623293Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
@@ -214,6 +238,14 @@
     "category": "General",
     "versions": [
       {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/DiscordBridge-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:59:12.9888702Z",
+        "checksum": "407670f21a992df2226d8327c6eda43c"
+      },
+      {
         "timestamp": "2026-10-26T09:28:58.4077739Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/DiscordBridge-0.1.15.0-linux-arm64.zip",
@@ -312,6 +344,14 @@
     "category": "General",
     "versions": [
       {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/PrivateSyncPlay-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:59:16.6603127Z",
+        "checksum": "d6e1287dc396794683be311d013064a4"
+      },
+      {
         "timestamp": "2026-10-26T09:29:01.8767212Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.1.15/PrivateSyncPlay-0.1.15.0-linux-arm64.zip",
@@ -409,6 +449,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "targetAbi": "12.3.0.0",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.2.0.0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/DeletionQueue-0.2.0.0-linux-arm64.zip",
+        "timestamp": "2026-10-26T13:59:22.1265848Z",
+        "checksum": "9c70d51fa578e095067ca73cc8780ad3"
+      },
       {
         "timestamp": "2026-10-26T09:29:07.2264881Z",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
