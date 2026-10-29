@@ -46,7 +46,7 @@ until the tested dependency update is merged.
 
 ### Manual reviewable bump (same engine locally and in Actions)
 
-Run **Actions → Preview dependency bump** to get a dependency-only patch, report
+Run **Actions → Dependency bump preview and validation** to get a dependency-only patch, report
 and itemized version/lock changes plus Linux root tests, without commits, pushes or publication. For the
 same steps locally, with current stable Node/npm:
 
@@ -118,8 +118,8 @@ digests. npm lock roots and resolved direct versions must match the current dire
 declarations; `npm ci` verifies reproducible installation/integrities during tests.
 Independent transitive releases/advisories are informational, not project freshness
 requirements. Standalone transitive lock maintenance and forced major overrides are
-not enabled. Source
-manifests and locks are never silently rewritten while building an immutable tag.
+not enabled. Source manifests and locks are never silently rewritten while
+building an immutable tag.
 The bot must update them and pass tests; incompatible major updates remain blocked.
 
 One current stable target snapshot binds Jellyfin/Security/Enhanced/Seerr/Arr,
@@ -141,7 +141,8 @@ the subset matrix, native Security/SyncPlay and external API fixtures, including
 manual releases (not only dependency-bot releases). Independent releases retain
 selected-plugin gates; Hub/Queue/automatic-rules releases additionally require the
 latest external-service fixtures without running the full subset matrix. Hub and
-Bridge standalone gates also exercise library capture. Disposable Docker tools
+Bridge combinations and the standalone Notifications owner exercise library
+capture; Hub-only checks do not request a Notifications-owned library observer. Disposable Docker tools
 pull before running, so mutable tags cannot quietly reuse an older local cache.
 
 Immediately before publication, both release engines repeat dependency freshness

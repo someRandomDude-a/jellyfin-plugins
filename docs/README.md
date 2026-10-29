@@ -15,7 +15,6 @@ upgrading; never reset history or credentials to repair a failed migration.
 | Manage accounts, templates, invitations and verified links | [Account management](account-management.md) |
 | Understand the existing-session recovery requirement | [Security and recovery](security-recovery-integration.md) |
 | Configure the bot, account commands and delivery | [Discord integration](discord-suite-integration.md) |
-| Configure native Discord invitations and permissions | [Discord integration](discord-suite-integration.md) |
 | Enable future episode/movie announcements | [Library notifications](library-notifications.md) |
 | Choose personal categories, importance or consent swipes | [Notification controls](notification-channels.md) |
 | Enroll a browser/device for Push | [Web Push](web-push.md) |
@@ -26,6 +25,7 @@ upgrading; never reset history or credentials to repair a failed migration.
 | Build or run disposable acceptance | [Testing](testing.md) · [Theme acceptance](theme-acceptance.md) |
 | Trace HTTP, bot and provider authorization boundaries | [Route authorization review](route-authorization-review.md) |
 | Maintain dependencies or publish a release | [Dependency maintenance](dependency-maintenance.md) · [Release checklist](github-release-checklist.md) |
+| Choose a GitHub workflow or understand its gates | [Workflow map](../.github/README.md) |
 
 ## Status and document scope
 
@@ -48,5 +48,6 @@ publication by itself.
 - [Test credential handling](discord-test-credentials.md)
 - [User creation workflow](user-creation-workflow.md)
 - [Evidence register and scoped historical milestones](verification.md)
+- [Preserved development review history](review-history.md)
 - [Safety, permissions and operational limits](safety-and-permissions.md)
 - [Notification producer/host API](notification-producer-api.md)

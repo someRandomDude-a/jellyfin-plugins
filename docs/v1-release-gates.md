@@ -29,7 +29,9 @@ Current evidence: [review status](review-status.md), [testing](testing.md) and t
 
 ## Installed acceptance
 
-- [ ] Fresh Linux root/package acceptance after Activity removal and Notifications/invitation changes. All earlier 0.0.14.0 passes are historical only. GitHub platform jobs remain separate.
+- [ ] Fresh Linux root/package acceptance on the final source. Earlier preview
+  passes, including 0.0.37.0, do not certify later changes. GitHub platform jobs
+  remain separate.
 - [ ] Final-source installed plugin matrix including native Security; its with-Security half stays late-stage. Historical matrix passes do not close it.
 - [ ] Clean install and upgrade with backup/key recovery and schema forward-compatibility failure behavior.
 - [ ] Fresh installed Linux x64 authorization, invitation/group/library, standalone Notifications studio/defaults, restart/storage, browser and native SyncPlay checks. Windows/ARM jobs run on GitHub; native Security and human Discord checks remain separate.

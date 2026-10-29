@@ -143,12 +143,6 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.verify-ref.outputs.tag }}
-      - uses: actions/setup-dotnet@v6.0.0
-        with:
-          global-json-file: global.json
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: ${{ needs.targets.outputs.node_version }}
       - uses: ./.github/actions/use-latest-targets
         with:
           artifact: ${{ needs.targets.outputs.artifact }}
@@ -213,9 +207,6 @@ jobs:
           pattern: packages-${{ needs.verify-ref.outputs.plugin }}-*
           path: release
           merge-multiple: true
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: ${{ needs.targets.outputs.node_version }}
       - uses: ./.github/actions/use-latest-targets
         with:
           artifact: ${{ needs.targets.outputs.artifact }}

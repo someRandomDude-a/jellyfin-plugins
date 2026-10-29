@@ -25,7 +25,11 @@ test('automatic promotion refuses code/configuration changes, new files and cred
 });
 test('dependency promotion requires every test gate and retains release protections', async () => {
     const workflow = await readFile(new URL('../.github/workflows/dependency-validation.yml', import.meta.url), 'utf8');
-    assert(workflow.includes('needs: [scope, targets, all-plugin-checks, installed-and-external, root-tests]'));
+    assert(workflow.includes('needs: [scope, targets, all-plugin-checks, installed-and-external]'));
+    assert(!workflow.includes('  root-tests:'), 'Root checks run once through the reusable test workflow');
+    const tests = await readFile(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
+    assert(tests.includes('os: [ubuntu-latest, windows-latest]'));
+    assert(tests.includes('run: ./scripts/test.ps1'));
     assert(workflow.includes('needs: [scope, accepted]'));
     assert(workflow.includes('ref: ${{ github.event.pull_request.base.sha }}'));
     const promotion = await readFile(new URL('./promote-dependency-update.mjs', import.meta.url), 'utf8');

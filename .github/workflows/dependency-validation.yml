@@ -53,39 +53,10 @@ jobs:
     with:
       ref: ${{ github.event.pull_request.head.sha }}
       targets_artifact: ${{ needs.targets.outputs.artifact }}
-  root-tests:
-    needs: [scope, targets]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - uses: actions/setup-dotnet@v6.0.0
-        with:
-          global-json-file: global.json
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: ${{ needs.targets.outputs.node_version }}
-      - uses: ./.github/actions/use-latest-targets
-        with:
-          artifact: ${{ needs.targets.outputs.artifact }}
-      - run: npm ci --ignore-scripts
-        working-directory: plugins/private-syncplay
-      - name: Full consolidated test and package/upgrade fixtures
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/test.ps1
   accepted:
     name: Dependency update acceptance
     if: always() && needs.scope.result != 'skipped'
-    needs: [scope, targets, all-plugin-checks, installed-and-external, root-tests]
+    needs: [scope, targets, all-plugin-checks, installed-and-external]
     runs-on: ubuntu-latest
     steps:
       - name: Require every automated test gate

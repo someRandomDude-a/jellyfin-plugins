@@ -1,10 +1,13 @@
-name: Preview dependency bump
+name: Dependency bump preview and validation
 on:
   workflow_dispatch:
   schedule:
     - cron: '43 * * * *'
 permissions:
   contents: read
+concurrency:
+  group: dependency-bump-preview-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   bump:
     runs-on: ubuntu-latest
@@ -20,9 +23,6 @@ jobs:
         run: node scripts/update-dependencies.mjs --apply
       - name: Export reviewable dependency patch
         run: git diff --binary > artifacts/dependency-bump/dependencies.patch
-      - uses: actions/setup-dotnet@v6.0.0
-        with:
-          global-json-file: global.json
       - uses: ./.github/actions/setup-latest-tools
       - run: npm ci --ignore-scripts --prefix plugins/private-syncplay
       - name: Linux root tests on the bumped working source

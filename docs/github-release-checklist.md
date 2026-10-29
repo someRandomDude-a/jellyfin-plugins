@@ -30,13 +30,15 @@ Cloudflare testing is separate: manually run `Disposable Jellyfin integration` w
 - Earlier Jellyfin 12.3 installed matrix: **32/32** (`artifacts/independent-final-combinations/results.json`).
 - Earlier root tests: **781 .NET / 156 JavaScript**, plus offline release fixtures (`artifacts/independent-release-full-tests.log`).
 - Independent Private SyncPlay **three-runtime** package set validated (`artifacts/independent-syncplay-release-check-final`). Historical all-plugin/three-platform packaging does not certify current source or gate unrelated releases; see the scoped [evidence register](verification.md).
-- Local workflow lint and installed browser checks passed. GitHub-hosted workflows have not yet run on these uncommitted changes.
+- Historical local workflow lint and installed browser checks are not hosted-CI
+  certification. Consult current status for the exact verified source/package.
 
 Windows package generation is not installed Windows acceptance. ARM cross-packaging is not physical ARM certification. Human live invitation/multiplayer acceptance remains separate from automated checks and other [v1 release gates](v1-release-gates.md). Do not describe the full suite as v1-ready based on implementation/build/matrix results alone. No commit, tag, push or publication is authorized by preparing this pipeline.
 
 ## References
 
 - [Latest-only maintenance policy](dependency-maintenance.md)
+- [Workflow entry points and shared gate ownership](../.github/README.md)
 - [Independent/suite release engines](independent-plugin-releases.md)
 - [Testing](testing.md) · [Current evidence and blockers](review-status.md)
 - [Evidence register and historical scope](verification.md)

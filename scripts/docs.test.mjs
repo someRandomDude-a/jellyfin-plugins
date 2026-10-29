@@ -4,7 +4,7 @@ import { readdir, readFile, access } from 'node:fs/promises';
 
 test('root, current guides, module/plugin READMEs and retained contract links resolve locally', async () => {
     const root = new URL('../', import.meta.url);
-    const files = ['README.md'];
+    const files = ['README.md', '.github/README.md'];
     async function collect(directory) {
         let entries;
         try { entries = await readdir(new URL(directory + '/', root), { withFileTypes: true }); }

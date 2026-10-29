@@ -91,7 +91,8 @@ test('all CI test graphs share parent targets, use current Node, and forbid base
         const yaml = await read('.github/workflows/' + name);
         assert(yaml.includes('uses: ./.github/workflows/latest-targets.yml'), name);
         assert(yaml.includes('${{ needs.targets.outputs.artifact }}'), name);
-        assert(yaml.includes('uses: ./.github/actions/use-latest-targets'), name);
+        if(name!=='dependency-validation.yml')assert(yaml.includes('uses: ./.github/actions/use-latest-targets'), name);
+        else assert(yaml.includes('uses: ./.github/workflows/tests.yml'), 'Dependency validation inherits the root/plugin tool-bound gates');
         assert(!/node-version:\s*['"]?\d/.test(yaml), name + ' still pins an old Node line');
         assert(!yaml.includes('continue-on-error: true'), name);
     }
