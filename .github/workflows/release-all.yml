@@ -55,8 +55,10 @@ jobs:
             $commit = git rev-parse "$($env:RELEASE_TAG)^{commit}"
             if ($LASTEXITCODE) { throw 'Cannot resolve existing tag' }
             if ($env:EXPECTED_COMMIT -and $commit -cne $env:EXPECTED_COMMIT) { throw 'Existing immutable tag belongs to another commit' }
-            git merge-base --is-ancestor $commit HEAD
-            if ($LASTEXITCODE) { throw 'Existing tag is not on the selected branch history' }
+            $selectedCommit = git rev-parse HEAD
+            if ($LASTEXITCODE) { throw 'Cannot resolve selected release source' }
+            node scripts/assert-release-source.mjs "$selectedCommit" "$commit"
+            if ($LASTEXITCODE) { throw 'Release source differs from the existing immutable tag; use a new version for the fixes' }
           } else {
             git tag $env:RELEASE_TAG HEAD
             if ($LASTEXITCODE) { throw 'Tag creation failed' }

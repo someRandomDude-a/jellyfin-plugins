@@ -7,7 +7,18 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { declarations, checkFreshness, compare, lockChanges, validateDirectLock } from './check-dependency-freshness.mjs';
 import { assertStillLatest } from './assert-latest-targets.mjs';
+import { assertReleaseSource } from './assert-release-source.mjs';
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
+
+test('existing suite tags cannot silently test older source after fixes are pushed',async()=>{
+    const selected='a'.repeat(40),old='b'.repeat(40);
+    assertReleaseSource(selected,selected);
+    assert.throws(()=>assertReleaseSource(selected,old),/Choose an unused version/);
+    assert.throws(()=>assertReleaseSource('',old),/Cannot verify/);
+    const workflow=await read('.github/workflows/release-all.yml');
+    assert(workflow.includes('node scripts/assert-release-source.mjs'));
+    assert(workflow.indexOf('node scripts/assert-release-source.mjs')<workflow.indexOf('git tag $env:RELEASE_TAG HEAD'));
+});
 
 test('freshness covers runtime, test, action, SDK and embedded browser dependencies', () => {
     assert.equal(declarations('plugins/example/tests/Example.Tests.csproj', '<PackageReference Include="xunit" Version="2.9.3" />')[0].kind, 'nuget');

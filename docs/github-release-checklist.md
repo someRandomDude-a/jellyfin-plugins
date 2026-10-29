@@ -16,6 +16,9 @@ An ordinary source push or pull request runs independent plugin/common checks on
 Use **Release <plugin>** with a `vX.Y.Z` input for one plugin, or **Release all plugins** for the suite. Dedicated actions resolve the source and create/reuse immutable tags under the engine's checks. Plugin-prefixed tag pushes also use the independent engine. See [gate ownership and feeds](independent-plugin-releases.md).
 
 1. Verify the immutable tag resolves to the checked-out commit.
+   An existing suite tag must match the selected source exactly, not merely be
+   its ancestor. Pushing fixes and rerunning an older version still selects that
+   version's old source. Choose an unused version for the fixes; never move tags.
 2. Pass the shared latest-only dependency gate and bind tests/packages to its target/toolchain snapshot. Selected releases require their unit/common/installed checks and relevant external-provider fixtures; SyncPlay also checks native media/SDK consumers. Suite releases require full Windows/Linux root tests, browser acceptance, all 64 subsets (128 with/without native Security), native recovery and external-service gates. Failures block publication, not trigger older-version fallback.
 3. Build the selected plugin for `linux-x64`, `linux-arm64` and `win-x64`, or all six plugins/18 packages for a suite release. Preserve published history and generate inventories/checksums.
 4. Download/merge and validate the full selected three-package set or suite 18-package set plus three architecture catalogs: stable identities, version/ABI, exact encoded URLs, checksums, inventories and archive safety. Missing or unrelated files fail closed before publication.
