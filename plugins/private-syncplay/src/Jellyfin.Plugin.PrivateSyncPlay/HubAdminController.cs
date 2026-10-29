@@ -11,7 +11,8 @@ public sealed class HubAdminController(HubPolicyService policies, HubIntegration
 {
     private Guid Actor()
     {
-        if (!Guid.TryParse(User.FindFirst("Jellyfin-UserId")?.Value, out var id) || !policies.IsAdministrator(id))
+        if (User.Identity?.IsAuthenticated != true || !bool.TryParse(User.FindFirst("Jellyfin-IsApiKey")?.Value, out var apiKey) || apiKey ||
+            !Guid.TryParse(User.FindFirst("Jellyfin-UserId")?.Value, out var id) || !policies.IsAdministrator(id))
             throw new HubAdapterException(403, "administrator_protected", "A current Jellyfin administrator is required.");
         return id;
     }

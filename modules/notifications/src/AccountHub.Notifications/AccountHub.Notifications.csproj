@@ -8,6 +8,9 @@
     <EmbeddedResource Include="Web/bell.js" />
     <EmbeddedResource Include="Web/bell.css" />
     <EmbeddedResource Include="Web/settings.js" />
+    <EmbeddedResource Include="Web/notification-card.js" />
+    <EmbeddedResource Include="Web/notification-studio.js" />
+    <EmbeddedResource Include="Web/notification-studio.css" />
     <EmbeddedResource Include="Web/push-worker.js" />
   </ItemGroup>
 </Project>

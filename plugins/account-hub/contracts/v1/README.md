@@ -1,4 +1,10 @@
-# AccountHub.Api.1 — candidate v1 handoff
+# AccountHub.Api.1 — producer compatibility contract
+
+## Dependencies and ownership
+
+Use the canonical framework-only SDK in `shared/AccountHub.Api`. New notification
+producers use standalone `Notifications.Api.1`; Hub's older key remains a compatibility
+and audit surface, not evidence that Hub owns the current inbox/worker/storage.
 
 Exact key: `AccountHub.Api.1`. Exact boundary type:
 `Func<string, CancellationToken, Task<string>>`.
@@ -8,20 +14,31 @@ Installed plugins are trusted server code; this delegate is not a sandbox or a s
 
 ## Operations
 
-| Operation | Foundation build | Result data |
+| Operation | Current behavior | Result data |
 |---|---|---|
 | `hello` | Implemented | `hostVersion`, `apiVersion`, `operations` |
 | `health` | Implemented, side-effect free | `ready`, `hostVersion`, `schemaVersion`, `features` |
 | `audit.publish` | Durable | `status:accepted\|duplicate`, `auditId` |
-| `notifications.publish` | Retryable unavailable | Reserved until P4 |
-| `notifications.publishBatch` | Retryable unavailable | Reserved until P4 |
+| `notifications.publish` / `notifications.publishBatch` | Compatibility dispatch when available; unavailable in the fallback foundation dispatcher | Check advertised capabilities and each result |
+| `notifications.register` / `notifications.upsert` | Use standalone Notifications' advertised interface | See the producer guide |
 
-`hello.operations` advertises only implemented operations. `health.ready` means **foundation storage** readiness, not notification delivery readiness. Consumers must check operations/features as well. Do not suppress a local bell or local notices on this build.
+`hello.operations` advertises available operations. `health.ready` is not proof of
+delivery or domain authority; check operations/features and standalone provider
+readiness. The fallback foundation dispatcher advertises audit only. Bell suppression
+uses the explicit hosted-Web handoff, never the mere presence of a Hub delegate.
 
 Request/response/event field names are the supplied plan's v1 names, not PascalCase variants. Explicit JSON properties on public DTOs and explicit serialized HTTP content protect names against Jellyfin media-type negotiation.
-Limits are 64 KiB per event, 256 KiB per transport request and (when P4 ships) 50 events per batch. JSON nesting is bounded at 32. Batch fanout/delivery semantics are not implemented yet.
+Limits are 64 KiB per event, 256 KiB per transport request and up to 50 events per
+notification batch. JSON nesting is bounded at 32. See the [current notification
+producer/host guide](../../../../docs/notification-producer-api.md) for fanout,
+retention and command projection semantics.
 
-The examples are fixtures, not live acceptance evidence. `notification.request.json` intentionally receives `unavailable` today. Additive envelope/event fields are tolerated; unrecognized audit event fields are ignored for storage but included in the canonical intake hash. Metadata is stricter: an explicit allowlist is required to avoid turning the audit into a secret archive. Add approved fields in `EventValidation` with privacy tests; never silently accept private domain evidence.
+The examples are fixtures, not live acceptance evidence. `notification.request.json`
+still exercises `unavailable` in the foundation dispatcher fixture; that is not the
+standalone Notifications contract. Additive envelope/event fields are tolerated;
+unrecognized audit fields are ignored for storage but included in the canonical intake
+hash. Metadata requires an explicit privacy allowlist in `EventValidation`; never
+silently accept private domain evidence.
 
 ## Idempotency
 
@@ -32,7 +49,7 @@ The examples are fixtures, not live acceptance evidence. `notification.request.j
 - Receipts and completed command results are currently not pruned. Minimum supported producer retry horizon: 365 days. Disk growth/pruning policy is a release blocker, not permission to drop receipts early.
 - Publish only after the producer commits. Keep separate notification/audit acknowledgments. Do not roll back a primary domain action when Hub delivery fails.
 
-## Domain adapter candidate schema
+## Domain adapter schema
 
 `domain-capabilities.schema.json` and `DomainCapabilities` define the common metadata projection. Domain defaults/enums/ranges still belong to the domain plugin. Roots:
 
@@ -42,4 +59,14 @@ The examples are fixtures, not live acceptance evidence. `notification.request.j
 Suffixes: `capabilities`, `status`, `settings` GET/PUT, `policy` GET/PUT, `policy/preview` POST, `policy/reset` POST, `users/{id}/effective-policy` GET, `users/{id}/policy` PUT/DELETE.
 Writes use the domain revision, scoped command ID, current Jellyfin administrator and native safety engine. Bulk/reset skip live administrators server-side; direct per-user admin writes reject. Hub is not a policy or execution authority for either plugin.
 
-This common schema has **not** been accepted/tested by the two domain repositories yet. Do not claim the P0 cross-project freeze gate is complete until their owners consume these fixtures and verify their native projections.
+The retained domain contracts describe actual native projections; generic schema
+metadata never grants domain authority. Installed-package and failure-boundary
+acceptance remain scoped to their recorded evidence, not an unconditional cross-project
+freeze or full release certification.
+
+## References
+
+- [Notification producer/host guide](../../../../docs/notification-producer-api.md)
+- [Queue adapter](../../../deletion-queue/docs/account-hub-v1.md)
+- [SyncPlay adapter](../../../private-syncplay/docs/account-hub-integration.md)
+- [Current status](../../../../docs/review-status.md) · [Evidence register](../../../../docs/verification.md)

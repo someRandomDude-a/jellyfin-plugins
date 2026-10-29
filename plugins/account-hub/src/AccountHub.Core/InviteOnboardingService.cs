@@ -34,6 +34,11 @@ public sealed class InviteOnboardingService(HubStore store, CommandGate commands
         if (token.Length != 43 || token.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_'))) throw Invalid();
     }
     private static HubException Invalid() => new("invalid_request", "Invalid invite input");
+    public static void ValidateUsername(string username)
+    {
+        if(username is null || username.Length is <1 or >64 || username is "." or ".." || !System.Text.RegularExpressions.Regex.IsMatch(username,@"^(?!\s)[\w\ \-'._@+]+(?<!\s)$",System.Text.RegularExpressions.RegexOptions.None,TimeSpan.FromMilliseconds(100)))
+            throw new HubException("invalid_username","Invalid or unavailable username");
+    }
     public Task<JsonElement> CreateAsync(Guid actor, Guid commandId, long revision, InviteRequest request, Func<CancellationToken, Task> authorize, CancellationToken ct = default)
     {
         if (request.ExpiresInMinutes is < 15 or > 43200 || request.MaxUses is < 1 or > 100 || request.Note.Length > 500 || request.GroupId?.Length > 64 || request.PolicyJson.Length > 16384) throw Invalid();
@@ -116,6 +121,7 @@ public sealed class InviteOnboardingService(HubStore store, CommandGate commands
     {
         ValidateToken(raw);
         if (claimId == Guid.Empty || username.Length is < 1 or > 64 || username != username.Trim() || password.Length is < 1 or > 1024) throw Invalid();
+        ValidateUsername(username);
         var tokenHash = Hash(raw);
         var claimHash = Hash(raw + ":" + claimId.ToString("N"));
         var reservation = await store.WriteAsync(async (db, token) =>
@@ -156,7 +162,7 @@ public sealed class InviteOnboardingService(HubStore store, CommandGate commands
             throw new HubException("remediation_pending", "Onboarding interrupted. The slot remains reserved; no account will be recreated.");
         }
     }
-    private static object PublicResult(string state) => new { status = state == "completed" ? "completed" : "remediation_pending", message = state == "completed" ? "Account created. Sign in with your chosen password. Set up 2FA in Jellyfin Security if required by your server." : "Onboarding needs administrator review. Do not start another redemption." };
+    private static object PublicResult(string state) => new { status = state == "completed" ? "completed" : "remediation_pending", message = state == "completed" ? "Account created. Continue to Jellyfin sign-in." : "Onboarding needs administrator review. Do not start another redemption." };
     private Task<bool> ActiveAsync(Guid id, CancellationToken ct) => store.ReadAsync((db, token) => db.OnboardingInvites.AnyAsync(x => x.Id == id && x.Status == "active" && x.ExpiresAt > Now, token), ct);
     private async Task<object> EnableIfActiveAsync(InviteProvisioning row, CancellationToken ct)
     {

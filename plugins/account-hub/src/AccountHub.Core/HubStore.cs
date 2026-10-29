@@ -51,9 +51,13 @@ public sealed class HubStore(HubPaths paths, TimeProvider clock) : IDisposable
             }
             // Explicit versioned migrations only. Never EnsureCreated or silently recreate a bad DB.
             var knownMigrations = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
-            if ((await db.Database.GetAppliedMigrationsAsync(ct)).Any(x => !knownMigrations.Contains(x)))
+            var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync(ct)).ToHashSet(StringComparer.Ordinal);
+            if (appliedMigrations.Any(x => !knownMigrations.Contains(x)))
                 throw new InvalidDataException("Database schema is newer than this plugin");
-            await db.Database.MigrateAsync(ct);
+            // EF's SQLite migration lock survives an interrupted process. An
+            // already-current schema needs verification, not a new migration
+            // lock. Never delete/steal a lock or skip any pending migration.
+            if (!knownMigrations.SetEquals(appliedMigrations)) await db.Database.MigrateAsync(ct);
             if (!await db.State.AnyAsync(ct))
             {
                 db.State.Add(new HubState());

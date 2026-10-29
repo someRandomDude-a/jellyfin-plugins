@@ -222,6 +222,7 @@ public sealed class PartyStore(TimeProvider clock)
     }
 }
 
+
 public sealed class Party(Guid id, Guid owner, string hostSession, GroupMode mode, string code, int capacity)
 {
     internal long LastGuestNumber { get; set; }

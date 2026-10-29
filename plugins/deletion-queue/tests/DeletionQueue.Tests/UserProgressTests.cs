@@ -6,6 +6,35 @@ namespace DeletionQueue.Tests;
 
 public sealed class UserProgressTests
 {
+    [Fact] public void CheckAttemptTimeIsNotTheReadTimeAndEvidenceIsAdministratorOnly() {
+        var state=State();var p=Propose(state);
+        Assert.Null(QueueRules.Project(state,p,Owner.Id,Now).LastCheckedAt);
+        QueueRules.Evaluate(state,p,Good with { TargetVerified=false },Now);
+        var projected=QueueRules.Project(state,p,Owner.Id,Now.AddMinutes(5));
+        Assert.Equal(Now,projected.LastCheckedAt);
+        Assert.Equal("Waiting for media verification",projected.StatusLabel);
+        Assert.NotNull(p.LastCheckEvidence);
+        var json=JsonSerializer.Serialize(projected);
+        Assert.DoesNotContain("LastCheckEvidence",json);
+        Assert.DoesNotContain(Viewer.Id.ToString(),json);
+        QueueRules.VerificationUnavailable(state,p,Now.AddMinutes(6));
+        Assert.Null(p.LastCheckEvidence);
+        projected=QueueRules.Project(state,p,Owner.Id,Now.AddMinutes(7));
+        Assert.Equal(Now.AddMinutes(6),projected.LastCheckedAt);
+        Assert.Equal("Verification unavailable · retrying",projected.StatusLabel);
+        Assert.Null(projected.ScheduledFor);
+    }
+    [Fact] public void ConsentAndHistoryWaitsHaveDistinctPrivacySafeExplanations() {
+        var state=State();var p=Propose(state);
+        QueueRules.Evaluate(state,p,Good with { CompleteActivityScan=false },Now);
+        Assert.Equal("Waiting for verified history",QueueRules.Project(state,p,Owner.Id,Now).StatusLabel);
+        QueueRules.RecordActivity(state,Viewer.Id,p.Target.ActivityKey,null,false,Now);
+        QueueRules.Evaluate(state,p,Good,Now);
+        var projected=QueueRules.Project(state,p,Owner.Id,Now);
+        Assert.Equal("Awaiting consent",projected.StatusLabel);
+        Assert.Contains("Retrying alone does not supply consent",projected.StatusHelp);
+        Assert.DoesNotContain(Viewer.Id.ToString(),JsonSerializer.Serialize(projected));
+    }
     [Fact] public void InactivityAndUnanimousRecentViewerConsentAreAlternativeProjectedPaths() {
         var state=State();var p=Propose(state);Evaluate(state,p);
         var paths=QueueRules.Project(state,p,Owner.Id,Now).Timeline.Single(s=>s.Key=="checks").Paths;
@@ -110,7 +139,7 @@ public sealed class UserProgressTests
         var state = State(); var p = Propose(state); Evaluate(state, p);
         QueueRules.RecordActivity(state, Viewer.Id, p.Target.ActivityKey, null, false, Now.AddMinutes(1));
         var result = QueueRules.Project(state, p, Owner.Id, Now.AddMinutes(1));
-        Assert.NotNull(p.NotBefore); Assert.Null(result.ScheduledFor); Assert.Equal("Blocked", result.StatusLabel);
+        Assert.NotNull(p.NotBefore); Assert.Null(result.ScheduledFor); Assert.Equal("Awaiting consent", result.StatusLabel);
         Assert.Contains("consent", result.StatusHelp);
         Assert.Equal("current", result.Timeline.Single(step => step.Key == "checks").State);
         Assert.Null(result.Timeline.Single(step => step.Key == "delay").At);

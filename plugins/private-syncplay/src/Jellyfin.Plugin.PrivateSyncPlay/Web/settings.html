@@ -49,7 +49,7 @@
             if (saving || loading) return;
             button.disabled = true;
             try { await run(); }
-            catch (error) { UI.message(feedback, error.message || 'Could not update user overrides.', true); }
+            catch (error) { UI.message(feedback, UI.authError(error).message, true); }
             finally { button.disabled = false; updateSelection(); }
         };
         return button;

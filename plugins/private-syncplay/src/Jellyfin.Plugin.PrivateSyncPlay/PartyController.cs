@@ -16,9 +16,12 @@ public sealed class PartyController(PrivateSyncPlayManager manager, PartyStore s
     private async Task<SessionInfo> Session()
     {
         string Claim(string name) => User.FindFirst("Jellyfin-" + name)?.Value ?? string.Empty;
-        if (!Guid.TryParse(Claim("UserId"), out var id) || id == Guid.Empty || string.IsNullOrEmpty(Claim("DeviceId")))
+        if (User.Identity?.IsAuthenticated != true || !bool.TryParse(Claim("IsApiKey"), out var apiKey) || apiKey ||
+            !Guid.TryParse(Claim("UserId"), out var id) || id == Guid.Empty || string.IsNullOrEmpty(Claim("DeviceId")))
             throw new PartyException(403, "A signed-in user and device are required.");
         var user = users.GetUserById(id) ?? throw new PartyException(403, "User not found.");
+        if (user.SyncPlayAccess == SyncPlayUserAccessType.None || user.Permissions.Any(p => p.Kind == PermissionKind.IsDisabled && p.Value))
+            throw new PartyException(403, "SyncPlay access is unavailable.");
         return await sessions.LogSessionActivity(Claim("Client"), Claim("Version"), Claim("DeviceId"), Claim("Device"),
             HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, user);
     }

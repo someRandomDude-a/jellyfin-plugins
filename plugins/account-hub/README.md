@@ -1,51 +1,86 @@
 # Account Hub
 
-Native Jellyfin **12.2 / .NET 10** account-control plugin, implemented from `01-account-hub.md` and its cross-cutting handoffs. **This is a foundation preview, not the complete Account Hub or a production release.**
+## Dependencies and installation
 
-Plugin GUID: `bc9c3d3e-6da3-4ee5-91cd-c429d58ad901` (stable; do not regenerate). Version: `0.1.0.0`. License: MIT.
+Install Account Hub through the [combined platform catalog](../../README.md#installation-and-upgrades),
+restart Jellyfin and open **Dashboard → Plugins → Account Hub** with a native
+administrator session. Use a package matching the server ABI and architecture.
+**Do not install legacy User Manager alongside Hub.** Back up existing plugin data
+and original keys before upgrading.
 
-## Implemented
+- Core account administration does not require a Discord bot.
+- Standalone **Notifications** owns the shared inbox, preferences and delivery worker.
+- **Discord Bridge** supplies optional Discord delivery and account commands.
+- Compatible native **Jellyfin Security** supplies supported factor/session verdicts.
+- **Seerr** lifecycle features require a configured external Seerr connection.
 
-- Jellyfin plugin entry, service registrator and embedded administrator health/status page.
-- Separate `AccountHub.Api` producer library and candidate v1 fixtures, with real separate-ALC discovery/dispatch tests.
-- SQLite/EF Core forward-only migration, WAL, durable audit writer, hash-chain verification and verifiable retention checkpoint.
-- Source/event deduplication and conflict rejection across restart and audit pruning.
-- Transactional revision/command gate with completed-result replay before requesting proof.
-- Encrypted integration-secret fields, no secret readback, and missing-key/corrupt-database fail-closed behavior.
-- Elevated read APIs that also reject API keys and callers without a current user session.
+This is an integration preview, not completed v1 software. Installation does not
+authorize bulk account changes or certify every optional integration.
 
-**Not implemented/enabled:** account management/policy, invites, Seerr, Discord bot/link/reset, notifications/bell, HTTP producers, Security proof/status/webhook adapters, domain proxies, audit search/export UI, scheduled retention. Local core settings/secret primitives are deliberately not exposed over HTTP before P2. No fake-success integration endpoints or replacement 2FA/OIDC stack.
+## What it offers
 
-The existing domain plugins and Jellyfin Security are not modified. No existing users are changed on installation.
+- People management: search, managed access edits, enable/disable, session revocation
+  and verified Discord link management.
+- Group access templates, primary assignments, overrides, previews, drift inspection
+  and rollback of managed changes without overwriting unrelated native settings.
+- Onboarding invitations with approval, explicit creator delegation and safe native
+  provisioning; invitation credentials are not disclosed again from history.
+- Verified identity links, session-bound recovery and Seerr account lifecycle integration.
+- Durable central audit with deduplication, retention checkpoints and protected integration secrets.
+- Opt-in future library-addition capture delivered through Notifications or Bridge.
 
-## Build and test
+Hub is an account workspace, **not a universal settings screen** for the suite.
+Configure Discord transport, removal policy and parties in their owning plugins.
+Invitations are an integrated Account Hub feature, not a separate plugin. Other
+plugins retain independent connection settings and optional feature integrations.
+
+## Security and recovery limits
+
+Access templates do not copy administrator status, credentials, factors or removal
+consent. Discord roles never grant native administrator rights. Sensitive operations
+retain their current-session, confirmation and audited authorization requirements.
+
+Recovery requires the same browser's current native session for the link's account,
+verified and unblocked by native Security, including its approved bypasses. There
+is no fresh-code prompt, token-only or signed-out fallback. Password recovery
+revokes native sessions without deleting factors or trusted-device records.
+
+## Storage and upgrades
+
+Hub stores `AccountHub/account-hub.db` and its sibling `keys/` directory under
+Jellyfin's plugin configuration directory. Protect both and take consistent stopped
+backups. Protected integration secrets do not make the whole SQLite database,
+audit journal or backups encrypted. Missing/corrupt storage fails closed: never
+delete databases or regenerate keys as a repair shortcut.
+
+When upgrading embedded notifications, update Notifications and its consumers
+together and follow its migration guide. Hub's retained compatibility routes must
+not create a second inbox, bell or worker.
+
+## Development and verification
+
+From the repository root, use the declared .NET SDK, current stable Node.js and
+PowerShell 7+. Install the shared frontend harness, then run:
 
 ```powershell
-dotnet restore AccountHub.slnx
-dotnet build AccountHub.slnx -c Release --no-restore
-dotnet test AccountHub.slnx -c Release --no-build
-dotnet tool restore
-dotnet ef migrations has-pending-model-changes --project src/AccountHub.Core
+npm ci --ignore-scripts --prefix plugins/private-syncplay
+pwsh -File scripts/test-plugin.ps1 -Plugin account-hub
 ```
 
-Pinned SDK: 10.0.402. Jellyfin SDK: 12.2.0, target ABI 12.2.0.0. EF/SQLite: 10.0.11, matching the reviewed Jellyfin tag. Tests use disposable random directories and no production server/media/credentials.
+Normal entry points resolve current stable upstream targets automatically. CI/release
+freshness failures cannot be bypassed by using historical IDE settings. Passing
+unit tests does not certify human recovery, physical devices or production services.
 
-```powershell
-./scripts/package.ps1
-```
+Plugin GUID: `bc9c3d3e-6da3-4ee5-91cd-c429d58ad901` (stable). Published package
+versions and ABI come from the selected immutable release, not this README.
 
-Creates an allowlisted **preview** ZIP and SHA-256 under `artifacts/`. Does not install, deploy, publish a catalog or certify a live load. Server-owned Jellyfin/EF/SQLite DLLs are not bundled. Actual clean-server dependency/ALC loading remains a release gate.
+## References
 
-## HTTP surface
-
-Only `GET /AccountHub/api/v1/health` and `GET /AccountHub/api/v1/status` are exposed. Both require Jellyfin `RequiresElevation`, plus an authenticated non-API-key user. Security's existing request gate is not bypassed. Responses are v1 JSON envelopes, no-store. Other planned routes do not exist yet.
-
-Admin page: `web/index.html#/configurationpage?name=AccountHub`, respecting the server BaseUrl. Browser rendering, SPA lifecycle and Security-pending behavior still require live validation. Native clients and separately hosted web clients do not gain a bell from this build.
-
-## Storage and recovery
-
-Database: `<Jellyfin plugin configurations>/AccountHub/account-hub.db`. Data Protection key ring: sibling `keys/`. Only integration fields are protected; **SQLite, audit rows, WAL and backups are not whole-file encrypted**. Protect the entire directory and backups using OS permissions. Data Protection key files must be treated as sensitive; this preview does not configure an external key-encryption/KMS provider.
-
-On failure, Account Hub reports unavailable and disables its writes; the hosted-service failure is caught so it does not intentionally stop Jellyfin. Never delete/recreate the database or regenerate keys to clear an error. Restore a stopped, consistent database + key backup. See [recovery](docs/recovery.md).
-
-See [implementation/handoff status](docs/implementation-status.md) for phase gates, test evidence and remaining work, and [candidate contracts](contracts/v1/README.md) before integrating a producer.
+- [Account configuration and permissions](../../docs/account-management.md)
+- [Security/recovery contract](../../docs/security-recovery-integration.md)
+- [Library notifications](../../docs/library-notifications.md) · [Discord integration](../../docs/discord-suite-integration.md)
+- [Notifications upgrade guide](../notifications/README.md)
+- [Storage recovery](../../docs/plugin-storage-recovery.md) · [Producer contracts](contracts/v1/README.md)
+- [Testing](../../docs/testing.md) · [Release policy](../../docs/independent-plugin-releases.md)
+- [Current evidence and blockers](../../docs/review-status.md)
+- [Evidence register](../../docs/verification.md) — not blanket current certification

@@ -8,6 +8,41 @@ were copied. Maintainerr remains credited for the workflow and condition researc
 
 ## Implemented in this iteration
 
+### Typed condition calculations and membership (2026-10-27)
+
+Conditions now have an explicit **Metadata conversion** control. Supported
+conversions are date age → fractional days/hours, first date minus second date →
+signed fractional days/hours, date → Unix seconds, list → count, strict numeric
+text → number, and Boolean → number (true = 1, false = 0). Date differences fetch
+and validate both metadata sources. UTC instants are used; future ages and reversed
+date differences remain negative. No implicit string coercion, absolute-value
+conversion, truncation or unknown-to-zero fallback is applied. Numeric conversion
+results compare with a numeric threshold; this is not an arbitrary expression
+language or a claim of every Maintainerr conversion/composition.
+
+List membership can compare against another metadata field, not just a constant.
+User-ID lists accept user metadata; text lists accept text metadata. For example:
+
+1. Select **All episodes watched by (Jellyfin IDs)** (`jellyfin.allEpisodesSeenBy`).
+2. Choose **contains** → **Compare with metadata**.
+3. Select **Requester Jellyfin user ID** (`seerr.requesterId`).
+
+This tests whether the uniquely mapped requester finished every episode. It does
+not mean every server user finished the show. Missing/ambiguous requester evidence
+and malformed/missing viewer evidence stay unknown, including under NOT/OR.
+GUID membership compares identities rather than textual GUID formatting. These
+facts still use native aggregates, not an invented exhaustive watch history.
+
+Field and second-operand selectors create/reuse the proper source cards and wire
+them automatically. Existing sockets still work; operand-two wires now anchor to
+the correct field. Metadata outputs have search and bounded internal scrolling.
+The canvas adds Arrange blocks, centred Fit canvas and pointer-anchored zoom;
+first-use framing does not replace a saved pan. Selecting a block restores a
+readable inspection scale. Canvas height and card-creation dialog dimensions are
+viewport-bounded; long metadata lists scroll internally rather than stretching
+the whole canvas. Result cards say **REQUEST REMOVAL**: consent, administrator
+approval, fresh playback/history checks and delays remain Deletion Queue's job.
+
 - A source/type/operator catalog (`MetadataCatalog.cs`) drives both server
   validation and the browser's metadata sockets/condition controls. Numeric,
   Boolean, text, native-user, date and text-list values have different operators.

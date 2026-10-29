@@ -4,14 +4,16 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { target } from '../plugins/private-syncplay/scripts/jellyfin-target.mjs';
+import { ensureTargets, jellyfinTarget, assertRuntimeVersion, freshDockerArguments } from './latest-releases.mjs';
+const targets = await ensureTargets(['jellyfin', 'seerr'], { pull: ['jellyfin', 'seerr'] });
+const target = jellyfinTarget(targets.jellyfin);
 const suffix = randomUUID().slice(0, 8);
 // Keep Node alive while undici waits on its unreferenced connection/timeout handles.
 const keepAlive = setInterval(() => {}, 1000);
 const network = `seerr-api-${suffix}`;
 const jf = `${network}-jf`, seerr = `${network}-seerr`;
 function docker(...args) {
-  const r = spawnSync('docker', args, { encoding: 'utf8', timeout: 180000 });
+  const r = spawnSync('docker', freshDockerArguments(args), { encoding: 'utf8', timeout: 180000 });
   if (r.status !== 0) throw new Error(`Docker ${args[0]} failed (output withheld)`);
   return r.stdout.trim();
 }
@@ -21,7 +23,9 @@ const packages = process.argv.find(arg => arg.startsWith('--packages='))?.slice(
 let pluginDirectory;
 async function api(base, path, body, method = body === undefined ? 'GET' : 'POST', auth = {}) {
   let response;
-  try { response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...auth }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) }); }
+  // Startup/reconfiguration can close upstream sockets. Use fresh fixture
+  // connections instead of retrying an ambiguous mutation on a stale connection.
+  try { response = await fetch(base + path, { method, headers: { Connection: 'close', 'Content-Type': 'application/json', ...auth }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) }); }
   catch (error) {
     const value = error.cause?.code || error.name;
     const code = /^[A-Za-z0-9_]{1,80}$/.test(value || '') ? value : 'transport_failure';
@@ -40,7 +44,7 @@ async function api(base, path, body, method = body === undefined ? 'GET' : 'POST
 }
 async function wait(base, path) {
   for (let i = 0; i < 120; i++) {
-    try { await api(base, path); return; } catch { await sleep(1000); }
+    try { return await api(base, path); } catch { await sleep(1000); }
   }
   throw new Error(`Readiness timeout: ${path}`);
 }
@@ -56,11 +60,15 @@ try {
   // Jellyfin owns mutable plugin metadata beside the installed assemblies. Use a
   // disposable writable config directory, not a read-only nested mount under tmpfs.
   docker('run', '-d', '--name', jf, '--network', network, '-p', '127.0.0.1::8096', ...(pluginDirectory ? ['--mount', `type=bind,source=${join(pluginDirectory, 'config')},target=/config`] : ['--tmpfs', '/config']), '--tmpfs', '/cache', target.image);
-  docker('run', '-d', '--name', seerr, '--network', network, '-p', '127.0.0.1::5055', '--tmpfs', '/app/config:uid=1000,gid=1000', 'seerr/seerr:v3.5.1');
+  docker('run', '-d', '--name', seerr, '--network', network, '-p', '127.0.0.1::5055', '--tmpfs', '/app/config:uid=1000,gid=1000', targets.seerr.imageDigest);
   const port = name => docker('port', name, name === jf ? '8096/tcp' : '5055/tcp').split(':').at(-1);
   const j = `http://127.0.0.1:${port(jf)}`, s = `http://127.0.0.1:${port(seerr)}/api/v1`;
-  await Promise.all([wait(j, '/System/Info/Public'), wait(s, '/status?checkUpdateAvailable=false')]);
-  assert.match((await api(s, '/status?checkUpdateAvailable=false')).version, /^v?3\.5\.1$/);
+  const [jellyfinInfo,seerrInfo] = await Promise.all([wait(j, '/System/Info/Public'), wait(s, '/status?checkUpdateAvailable=false')]);
+  assertRuntimeVersion(jellyfinInfo.Version || jellyfinInfo.version, target.version, 'Jellyfin');
+  assertRuntimeVersion(seerrInfo.version, targets.seerr.version, 'Seerr');
+  // Public version info can be served by the startup placeholder while plugin
+  // loading still returns 503 for setup. Poll a read, never replay the setup POST.
+  await wait(j, '/Startup/Configuration');
   const password = randomBytes(24).toString('hex');
   await api(j, '/Startup/Configuration', { UICulture: 'en-US', MetadataCountryCode: 'US', PreferredMetadataLanguage: 'en' });
   await api(j, '/Startup/User');
@@ -149,7 +157,7 @@ try {
     assert.equal((await fetch(`${s}/user/jellyfin/${id}`, { headers: auth, signal: AbortSignal.timeout(30000) })).status, 404);
     console.log('PASS: installed Hub discovery, durable provisioning/quotas, drift/requests and native-deletion follow-up through real Seerr HTTP API only.');
   }
-  console.log('PASS: real Seerr 3.5.1 HTTP API; native onboarding, API-key discovery, targeted import, immutable lookup, quota/null inheritance, permissions, request paging, deletion.');
+  console.log('PASS: latest real Seerr ' + targets.seerr.version + ' HTTP API; native onboarding, API-key discovery, targeted import, immutable lookup, quota/null inheritance, permissions, request paging, deletion.');
 } catch (error) {
   console.error(error.message); process.exitCode = 1;
   for (const name of [jf, seerr]) {

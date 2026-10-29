@@ -7,6 +7,7 @@ const { JSDOM } = require('jsdom');
 const script = await readFile(new URL('../plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/integrated.js', import.meta.url), 'utf8');
 const timelineScript = await readFile(new URL('../plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/timeline.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setTimeout(resolve, 45));
+async function waitFor(check){const deadline=Date.now()+5000;while(!check()&&Date.now()<deadline)await tick();assert(check(),'Removal UI did not settle');}
 async function fixture(failure = false, data = {}) {
     const dom = new JSDOM('<script id="dq-web-client" src="https://test.invalid/suite/DeletionQueue/assets/integrated.js"></script><div><button class="headerUserButton">User</button></div><div class="itemAction" data-id="11111111111111111111111111111111">Media</div>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://test.invalid/suite/web/index.html#/home' });
     const w = dom.window, d = w.document, calls = [];
@@ -18,7 +19,7 @@ async function fixture(failure = false, data = {}) {
     w.fetch = async (url, options) => {
         const path = new URL(url).pathname; calls.push({ path, url: String(url), ...options });
         const preview = path.endsWith('/preview');
-        return { ok: !preview || !failure, status: preview && failure ? 409 : 200, headers: { get: () => null }, json: async () => preview ? failure ? { code: 'SeerrNotConfigured' } : { title: 'Fixture movie', kind: 'Movie', executionAvailable: true } : path.endsWith('/removal') ? data.removal || { canPropose: true, proposals: [] } : path.endsWith('/notices') ? [] : path.endsWith('/integration') ? data.integration || {} : path.endsWith('/proposals') ? data.proposals || [] : data.detail || {} };
+        return { ok: !preview || !failure, status: preview && failure ? 409 : 200, headers: { get: () => null }, json: async () => preview ? failure ? { code: 'SeerrNotConfigured' } : { title: 'Fixture movie', kind: 'Movie', executionAvailable: true } : path.endsWith('/removal') ? data.removal || { canPropose: true, proposals: [] } : path.endsWith('/notices') ? [] : path.endsWith('/integration') ? data.integration || {} :path.endsWith('/approvals')?typeof data.approvals==='function'?data.approvals():data.approvals||[]: path.endsWith('/proposals') ? data.proposals || [] : data.detail || {} };
     };
     w.eval(timelineScript);w.eval(script); await tick();
     return { dom, w, d, calls };
@@ -35,6 +36,30 @@ test('right-click supports itemAction metadata and menu removal without a close 
         const preview = f.calls.find(c => c.path.endsWith('/preview')); assert.equal(preview.method, 'POST'); assert.equal(preview.body, '{}');
         assert(!f.calls.some(c => c.path.endsWith('/proposals')));
     } finally { f.dom.window.close(); }
+});
+test('administrator queue opens a focused approval view with revisioned Approve and Deny actions',async()=>{
+    const id='11111111-1111-1111-1111-111111111111';const data={integration:{isAdministrator:true,deviceBell:false},approvals:[{id,title:'Needs approval',status:'Blocked',reason:'AdministratorApprovalRequired',revision:7,canApprove:true,canConsent:false,canUndo:false,administratorApprovalSnapshot:'current-admin-snapshot'}]};
+    const f=await fixture(false,data);try{f.d.querySelector('.dq-local-shortcut').click();await tick();
+        assert.equal(f.d.querySelector('[role=tab][aria-selected=true]').textContent,'Needs approval');assert(f.calls.some(c=>c.path.endsWith('/admin/approvals')));
+        const approve=[...f.d.querySelectorAll('button')].find(b=>b.textContent==='Approve deletion');assert(approve);assert([...f.d.querySelectorAll('button')].some(b=>b.textContent==='Deny request'));assert(!f.d.querySelector('[data-answer]'));
+        data.approvals=[];approve.click();await tick();const request=f.calls.find(c=>c.path.endsWith('/'+id+'/approval'));assert(request);const body=JSON.parse(request.body);assert.equal(body.revision,7);assert.equal(body.snapshot,'current-admin-snapshot');assert.equal(body.approved,true);assert.match(f.d.querySelector('.dq-queue-rows').textContent,/No requests need approval/);
+    }finally{f.dom.window.close();}
+});
+test('queue shows a concise wait and last check with technical explanations retained in help',async()=>{
+    const f=await fixture(false,{integration:{deviceBell:false},proposals:[{id:'pending',title:'Pending media',status:'Blocked',statusLabel:'Waiting for verified history',statusHelp:'Native history verification is incomplete.',lastCheckedAt:'2026-10-26T12:00:00Z',checkRefreshHelp:'Safety checks retry about every minute.',canConsent:false,canUndo:false}]});
+    try{f.d.querySelector('.dq-local-shortcut').click();await tick();
+         assert.equal(f.d.querySelector('.dq-check-explanation').textContent,'Waiting for verified history');
+         assert.match(f.d.querySelector('.dq-queue-row').textContent,/Native history verification is incomplete/);
+         assert.match(f.d.querySelector('.dq-queue-row').textContent,/Last checked:/);
+        assert.match(f.d.querySelector('.dq-queue-row').textContent,/retry about every minute/);
+    }finally{f.dom.window.close();}
+});
+test('timeline maintains a readable scale floor, centres the current node and allows horizontal drag',async()=>{
+    const f=await fixture();try{const host=f.d.createElement('div');f.d.body.append(host);f.w.DeletionQueueTimeline.render({status:'Blocked',reason:'ConsentRequired',timeline:[{key:'requested',label:'Requested'},{key:'checks',label:'Checks',paths:[{key:'activity',label:'Inactive'},{key:'consent',label:'Consent',state:'current'}]},{key:'delay',label:'Delay'},{key:'removing',label:'Removal'}]},host);
+        const graph=host.querySelector('.dq-flow-timeline'),grid=graph.querySelector('.dq-flow-grid');Object.defineProperty(graph,'clientWidth',{value:300});Object.defineProperty(grid,'offsetWidth',{value:1200});Object.defineProperty(grid,'offsetHeight',{value:200});graph.getBoundingClientRect=()=>({left:0});graph.querySelector('[aria-current=step]').getBoundingClientRect=()=>({left:600,width:100});await tick();
+        assert.equal(graph.dataset.scale,'0.85');assert.equal(graph.scrollLeft,500);const before=graph.scrollLeft;
+        graph.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:150}));graph.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:50}));graph.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true}));assert.equal(graph.scrollLeft,before+100);
+    }finally{f.dom.window.close();}
 });
 test('menus omit non-actionable removal sections and unidentified Requests cards have no removal button', async () => {
     const f = await fixture(false, { removal: { canPropose: false, reason: 'NotYourRequest', proposals: [] } });
@@ -261,6 +286,12 @@ test('Enhanced Requests mounts a full deletion tab with history and does not add
         assert.equal(page.querySelector('.dq-calendar-removals'), null);
     } finally { f.dom.window.close(); }
 });
+test('Enhanced Requests uses the same focused administrator approval view as the queue menu',async()=>{
+    const id='11111111-1111-1111-1111-111111111111';const f=await fixture(false,{integration:{isAdministrator:true,deviceBell:false,enhancedRequestsEnabled:true},approvals:[{id,title:'Requests approval',status:'Blocked',revision:3,canApprove:true,canConsent:false,canUndo:false,administratorApprovalSnapshot:'fresh'}]});
+    try{const section=f.d.createElement('section');section.className='je-requests-section';section.innerHTML='<h2>Requests</h2><div class="je-requests-tabs"><button>All</button></div>';f.d.body.append(section);await tick();[...section.querySelectorAll('button')].find(b=>b.textContent==='Deletion queue').click();await tick();
+        assert.equal(section.querySelector('.dq-enhanced-view [role=tab][aria-selected=true]').textContent,'Needs approval');const deny=[...section.querySelectorAll('button')].find(b=>b.textContent==='Deny request');assert(deny);deny.click();await tick();const sent=f.calls.find(c=>c.path.endsWith('/'+id+'/deny'));assert.equal(JSON.parse(sent.body).snapshot,'fresh');
+    }finally{f.dom.window.close();}
+});
 test('the full queue shortcut is exposed only by the enabled Enhanced integration', async () => {
     const f = await fixture(false, { integration: { deviceBell: false, enhancedRequestsEnabled: true } });
     try {
@@ -279,7 +310,7 @@ test('queued detail actions encode stage and open the existing request instead o
     const f = await fixture(false, { removal: { canPropose: true, proposals: [p] }, detail: p, proposals: [p] });
     try {
         f.w.history.replaceState(null, '', '#/details?id=11111111111111111111111111111111');
-        const host = f.d.createElement('div'); host.innerHTML = '<div class="mainDetailButtons"></div>'; f.d.body.append(host); await tick(); await tick();
+        const host = f.d.createElement('div'); host.innerHTML = '<div class="mainDetailButtons"></div>'; f.d.body.append(host); await waitFor(()=>host.querySelector('.dq-media-action')?.dataset.removalStatus==='Waiting');
         const action = host.querySelector('.dq-media-action'); assert.equal(action.dataset.removalStatus, 'Waiting'); assert.equal(action.querySelector('.material-icons').textContent, 'hourglass_top');
         assert.equal(action.getAttribute('aria-label'), 'Removal · Scheduled'); assert(host.querySelector('.dq-item-progress .dq-timeline'));
         action.click(); await tick(); await tick(); assert(f.d.querySelector('.dq-highlight'));
@@ -302,7 +333,7 @@ test('preview errors replace loading text and dismiss outside without a Close bu
         f.d.querySelector('.itemAction').dispatchEvent(new f.w.MouseEvent('contextmenu', { bubbles: true }));
         const menu = f.d.createElement('div'); menu.className = 'actionSheet'; menu.getClientRects = () => [{}]; menu.innerHTML = '<div class="actionSheetScroller"></div>'; f.d.body.append(menu); await tick();
         menu.querySelector('.dq-context-action').click(); menu.remove(); await tick();
-        const dialog = f.d.querySelector('dialog'); assert.match(dialog.textContent, /configure Seerr/); assert(!dialog.textContent.includes('Checking media'));
+        const dialog = f.d.querySelector('dialog'); assert.match(dialog.textContent, /service is currently unavailable/); assert.doesNotMatch(dialog.textContent,/configure Seerr|server association|IntegrityUnavailable/); assert(!dialog.textContent.includes('Checking media'));
         assert.equal(dialog.querySelector('.dq-close'), null); assert.match(dialog.textContent, /Try again/);
         dialog.dispatchEvent(new f.w.MouseEvent('pointerdown', { clientX: 10, clientY: 10, bubbles: true }));
         dialog.dispatchEvent(new f.w.MouseEvent('click', { clientX: 10, clientY: 10, bubbles: true }));

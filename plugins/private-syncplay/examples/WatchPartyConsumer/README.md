@@ -33,11 +33,11 @@ Every management call derives its party from the caller's current session and is
 
 The SDK ZIP includes this example and the pinned `Directory.Build.props`. Extract it anywhere, then run `dotnet build examples/WatchPartyConsumer -c Release` from the extracted SDK root. Its project uses the adjacent public SDK DLL when there is no repository ProjectReference. Copy the resulting example DLL and its SDK DLL together only into a disposable test server's plugin folder. A full source checkout is not required to compile the example.
 
-For the full integration fixture, use the repository root with the pinned .NET SDK and Docker:
+For a full source checkout, use the root [latest-target test/package wrappers](../../../../docs/testing.md)
+with the required SDK and Docker. Then run the installed consumer fixture from the
+Private SyncPlay component directory, as the installed CI gate does:
 
 ```powershell
-dotnet build examples/WatchPartyConsumer -c Release
-./scripts/package.ps1
 node scripts/integration.mjs <new-disposable-directory> --with-consumer --install-from-catalog
 ```
 

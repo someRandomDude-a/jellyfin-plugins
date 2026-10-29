@@ -1,4 +1,4 @@
-import { securityLinks, securityRequest } from './security-client.mjs';
+import { securityLinks, securityRequest, securityErrorMessage } from './security-client.mjs';
 
 // Account Hub owns navigation, recent-event history and Settings UI. This mounts only
 // the Security tab content in an existing admin page. Call returned cleanup on viewdestroy.
@@ -38,7 +38,7 @@ export function mountSecurityPanel(root, apiClient, { safeActions = false, pendi
         busy = true;
         message.textContent = '';
         try { await action(); }
-        catch (error) { if (!disposed && error.name !== 'AbortError') message.textContent = error.message; }
+        catch (error) { if (!disposed && error.name !== 'AbortError') message.textContent = securityErrorMessage(error); }
         finally { busy = false; }
     }
     const request = (path, options) => securityRequest(apiClient, path, {

@@ -1,5 +1,8 @@
 /* Layout and inherited defaults only: Jellyfin and server/user skins own appearance. */
 .privateSyncPlayDialog { color: inherit; font: inherit; }
+.privateSyncPlayDialog .pspMessageHelp { display: inline-block; max-inline-size: 100%; margin-inline-start: .5em; vertical-align: top; }
+.privateSyncPlayDialog .pspMessageHelp summary { cursor: help; }
+.privateSyncPlayDialog .pspMessageHelp > span { display: block; max-inline-size: 28em; padding: .75em; overflow-wrap: anywhere; line-height: 1.5; }
 .privateSyncPlayDialog:not([open]) { display: none; }
 .privateSyncPlayDialog[open] {
     display: flex;

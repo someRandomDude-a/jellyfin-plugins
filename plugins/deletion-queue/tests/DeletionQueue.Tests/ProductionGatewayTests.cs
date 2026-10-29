@@ -2,6 +2,7 @@ using System.Net;
 using System.Reflection;
 using System.Text.Json;
 using AccountHub.Api;
+using Jellyfin.Data;
 using DeletionQueue.Core;
 using DeletionQueue.Infrastructure;
 using Jellyfin.Database.Implementations.Entities;
@@ -58,9 +59,15 @@ public sealed class ProductionGatewayTests : IDisposable
     private int declines;
     private bool nativeGone;
     private bool wrongSeerrServer;
+    private bool missingMediaRecord;
+    private int recordTmdb=1;
+    private int? record4KStatus;
+    private Action? mediaReadAction;
     private readonly ServiceProvider rulesProvider;
     private int ruleChecks;
     private int denyRuleAt = int.MaxValue;
+    private Action<int>? ruleCheckAction;
+    private Action? seerrUserReadAction;
 
     public ProductionGatewayTests()
     {
@@ -72,7 +79,7 @@ public sealed class ProductionGatewayTests : IDisposable
         {
             "GetUsers" => new[] { owner, restricted,requester },
             "GetUserById" => (Guid)args[0]! == owner.Id ? owner : (Guid)args[0]! == requester.Id?requester:restricted,
-            "GetUserDto" => new UserDto { Id = ((User)args[0]!).Id, Policy = new UserPolicy { IsDisabled = ((User)args[0]!).Id == restricted.Id,
+            "GetUserDto" => new UserDto { Id = ((User)args[0]!).Id, Policy = new UserPolicy { IsDisabled = ((User)args[0]!).Id == restricted.Id || ((User)args[0]!).HasPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled),
                 IsAdministrator = ((User)args[0]!).Id == owner.Id && administrator } },
             _ => throw new NotSupportedException(m.Name)
         });
@@ -93,7 +100,7 @@ public sealed class ProductionGatewayTests : IDisposable
         var inventory = new ActivityInventory(library, users, data, sessions, runtime, targets, clock);
         var ruleServices = new ServiceCollection();
         ruleServices.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AutomaticRuleValidationClient.ServiceKey,
-            (_, _) => (json, _) => {using var body=JsonDocument.Parse(json);lastRuleActor=body.RootElement.GetProperty("actorId").GetGuid();return Task.FromResult(Contract.Serialize(new { matches = ++ruleChecks < denyRuleAt }));});
+            (_, _) => (json, _) => {using var body=JsonDocument.Parse(json);lastRuleActor=body.RootElement.GetProperty("actorId").GetGuid();ruleChecks++;ruleCheckAction?.Invoke(ruleChecks);return Task.FromResult(Contract.Serialize(new { matches = ruleChecks < denyRuleAt }));});
         rulesProvider = ruleServices.BuildServiceProvider();
         gateway = new SeerrExecutionGateway(runtime, targets, identity, inventory, fence, clock, clients, new(rulesProvider));
         runtime.Write(Guid.NewGuid(), "fixture", "Configure", state =>
@@ -106,6 +113,11 @@ public sealed class ProductionGatewayTests : IDisposable
     }
     private HttpResponseMessage Send(HttpRequestMessage request)
     {
+        if(request.Method==HttpMethod.Get&&request.RequestUri!.AbsolutePath=="/api/v1/media/42"){
+            var action=mediaReadAction;mediaReadAction=null;action?.Invoke();
+            if(missingMediaRecord)return new(HttpStatusCode.NotFound){Content=new StringContent("{}")};
+        }
+        if (request.RequestUri!.AbsolutePath == "/api/v1/user/1") { var action = seerrUserReadAction; seerrUserReadAction = null; action?.Invoke(); }
         if (request.Method == HttpMethod.Post) {
             Assert.Equal("/api/v1/request/9/decline", request.RequestUri!.AbsolutePath); declines++;
             return new(HttpStatusCode.OK) { Content = new StringContent("{}") };
@@ -131,8 +143,8 @@ public sealed class ProductionGatewayTests : IDisposable
             "/api/v1/movie/1" when unfulfilled => JsonSerializer.Serialize(new { id = 1, title = "Pending movie", mediaInfo = new { id = 42, tmdbId = 1, mediaType = "movie", status = 3,
                 serviceId = pendingOnly ? (int?)null : 0, externalServiceId = pendingOnly ? (int?)null : 123,
                 requests = new[] { new { id = 9, is4k = false, status = pendingOnly ? 1 : 2, requestedBy = new { id = otherRequestOwner ? 2 : 1 } } } } }),
-            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"id":9,"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
-            "/api/v1/media/42" => $$$"""{"id":42,"tmdbId":1,"status":{{{(deleted ? 7 : 5)}}}}""",
+            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","status":{{{(deleted?7:5)}}},"serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"id":9,"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
+            "/api/v1/media/42" => JsonSerializer.Serialize(new{id=42,tmdbId=recordTmdb,status=deleted?7:5,status4k=record4KStatus}),
             _ => throw new NotSupportedException(request.RequestUri.AbsolutePath)
         };
         return new(HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
@@ -146,6 +158,55 @@ public sealed class ProductionGatewayTests : IDisposable
         var check=await gateway.PreflightAsync(p,default);Assert.True(check.Evidence.OwnerAuthorized);Assert.Equal(owner.Id,lastRuleActor);
         attributeToRequester=false;check=await gateway.PreflightAsync(p,default);Assert.False(check.Evidence.OwnerAuthorized);Assert.Equal(0,deletes);
         attributeToRequester=true;administrator=false;check=await gateway.PreflightAsync(p,default);Assert.False(check.Evidence.OwnerAuthorized);
+    }
+    [Fact] public async Task DisabledKnownRequesterCannotBecomeAnAdministratorOwnedAutomaticRequest()
+    {
+        administrator = true; attributeToRequester = true;
+        requester.SetPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled, true);
+        runtime.Write(Guid.NewGuid(), "fixture", "Authority", state => { state.Policy.Accounts[owner.Id] = ProposalAuthority.AnyAccessibleItem; return true; });
+        var ready = new HubAvailability(); ready.Set(true);
+        await Assert.ThrowsAsync<QueueException>(() => new AutomaticRequests(runtime, targets, identity, ready, clock).SubmitAsync(
+            Contract.Serialize(new AutomaticRemovalSubmission(Guid.NewGuid(), owner.Id, movie.Id, "rule")), default));
+        Assert.Empty(runtime.Read().Proposals); Assert.Equal(0, deletes);
+    }
+
+    [Theory]
+    [InlineData(1, 0)] [InlineData(2, 0)] [InlineData(3, 0)]
+    [InlineData(1, 1)] [InlineData(2, 1)] [InlineData(3, 1)]
+    [InlineData(1, 2)] [InlineData(2, 2)] [InlineData(3, 2)]
+    public async Task AutomaticPermissionRevocationBlocksEveryExecutionBoundary(int revokeAt, int revokeKind)
+    {
+        administrator = true; attributeToRequester = true;
+        var ready = new HubAvailability(); ready.Set(true);
+        await new AutomaticRequests(runtime, targets, identity, ready, clock).SubmitAsync(
+            Contract.Serialize(new AutomaticRemovalSubmission(Guid.NewGuid(), owner.Id, movie.Id, "rule")), default);
+        var id = Assert.Single(runtime.Read().Proposals).Id;
+        runtime.Write(Guid.NewGuid(), "fixture", "Evaluate", state => { QueueRules.Evaluate(state, QueueRules.Find(state, id), QueueRulesTests.Good with { AutomaticRuleVerified = true }, clock.Now); return true; });
+        Due();
+        ruleCheckAction = count => {
+            if (count != revokeAt) return;
+            if (revokeKind == 1) administrator = false;
+            else runtime.Write(Guid.NewGuid(), "fixture", "RevokeRequesterPermission", state => {
+                var policy = new HubPolicyPatch().Apply(state.Policy); policy.Accounts[revokeKind == 2 ? owner.Id : requester.Id] = ProposalAuthority.Denied;
+                QueueRules.UpdatePolicy(state, policy, state.Policy.Revision); return true;
+            });
+        };
+        try { await new ExecutionCoordinator(runtime, gateway, clock).ExecuteAsync(id, default); }
+        catch (QueueException) { /* A preclaim refusal is expected; a claimed refusal remains uncertain. */ }
+        Assert.Equal(0, deletes); Assert.Equal(0, declines);
+        Assert.NotEqual(ProposalStatus.Completed, QueueRules.Find(runtime.Read(), id).Status);
+    }
+    [Fact] public async Task AutomaticIntakeRechecksAuthorizerQueuePermissionAfterMetadataReads()
+    {
+        administrator = true; attributeToRequester = true;
+        seerrUserReadAction = () => runtime.Write(Guid.NewGuid(), "fixture", "RevokeAuthorizer", state => {
+            var policy = new HubPolicyPatch().Apply(state.Policy); policy.Accounts[owner.Id] = ProposalAuthority.Denied;
+            QueueRules.UpdatePolicy(state, policy, state.Policy.Revision); return true;
+        });
+        var ready = new HubAvailability(); ready.Set(true);
+        await Assert.ThrowsAsync<QueueException>(() => new AutomaticRequests(runtime, targets, identity, ready, clock).SubmitAsync(
+            Contract.Serialize(new AutomaticRemovalSubmission(Guid.NewGuid(), owner.Id, movie.Id, "rule")), default));
+        Assert.Empty(runtime.Read().Proposals); Assert.Equal(0, deletes);
     }
 
     [Fact] public void EpisodeContextRequiresAccessToTheEpisodeAndItsParentSeries() {
@@ -197,6 +258,63 @@ public sealed class ProductionGatewayTests : IDisposable
             QueueRules.Evaluate(state, p, QueueRulesTests.Good, clock.Now); return p.Id;
         });
     }
+    [Fact]public async Task ApprovalPageRequiresLiveAdministratorAndNativeVisibility(){
+        var id=await Seed();runtime.Write(Guid.NewGuid(),"test","RequireApproval",s=>{s.Policy.RequireAdministratorApproval=true;var p=QueueRules.Find(s,id);QueueRules.Evaluate(s,p,QueueRulesTests.Good,clock.Now);p.Revision++;return true;});
+        var principal=new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([new("Jellyfin-IsApiKey","false"),new("Jellyfin-UserId",owner.Id.ToString())],"fixture"));
+        var controller=new Jellyfin.Plugin.DeletionQueue.Api.QueueController(runtime,identity,targets,Fake<IUserManager>((m,_)=>m.Name=="GetUserById"?owner:throw new NotSupportedException()),null!,clock,null!){ControllerContext=new Microsoft.AspNetCore.Mvc.ControllerContext{HttpContext=new Microsoft.AspNetCore.Http.DefaultHttpContext{User=principal}}};
+        Assert.Throws<QueueException>(()=>controller.Approvals());administrator=true;
+        var response=Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.Approvals());var rows=JsonSerializer.SerializeToElement(response.Value,HubWire.Json);var row=Assert.Single(rows.EnumerateArray());Assert.True(row.GetProperty("canApprove").GetBoolean());Assert.False(row.GetProperty("canConsent").GetBoolean());Assert.NotEmpty(row.GetProperty("administratorApprovalSnapshot").GetString()!);
+        nativeGone=true;response=Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(controller.Approvals());Assert.Empty(JsonSerializer.SerializeToElement(response.Value,HubWire.Json).EnumerateArray());
+    }
+    [Fact]public void CollectorGapRecoveryDoesNotRestoreLostCoverageOrAcknowledgeANewerFault(){
+        Assert.True(runtime.CollectorHealthy);runtime.MarkCollectorFailed();var first=runtime.CollectorFailureGeneration;
+        runtime.Write(Guid.NewGuid(),"test","ObservedGap",s=>{QueueRules.BreakCoverage(s,"CollectorFailure",clock.Now);return true;});
+        runtime.MarkCollectorFailed();runtime.AcknowledgeCollectorGap(first);Assert.False(runtime.CollectorHealthy);
+        var second=runtime.CollectorFailureGeneration;runtime.Write(Guid.NewGuid(),"test","ObservedGap",s=>{QueueRules.BreakCoverage(s,"CollectorFailure",clock.Now);return true;});runtime.AcknowledgeCollectorGap(second);
+        Assert.True(runtime.CollectorHealthy);Assert.False(QueueRules.CoverageComplete(runtime.Read(),clock.Now));Assert.Equal(clock.Now,runtime.Read().CoverageSince);Assert.Equal(0,deletes);
+    }
+    [Fact]public async Task NativeSessionFallbackAndUnmappedEventsDoNotLeaveTheExecutionFenceStuck(){
+        var sessions=Fake<ISessionManager>((_,_)=>null);var data=Fake<IUserDataManager>((_,_)=>null);
+        using var worker=new ActivityWorker(runtime,targets,identity,sessions,data,clock,NullLogger<ActivityWorker>.Instance,fence);
+        var session=new SessionInfo(sessions,NullLogger.Instance){Id="native-client",UserId=owner.Id};
+        var args=new PlaybackProgressEventArgs{Item=movie,Users=[],Session=session};
+        typeof(ActivityWorker).GetMethod("Record",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(worker,[args,false,true]);
+        Assert.False(fence.Quiet);nativeGone=true;
+        await worker.StartAsync(default);try{for(var i=0;i<300&&!fence.Quiet;i++)await Task.Delay(10);Assert.True(fence.Quiet);Assert.False(QueueRules.CoverageComplete(runtime.Read(),clock.Now));}
+        finally{await worker.StopAsync(default);}
+    }
+    [Fact]public void SettingsChangesQueueNonDestructiveReevaluation(){
+        using var clean=new QueueRuntime(Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?Path.Combine(directory,"signal-only"):throw new NotSupportedException()),NullLogger<QueueRuntime>.Instance,clock);
+        Assert.False(clean.ReevaluationPending);clean.Write(Guid.NewGuid(),"test","AdministratorPolicyChanged",s=>{QueueRules.UpdatePolicy(s,new Policy{ActivityDays=45},s.Policy.Revision);return true;});
+        Assert.True(clean.ReevaluationPending);Assert.Equal(0,deletes);Assert.DoesNotContain(clean.History(),e=>e.Kind=="ExecutionClaimed");
+    }
+    [Fact]public async Task SettingsReevaluationCanMarkReadyButNeverClaimsOrDeletes(){
+        var id=await Seed();Due();var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        await new RemovalMaintenanceService(runtime,gateway,presentation,clock).ReevaluateAsync(default);
+        Assert.Equal(ProposalStatus.Ready,QueueRules.Find(runtime.Read(),id).Status);Assert.Equal(0,deletes);Assert.DoesNotContain(runtime.History(),entry=>entry.Kind=="ExecutionClaimed");
+    }
+    [Fact]public async Task AnotherStatusPreflightCannotRefreshAnExecutionClaimsActivityFence(){
+        var id=await Seed();Due();var p=QueueRules.Find(runtime.Read(),id);var check=await gateway.PreflightAsync(p,default);
+        runtime.Write(Guid.NewGuid(),"fixture","ExecutionClaimed",s=>{var claim=QueueRules.Claim(s,id,check.ProposalRevision,check.Evidence,clock.Now) with{ActivityGeneration=check.ActivityGeneration};QueueRules.Find(s,id).Claim=claim;return true;});
+        p=QueueRules.Find(runtime.Read(),id);Assert.True(await gateway.AnchorClaimAsync(p.Claim!,default));Assert.True(await gateway.RecheckBeforeDispatchAsync(p,default));
+        fence.Capturing();fence.Captured();
+        await gateway.PreflightAsync(p,default);
+        await Assert.ThrowsAsync<QueueException>(()=>gateway.DeleteOnceAsync(p,default));Assert.Equal(0,deletes);
+    }
+    [Fact]public async Task TransientVerificationFailureRetriesWithoutAnotherEventAndCannotDelete(){
+        var id=await Seed();Due();nativeGone=true;
+        var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        using var worker=new QueueReevaluationWorker(runtime,new RemovalMaintenanceService(runtime,gateway,presentation,clock),NullLogger<QueueReevaluationWorker>.Instance);
+        await worker.StartAsync(default);
+        try{
+            using var budget=new CancellationTokenSource(TimeSpan.FromSeconds(85));
+            while(QueueRules.Find(runtime.Read(),id).Reason!="VerificationUnavailable")await Task.Delay(25,budget.Token);
+            Assert.Equal(0,deletes);nativeGone=false;
+            while(QueueRules.Find(runtime.Read(),id).Reason=="VerificationUnavailable")await Task.Delay(100,budget.Token);
+            Assert.NotNull(QueueRules.Find(runtime.Read(),id).LastCheckedAt);
+            Assert.Equal(0,deletes);Assert.DoesNotContain(runtime.History(),entry=>entry.Kind=="ExecutionClaimed");
+        }finally{await worker.StopAsync(default);}
+    }
     private void Due()
     {
         clock.Now = clock.Now.AddHours(48);
@@ -211,6 +329,82 @@ public sealed class ProductionGatewayTests : IDisposable
         nativeGone = true;
         var completed = QueueRules.Find(runtime.Read(), id);
         Assert.True(targets.Accessible(owner.Id, completed)); Assert.False(targets.Accessible(restricted.Id, completed));
+    }
+    [Fact] public async Task DirectSeerrDeletionClosesPendingWorkWithoutAnotherDeleteOrAFalseQueueCompletion()
+    {
+        var id=await Seed();deleted=true;nativeGone=true;
+        var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        var maintenance=new RemovalMaintenanceService(runtime,gateway,presentation,clock);await maintenance.ReevaluateAsync(default);
+        var p=QueueRules.Find(runtime.Read(),id);Assert.Equal(ProposalStatus.Cancelled,p.Status);Assert.Equal("RemovedOutsideQueue",p.Reason);
+        Assert.Null(p.Claim);Assert.Null(p.FilesDeletedAt);Assert.Equal(0,deletes);Assert.True(targets.Accessible(owner.Id,p));
+        var projection=QueueRules.Project(runtime.Read(),p,owner.Id,clock.Now);Assert.Equal("Removed outside the queue",projection.StatusLabel);Assert.False(projection.CanUndo);Assert.Null(projection.ScheduledFor);
+        Assert.Contains(runtime.Read().Notices,n=>n.ProposalId==id&&n.Text.Contains("outside this queue"));
+        var count=runtime.Read().Notices.Count;await maintenance.ReevaluateAsync(default);Assert.Equal(count,runtime.Read().Notices.Count);Assert.Equal(0,deletes);
+        Assert.DoesNotContain(runtime.History(),e=>e.Kind=="ExecutionClaimed");
+    }
+    [Theory][InlineData(false)][InlineData(true)] public async Task MissingSeerrRecordNeverProvesFileDeletionAndRequiresTheCorrectServerAssociation(bool wrongAssociation)
+    {
+        var id=await Seed();missingMediaRecord=true;wrongSeerrServer=wrongAssociation;
+        var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        await new RemovalMaintenanceService(runtime,gateway,presentation,clock).ReevaluateAsync(default);
+        var p=QueueRules.Find(runtime.Read(),id);Assert.Equal(wrongAssociation?ProposalStatus.Blocked:ProposalStatus.Cancelled,p.Status);
+        Assert.Equal(wrongAssociation?"VerificationUnavailable":"UpstreamTargetMissing",p.Reason);Assert.Null(p.FilesDeletedAt);Assert.Null(p.Claim);Assert.Equal(0,deletes);
+    }
+    [Fact] public async Task ExternalDeletionEvidenceCannotCrossTmdbIdentityOrQualityEdition()
+    {
+        var id=await Seed();var p=QueueRules.Find(runtime.Read(),id);record4KStatus=7;
+        Assert.Null(await gateway.InspectExternalChangeAsync(p,default));
+        deleted=true;recordTmdb=2;Assert.Null(await gateway.InspectExternalChangeAsync(p,default));
+        recordTmdb=1;Assert.Equal("RemovedOutsideQueue",(await gateway.InspectExternalChangeAsync(p,default))!.Reason);
+        Assert.Equal(0,deletes);
+    }
+    [Fact] public async Task DeletionOutsideSeerrDuringDispatchReadConsumesTheClaimWithoutResending()
+    {
+        var id=await Seed();Due();mediaReadAction=()=>deleted=true;
+        var coordinator=new ExecutionCoordinator(runtime,gateway,clock);await coordinator.ExecuteAsync(id,default);
+        Assert.Equal(0,deletes);Assert.Equal(ProposalStatus.Uncertain,QueueRules.Find(runtime.Read(),id).Status);
+        await Assert.ThrowsAsync<QueueException>(()=>coordinator.ExecuteAsync(id,default));Assert.Equal(0,deletes);
+    }
+    [Fact] public async Task NativeRevocationDuringTheFinalSeerrReadPreventsTheDestructiveCall()
+    {
+        var id=await Seed();Due();mediaReadAction=()=>owner.SetPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled,true);
+        await new ExecutionCoordinator(runtime,gateway,clock).ExecuteAsync(id,default);
+        Assert.Equal(0,deletes);Assert.Equal(ProposalStatus.Uncertain,QueueRules.Find(runtime.Read(),id).Status);
+    }
+    [Fact] public async Task RequestDeclinedDirectlyInSeerrClosesItsPendingQueueEntryWithoutASecondDecline()
+    {
+        unfulfilled=true;pendingOnly=true;var target=await targets.ResolveAsync(new(owner.Id,true),new(null,9,false),default);
+        var id=runtime.Write(Guid.NewGuid(),"fixture","Propose",state=>QueueRules.Propose(state,new(owner.Id,true),target,true,QueueRules.Snapshot(state,target,owner.Id),clock.Now).Id);
+        declines=1; // Simulate an out-of-band human action, not a queue dispatch.
+        var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        await new RemovalMaintenanceService(runtime,gateway,presentation,clock).ReevaluateAsync(default);
+        var p=QueueRules.Find(runtime.Read(),id);Assert.Equal("RequestClosedOutsideQueue",p.Reason);Assert.Equal(ProposalStatus.Cancelled,p.Status);
+        Assert.Equal(1,declines);Assert.Equal(0,deletes);Assert.Null(p.Claim);Assert.Null(p.FilesDeletedAt);
+    }
+    [Fact] public async Task PersonalDelayChangedDuringFinalSeerrReadConsumesTheClaimWithoutDeleting()
+    {
+        var id=await Seed();Due();
+        mediaReadAction=()=>runtime.Write(Guid.NewGuid(),"fixture","PreferencesChanged",state=>{
+            QueueRules.UpdatePreferences(state,owner.Id,state.Preferences.GetValueOrDefault(owner.Id)?.Revision??0,96,true);return true;
+        });
+        var coordinator=new ExecutionCoordinator(runtime,gateway,clock);await coordinator.ExecuteAsync(id,default);
+        Assert.Equal(0,deletes);Assert.Equal(ProposalStatus.Uncertain,QueueRules.Find(runtime.Read(),id).Status);
+        await Assert.ThrowsAsync<QueueException>(()=>coordinator.ExecuteAsync(id,default));Assert.Equal(0,deletes);
+    }
+    [Theory][InlineData("allow")][InlineData("keep")][InlineData("undo")]
+    public async Task OldNotificationActionsCannotMutateAnExternallyClosedRequest(string action)
+    {
+        var id=await Seed();var adapter=new NotificationCommands(runtime,targets,identity,clock);
+        var entry=new NotificationEvent(1,Guid.NewGuid(),"deletion-queue","proposal.updated","info","Movie","Updated",[owner.Id],false,clock.Now,Metadata:new(){["proposalId"]=id.ToString()});
+        var json=Contract.Serialize(entry);
+        var controls=JsonSerializer.Deserialize<NotificationCommand[]>(await adapter.DispatchAsync(owner.Id,json,null,default),Contract.Json)!;
+        var stale=controls.Single(command=>command.Id==action);deleted=true;
+        var presentation=new MediaPresentationService(runtime,null!,null!,null!,Fake<IApplicationPaths>((m,_)=>m.Name=="get_DataPath"?directory:throw new NotSupportedException()),null!,clock);
+        await new RemovalMaintenanceService(runtime,gateway,presentation,clock).ReevaluateAsync(default);
+        Assert.Equal("[]",await adapter.DispatchAsync(owner.Id,json,null,default));
+        await Assert.ThrowsAsync<QueueException>(()=>adapter.DispatchAsync(owner.Id,json,Contract.Serialize(new NotificationCommandRequest(action,Guid.NewGuid(),stale.Revision,stale.Snapshot)),default));
+        var current=QueueRules.Find(runtime.Read(),id);Assert.Equal("RemovedOutsideQueue",current.Reason);Assert.Equal(ProposalStatus.Cancelled,current.Status);
+        Assert.Null(current.Claim);Assert.Null(current.FilesDeletedAt);Assert.Equal(0,deletes);
     }
     [Fact] public async Task FreshNativeInventoryCanVerifyRestartWarmupButNeverAnUnhealthyCollector()
     {

@@ -7,7 +7,6 @@
     <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
     <Compile Include="../../../../shared/Jellyfin.NativeUi/DependencyHealth.cs" Link="DependencyHealth.cs" />
     <ProjectReference Include="../AccountHub.Core/AccountHub.Core.csproj" />
-    <ProjectReference Include="../../../../shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
     <ProjectReference Include="../../../../modules/security/src/AccountHub.Security/AccountHub.Security.csproj" />
     <ProjectReference Include="../../../../modules/notifications/src/AccountHub.Notifications/AccountHub.Notifications.csproj" />
     <ProjectReference Include="../../../../modules/user-management/src/Jellyfin.Plugin.UserManager/Jellyfin.Plugin.UserManager.csproj" />

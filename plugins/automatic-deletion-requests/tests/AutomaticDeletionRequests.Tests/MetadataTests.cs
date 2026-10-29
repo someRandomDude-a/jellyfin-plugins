@@ -14,6 +14,50 @@ namespace AutomaticDeletionRequests.Tests;
 
 public sealed class MetadataTests
 {
+    [Fact]public void EveryEpisodeFinishedByListCanContainTheVerifiedRequester(){
+        var requester=Guid.NewGuid();var c=new Condition("jellyfin.allEpisodesSeenBy","contains",V(null)){ReferenceField="seerr.requesterId"};
+        var rule=new Rule("finished","Requester finished the show",true,"all",[c]){Circuit=new(2,[new("j","metadata",0,0,[]){Source="jellyfin"},new("s","metadata",0,200,[]){Source="seerr"},new("c","condition",300,0,["j","s"]){Condition=c},new("n","not",600,0,["c"]),new("out","delete",900,0,["n"])])};
+        RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule]));
+        var facts=new Dictionary<string,JsonElement>{{c.Field,V(new[]{requester.ToString("N")})},{"seerr.requesterId",V(requester.ToString("D"))}};
+        Assert.True(RuleEngine.TestCondition(c,facts,DateTimeOffset.UtcNow));
+        Assert.False(RuleEngine.Matches(rule,facts,DateTimeOffset.UtcNow));
+        facts.Remove("seerr.requesterId");Assert.Null(RuleEngine.TestCondition(c,facts,DateTimeOffset.UtcNow));Assert.False(RuleEngine.Matches(rule,facts,DateTimeOffset.UtcNow));
+        Assert.Throws<InvalidOperationException>(()=>RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule with{Circuit=null,Conditions=[c with{ReferenceField="title"}]}])));
+    }
+    [Theory]
+    [InlineData("title","text-number","12.5",12.5)]
+    [InlineData("seerr.is4k","boolean-number",true,1)]
+    [InlineData("seerr.is4k","boolean-number",false,0)]
+    public void ScalarTypeConversionsAreExplicitAndValidated(string field,string conversion,object actual,double expected){
+        var c=new Condition(field,"equals",V(expected)){Conversion=conversion};
+        RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[new("convert","Convert",true,"all",[c])]));
+        Assert.True(RuleEngine.TestCondition(c,new Dictionary<string,JsonElement>{{field,V(actual)}},DateTimeOffset.UtcNow));
+    }
+    [Theory]
+    [InlineData("")][InlineData("NaN")][InlineData("1,234")][InlineData("12 days")]
+    public void FailedTextConversionsStayUnknown(string text){
+        var c=new Condition("title","not-equals",V(0)){Conversion="text-number"};
+        Assert.Null(RuleEngine.TestCondition(c,new Dictionary<string,JsonElement>{{"title",V(text)}},DateTimeOffset.UtcNow));
+    }
+    [Fact]public void DateConversionsKeepFractionalSignedUnitsAndFetchBothSources(){
+        var now=DateTimeOffset.Parse("2026-10-27T12:00:00Z");
+        var c=new Condition("added","equals",V(1.5)){Conversion="difference-days",ReferenceField="radarr.added"};
+        var rule=new Rule("delta","Date difference",true,"all",[c]);RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule]));
+        var facts=new Dictionary<string,JsonElement>{{"added",V(now)},{"radarr.added",V(now.AddHours(-36))}};
+        Assert.True(RuleEngine.Matches(rule,facts,now));Assert.Contains("radarr.added",MetadataEvidence.Fields([c]));
+        Assert.True(RuleEngine.TestCondition(c with{Field="radarr.added",ReferenceField="added",Value=V(-1.5)},facts,now));
+        Assert.True(RuleEngine.TestCondition(c with{Conversion="difference-hours",Value=V(36)},facts,now));
+        Assert.True(RuleEngine.TestCondition(c with{Field="radarr.added",ReferenceField=null,Conversion="age-hours",Value=V(36)},facts,now));
+        facts.Remove("radarr.added");Assert.Null(RuleEngine.TestCondition(c,facts,now));Assert.False(RuleEngine.Matches(rule,facts,now));
+    }
+    [Fact]public void ConvertedListsRequireRealEvidenceAndInvalidConversionsAreRejected(){
+        var c=new Condition("jellyfin.genres","equals",V(2)){Conversion="count"};var rule=new Rule("count","List count",true,"all",[c]);
+        RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule]));
+        Assert.True(RuleEngine.Matches(rule,new Dictionary<string,JsonElement>{{c.Field,V(new[]{"Drama","Comedy"})}},DateTimeOffset.UtcNow));
+        Assert.Null(RuleEngine.TestCondition(c,new Dictionary<string,JsonElement>{{c.Field,MetadataEvidence.Absent}},DateTimeOffset.UtcNow));
+        foreach(var invalid in new[]{c with{Conversion="age-days"},c with{ReferenceField="added"},c with{Operator="contains"},c with{Value=V("2")}})
+            Assert.Throws<InvalidOperationException>(()=>RuleEngine.Validate(new(0,false,Guid.Empty,Guid.Empty,24,[rule with{Conditions=[invalid]}])));
+    }
     [Fact]public void NativeWatchSummariesSeparatePlayedAndCompletedWithoutInventingHistory(){
         var user=new Jellyfin.Database.Implementations.Entities.User("viewer","auth","reset"){Id=Guid.NewGuid()};var movie=new Movie{Id=Guid.NewGuid(),DateCreated=DateTime.UtcNow.AddDays(-10)};var data=new UserItemData{Key="fixture",Played=false,PlayCount=1,LastPlayedDate=DateTime.UtcNow.AddDays(-1),PlaybackPositionTicks=TimeSpan.FromMinutes(5).Ticks};
         var native=new JellyfinMetadata(Fake<ILibraryManager>(_=>throw new NotSupportedException()),Fake<IUserManager>(m=>m.Name=="GetUsers"?new[]{user}:throw new NotSupportedException()),Fake<IUserDataManager>(m=>m.Name=="GetUserData"?data:throw new NotSupportedException()));

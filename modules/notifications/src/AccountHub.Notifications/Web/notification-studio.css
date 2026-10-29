@@ -1,0 +1,84 @@
+/* Native theme owns colour and typography. No user-supplied CSS or external assets. */
+.notificationCanvas { position: relative; width: 100%; min-width: 0; overflow: hidden; box-sizing: border-box; }
+.notificationCanvasLayer { position: absolute; box-sizing: border-box; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.notificationCanvasLayer[data-tone=muted] { opacity: .7; }
+.notificationCanvasLayer[data-tone=accent] { color: var(--theme-primary-color, var(--jf-palette-primary-main, inherit)); }
+.notificationCanvas .notificationCanvasImage img { display: block; float: none; width: 100%; height: 100%; margin: 0; max-width: none; border-radius: 0; }
+.notificationSimulatedImage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4rem; text-align: center; border: 1px dashed color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 6%, transparent); }
+.notificationSimulatedImage .material-icons { font-size: 2rem; opacity: .6; }
+.notificationSimulatedImage small { padding-inline: .3rem; font-size: .75rem; }
+.notificationTypeCatalog { min-width: 0; margin-block: 1rem; }
+.notificationTypeCatalog > summary { padding-block: .75rem; font-weight: 600; cursor: pointer; }
+.notificationPluginCatalog, .notificationRegisteredType { min-width: 0; margin-block: .5rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: .6rem; }
+.notificationPluginCatalog > summary, .notificationRegisteredType > summary { padding: .75rem; cursor: pointer; overflow-wrap: anywhere; }
+.notificationPluginCatalog > summary > span:first-of-type, .notificationRegisteredType > summary > span { font-weight: 600; }
+.notificationPluginCatalog > summary > *, .notificationRegisteredType > summary > * { margin-inline-end: .75rem; }
+.notificationPluginCatalog > summary code, .notificationRegisteredType > summary code { font-size: .85em; white-space: normal; overflow-wrap: anywhere; }
+.notificationPluginCatalog > .notificationRegisteredType, .notificationPluginCatalog > p { margin: .5rem; }
+.notificationRegisteredType > .notificationTypeSection { margin: .5rem; }
+.notificationTypeSection { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: .6rem; }
+.notificationTypeSection > legend { font-weight: 600; }
+.notificationTypePreview { max-width: 40rem; margin-block: .75rem 1rem; padding: .75rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: .6rem; background: color-mix(in srgb, currentColor 3%, transparent); box-sizing: border-box; }
+.notificationTypeDefaults, .notificationTypePresentation { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .75rem 1rem; margin-block: .75rem; }
+.notificationTypeDefaults > *, .notificationTypePresentation > * { min-width: 0; margin-block: 0; }
+.notificationTypeSection .notificationTypeDefaults .inputContainer, .notificationTypeSection .notificationTypeDefaults .selectContainer, .notificationTypeSection .notificationTypeDefaults .checkboxContainer, .notificationTypeSection .notificationTypePresentation .inputContainer, .notificationTypeSection .notificationTypePresentation .selectContainer, .notificationTypeSection .notificationTypePresentation .checkboxContainer { margin-block: 0; }
+.notificationTypeDefaults > button { align-self: end; justify-self: start; }
+.notificationTypeBehavior > summary { cursor: pointer; padding-block: .75rem; font-weight: 600; }
+.notificationStudio { container-type: inline-size; min-width: 0; margin-block: 1rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: .7rem; overflow: hidden; background: var(--theme-background-color, var(--jf-palette-background-paper, transparent)); }
+.notificationStudioHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: 1rem; border-block-end: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.notificationStudio h4, .notificationStudio h5, .notificationStudio p { margin: 0; }
+.notificationStudio h4 { font-size: 1.05rem; }
+.notificationStudio h5 { font-size: .9rem; }
+.notificationStudio .notificationStudioHint { font-size: .8rem; line-height: 1.5; opacity: .75; }
+.notificationStudio > .notificationStudioHint { padding: .75rem 1rem; border-block-start: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.notificationStudioStatus { font-size: .8rem; line-height: 1.4; max-width: 18rem; }
+.notificationStudio[data-dirty=true] .notificationStudioStatus { border-inline-start: 2px solid var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); padding-inline-start: .6rem; font-weight: 600; }
+.notificationStudioToolbar { display: flex; flex-wrap: wrap; gap: .6rem 1rem; padding: .75rem 1rem; border-block-end: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.notificationStudioToolGroup { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0; }
+.notificationStudioToolbar .emby-button { margin: 0; padding: .55rem .7rem; min-height: 2.5rem; font-size: .8rem; }
+.notificationStudioWorkspace { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.notificationStudioStage { display: flex; flex-direction: column; min-width: 0; padding: 1rem; background: color-mix(in srgb, currentColor 4%, transparent); }
+.notificationStudioStageHeader { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .4rem; margin-block-end: 1rem; }
+.notificationStudioStageHeader > span { font-size: .75rem; opacity: .7; }
+.notificationStudioBoard { position: relative; width: 100%; max-width: 40rem; margin-inline: auto; margin-block: auto; touch-action: none; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); background: var(--theme-background-color, var(--jf-palette-background-paper, transparent)); box-sizing: border-box; }
+.notificationStudioStage > .notificationStudioHint { margin-block-start: .8rem; }
+.notificationStudioStage .notificationStudioSnapStatus { min-height: 3em; margin-block-start: .6rem; }
+.notificationStudioGuides { position: absolute; inset: 1px; pointer-events: none; z-index: 3; }
+.notificationStudioGuide { position: absolute; pointer-events: none; border-color: var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); }
+.notificationStudioGuide[data-axis=x] { top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); }
+.notificationStudioGuide[data-axis=y] { left: 0; right: 0; height: 0; border-top: 1px dashed var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); }
+.notificationStudioGuide[data-axis=x][data-kind=center] { border-left-style: solid; }
+.notificationStudioGuide[data-axis=y][data-kind=center] { border-top-style: solid; }
+.notificationStudioToolbar [aria-pressed=true] { box-shadow: inset 0 -2px var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); }
+.notificationStudioBoard [data-layer] { cursor: move; outline: 1px dashed color-mix(in srgb, currentColor 30%, transparent); outline-offset: -1px; }
+.notificationStudioBoard [data-layer][data-selected=true] { outline: 2px solid var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); outline-offset: -2px; }
+.notificationStudioBoard [data-layer]:focus-visible { outline-width: 3px; }
+.notificationStudioResize { position: absolute; right: 0; bottom: 0; width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: .2rem; color: inherit; background: transparent; cursor: nwse-resize; font-size: 0; touch-action: none; }
+.notificationStudioResize::after { content: ''; position: absolute; right: 1px; bottom: 1px; width: .55rem; height: .55rem; border: 2px solid var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); border-radius: .1rem; background: var(--theme-background-color, var(--jf-palette-background-paper, Canvas)); }
+.notificationStudioInspector { min-width: 0; padding: 1rem; border-block-start: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.notificationStudioInspector > h5 { margin-block-end: .65rem; }
+.notificationStudioAlignment { margin-block: 0 1rem; padding-block-end: .75rem; border-block-end: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.notificationStudioAlignment > summary { cursor: pointer; padding-block: .5rem; font-size: .85rem; font-weight: 600; }
+.notificationStudio .notificationStudioAlignment .selectContainer { margin-block: .5rem .75rem; }
+.notificationStudioAlignControl select { width: 100%; min-width: 0; box-sizing: border-box; }
+.notificationStudioAlignButtons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; margin-block: .3rem; }
+.notificationStudio .notificationStudioAlignButtons button { margin: 0; padding: .5rem .25rem; min-height: 2.5rem; font-size: .8rem; }
+.notificationStudioLayers { display: grid; gap: .3rem; max-height: 12rem; overflow: auto; margin-block-end: 1.2rem; }
+.notificationStudioLayer { display: grid; grid-template-columns: 1.2rem minmax(0, 1fr); align-items: center; gap: .1rem .5rem; padding: .55rem; min-height: 2.75rem; border: 1px solid transparent; border-radius: .35rem; color: inherit; background: color-mix(in srgb, currentColor 4%, transparent); text-align: start; cursor: pointer; font: inherit; font-size: .85rem; }
+.notificationStudioLayer > .material-icons { grid-row: span 2; font-size: 1.2rem; }
+.notificationStudioLayer > small { grid-column: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .7; }
+.notificationStudioLayer[data-selected=true] { border-color: var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); background: color-mix(in srgb, currentColor 9%, transparent); }
+.notificationStudioLayer:focus-visible, .notificationStudioResize:focus-visible { outline: 2px solid var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); outline-offset: 1px; }
+.notificationStudioFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem .75rem; }
+.notificationStudioFields > * { min-width: 0; margin: 0; }
+.notificationStudio .notificationStudioFields .inputContainer, .notificationStudio .notificationStudioFields .selectContainer { margin: 0; }
+.notificationStudioFields .notificationStudioFullField { grid-column: 1 / -1; }
+.notificationStudioFields .inputLabel, .notificationStudioFields .selectLabel { font-size: .8rem; line-height: 1.4; }
+.notificationStudioFields input, .notificationStudioFields select { width: 100%; min-width: 0; margin: .3rem 0 0; box-sizing: border-box; }
+@container (min-width: 48rem) {
+    .notificationStudioWorkspace { grid-template-columns: minmax(0, 1fr) 18rem; }
+    .notificationStudioInspector { max-height: 36rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border-block-start: 0; border-inline-start: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .notificationStudioStage { min-height: 20rem; padding: 1.25rem; }
+}
+@media (max-width: 600px) { .notificationTypeSection { padding: .5rem; } .notificationStudioHeader, .notificationStudioToolbar, .notificationStudioStage, .notificationStudioInspector { padding: .75rem; } }
+@media (prefers-reduced-motion: reduce) { .notificationStudio * { scroll-behavior: auto; } }

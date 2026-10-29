@@ -1,47 +1,4 @@
 param([string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
-$root = Split-Path $PSScriptRoot -Parent
-# Legacy release-tool fixtures use synthetic four-component tags, not the monorepo tag.
-foreach ($name in @('GITHUB_REF','GITHUB_REF_TYPE','GITHUB_REF_NAME')) { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
-function Invoke-Checked([string]$Directory, [string]$Program, [string[]]$Arguments) {
-    Push-Location (Join-Path $root $Directory)
-    try { & $Program @Arguments; if ($LASTEXITCODE -ne 0) { throw "$Program failed in $Directory" } }
-    finally { Pop-Location }
-}
-Invoke-Checked '.' dotnet @('test','Jellyfin.Plugins.slnx','-c',$Configuration,'--nologo','--logger','trx')
-Invoke-Checked 'plugins/discord-bridge/activity' npm @('test')
-Invoke-Checked 'plugins/private-syncplay' npm @('run','check')
-Invoke-Checked 'plugins/private-syncplay' npm @('run','test:ui')
-Invoke-Checked 'plugins/private-syncplay' node @('--test','tests/jellyfin-versions.test.mjs')
-Invoke-Checked 'plugins/private-syncplay' node @('--test','tests/guest-state.test.mjs')
-Invoke-Checked 'modules/security' node @('--test','web/security-client.test.mjs')
-Invoke-Checked 'modules/security' node @('--check','web/security-panel.mjs')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/workspace.js')
-Invoke-Checked '.' node @('--test','scripts/admin-ui.test.mjs')
-Invoke-Checked '.' node @('--test','scripts/removal-ui.test.mjs')
-Invoke-Checked '.' node @('--test','scripts/presentation-ui.test.mjs')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/public.js')
-Invoke-Checked '.' node @('--check','modules/notifications/src/AccountHub.Notifications/Web/settings.js')
-Invoke-Checked '.' node @('--check','scripts/integration.mjs')
-Invoke-Checked '.' node @('--test','scripts/discord-acceptance.test.mjs')
-Invoke-Checked '.' node @('--test','scripts/discord-tunnel.test.mjs')
-Invoke-Checked '.' node @('--check','scripts/theme-acceptance.cjs')
-Invoke-Checked '.' node @('--check','scripts/test-combinations.mjs')
-Invoke-Checked '.' node @('--test','scripts/plugin-isolation.test.mjs')
-Invoke-Checked '.' node @('--test','scripts/web-ui.test.mjs','scripts/group-policy-ui.test.mjs','scripts/domain-panel.test.mjs','scripts/invite-public.test.mjs','scripts/ui-safety-followup.test.mjs')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/group-policy.mjs')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/seerr-panel.mjs')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/invite-admin.js')
-Invoke-Checked '.' node @('--check','plugins/account-hub/src/AccountHub/Web/invite-public.js')
-Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/inventory-distribution.test.ps1')
-Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/validate-release-set.test.ps1')
-Invoke-Checked '.' pwsh @('-NoProfile','-File','scripts/merge-plugin-catalog.test.ps1')
-Invoke-Checked 'modules/notifications' node @('--test','tests/web/bell.test.cjs')
-Invoke-Checked 'modules/user-management' node @('--test','tests/web/common.test.cjs')
-Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/package.ps1')
-Invoke-Checked 'plugins/private-syncplay' node @('scripts/validate-package.mjs')
-Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','scripts/test-sdk.ps1')
-Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-history.test.ps1')
-Invoke-Checked 'plugins/private-syncplay' pwsh @('-NoProfile','-File','tests/catalog-publish.test.ps1')
-Invoke-Checked 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release-metadata.ps1')
-Invoke-Checked 'plugins/deletion-queue' pwsh @('-NoProfile','-File','scripts/test-release.ps1','-Runtime','all','-Tag','v0.1.0.6')
+. (Join-Path $PSScriptRoot 'test-targets.ps1')
+Invoke-TestEntryPoint -Plugin all -Configuration $Configuration

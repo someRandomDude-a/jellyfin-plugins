@@ -32,17 +32,27 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
         var value = store.Read();
         var hub = services.GetKeyedService<Func<string, CancellationToken, Task<string>>>(DiscordBridgeClient.IdentityKey) is not null;
         var syncplay = services.GetRequiredService<IWatchPartyService>().IsAvailable;
+        var notifications=AccountHub.Api.NotificationIntegration.IsStandaloneInstalled(services);
+        Uri? publicUrl=null;try{publicUrl=await BridgePublicUrl.ResolveAsync(services,value.Settings,HttpContext.RequestAborted);}catch(OperationCanceledException)when(HttpContext.RequestAborted.IsCancellationRequested){throw;}catch{}
         var security = services.GetRequiredService<ISecurityCompatibility>().Check();
         var libraries = Array.Empty<object>(); var libraryStatus = "available";
         try { libraries = services.GetRequiredService<MediaBrowser.Controller.Library.ILibraryManager>().GetVirtualFolders().Select(folder => new { id = Guid.TryParse(folder.ItemId, out var libraryId) ? libraryId.ToString("D") : null, name = folder.Name }).Where(folder => folder.id is not null).Cast<object>().ToArray(); }
         catch { libraryStatus = "unavailable"; }
-        return Envelope(new { revision = value.Revision, settings = value.Settings, tokenConfigured = value.Token is not null, connected = runtime.Connected, state = runtime.State, interactions = runtime.Interactions.Snapshot(),
+        var permissionUsers = Array.Empty<object>(); var permissionUsersStatus = "available";
+        try {
+            var users = services.GetRequiredService<IUserManager>().GetUsers().OrderBy(user => user.Username, StringComparer.Ordinal).Take(501).ToArray();
+            permissionUsersStatus = users.Length > 500 ? "bounded" : "available";
+            permissionUsers = users.Take(500).Select(user => (object)new { id = user.Id.ToString("D"), name = user.Username }).ToArray();
+        } catch { permissionUsersStatus = "unavailable"; }
+        return Envelope(new { revision = value.Revision, settings = value.Settings, effectivePublicServerUrl=publicUrl?.AbsoluteUri.TrimEnd('/'), tokenConfigured = value.Token is not null, connected = runtime.Connected, state = runtime.State, instanceCode=runtime.InstanceCode, botUsername=runtime.BotUsername, botId=runtime.ApplicationId, interactions = runtime.Interactions.Snapshot(),
+            permissionActions = BridgePermissions.Catalog, permissionUsers, permissionUsersStatus,
             authorization = "Native Jellyfin administrator authorization; explicit confirmation, no fresh factor for Discord transport settings",
-            security = security.State, libraryFolders = libraries, libraryStatus, libraryHealth = services.GetRequiredService<Jellyfin.LibraryNotifications.LibraryNoticeStore>().Health(), libraryCaptureOwner = hub ? "Account Hub (single intake; Discord Bridge owns channel delivery)" : "Discord Bridge (independent native library observer)",
+            security = security.State, libraryFolders = libraries, libraryStatus, libraryHealth = services.GetRequiredService<Jellyfin.LibraryNotifications.LibraryNoticeStore>().Health(), libraryCaptureOwner = notifications ? "Notifications (single observer; Discord Bridge owns channel delivery)" : "Unavailable — install Notifications; Bridge retains transport history only",
             features = new[] {
                 new { id = "transport", name = "Bot / generic Discord delivery", available = true, reason = "No other suite plugin is required.", fix = "Configure this bot and its Discord permissions." },
+                new { id = "notifications", name = "Library, queue, automation and account notifications", available = notifications, reason = notifications?"Notifications observes library additions and routes registered producers; private DMs require a verified account link and personal preferences.":"Notifications is missing; no new library events are observed. Generic bot transport remains independent.", fix = "Install Notifications, restart, then configure library events, approved channel routes or linked-user DMs." },
                 new { id = "identity", name = "Link, unlink, reset and account status", available = hub, reason = hub ? "Account Hub identity provider is installed." : "Account Hub owns verified Jellyfin↔Discord links; Discord roles are not a replacement.", fix = "Install and enable Account Hub, restart Jellyfin, then link through /link." },
-                new { id = "watchparty", name = "Watch-party devices and invitations", available = hub && syncplay, reason = !hub ? "A verified account link from Account Hub is required." : !syncplay ? "Private SyncPlay's native party provider is missing or unavailable." : "Required identity and native party providers are installed.", fix = "Install and enable Account Hub and Private SyncPlay, restart, link your account, then open a real Jellyfin session." }
+                new { id = "watchparty", name = "Native watch-party invitations", available = hub && syncplay, reason = !hub ? "A verified account link from Account Hub is required." : !syncplay ? "Private SyncPlay's native party provider is missing or unavailable." : "Required identity and native party providers are installed.", fix = "Install and enable Account Hub and Private SyncPlay, restart, link your account, then open a real Jellyfin playback session." }
             } });
     }
     [HttpPost("connection/test")]
@@ -57,7 +67,7 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { return Envelope(new { code = "connection_unavailable", message = "Discord connection could not be verified. Save valid bot settings, wait for the gateway to connect, and check outbound HTTPS/DNS access." }, 503, false); }
     }
-    [HttpPut("settings"), RequestSizeLimit(16384)]
+    [HttpPut("settings"), RequestSizeLimit(65536)]
     public async Task<IActionResult> Save(JsonElement body, CancellationToken ct)
     {
         if (!await Administrator()) return Envelope(new { code = "unauthorized" }, 403, false);
@@ -91,6 +101,11 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
                 evidence = await services.GetRequiredService<CommandAuthorization>().AuthorizeAsync(new(caller.UserId, caller.Token!, trusted), new(StepUpLevel.Everything), CommandRisk.Operational, false, confirmation, "CONFIRM ACCOUNT HUB CHANGE", proof, ct);
             }
             var config = body.GetProperty("settings").Deserialize<Configuration>(Json) ?? throw new ArgumentException();
+            // Older compatible settings clients do not know this new section.
+            // Omission must not erase explicit permission denials/overrides.
+            if (!body.GetProperty("settings").TryGetProperty("permissions", out _)) config.Permissions = store.Read().Settings.Permissions;
+            if (!body.GetProperty("settings").TryGetProperty("inviteMaxUses",out _)) { var old=store.Read().Settings; config.InviteDefaultUses=old.InviteDefaultUses;config.InviteMaxUses=old.InviteMaxUses;config.InviteDefaultExpiryMinutes=old.InviteDefaultExpiryMinutes;config.InviteMaxExpiryMinutes=old.InviteMaxExpiryMinutes; }
+            if (!body.GetProperty("settings").TryGetProperty("watchPartyUses",out _)) { var old=store.Read().Settings;config.WatchPartyUses=old.WatchPartyUses;config.WatchPartyExpiryMinutes=old.WatchPartyExpiryMinutes;config.WatchPartyGuests=old.WatchPartyGuests; }
             var token = body.TryGetProperty("token", out var secret) && secret.ValueKind == JsonValueKind.String ? secret.GetString() : null;
             var clear = body.TryGetProperty("clearToken", out var clearToken) && clearToken.ValueKind == JsonValueKind.True;
             var info = await authorization.GetAuthorizationInfo(HttpContext);

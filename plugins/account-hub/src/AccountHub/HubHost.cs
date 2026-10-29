@@ -19,6 +19,7 @@ namespace AccountHub;
 
 public sealed class HubHost(IServiceProvider services, HubStore store, ExternalCommandGate commands) : ISecurityHubHost, INotificationHost
 {
+    public string? PublicServerUrl(HttpContext context) => services.GetService<IServerApplicationHost>()?.GetSmartApiUrl(context.Request);
     public async Task<Guid?> CurrentUserAsync(HttpContext context, CancellationToken ct)
     {
         try { return (await Jellyfin.PluginSupport.NativeAuthorization.RequireAsync(context, services, administrator: false, elevated: false)).UserId; }
@@ -48,15 +49,37 @@ public sealed class HubHost(IServiceProvider services, HubStore store, ExternalC
     }
     public Task<IReadOnlyList<Guid>> AdministratorsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<Guid>>(services.GetRequiredService<IUserManager>().GetUsers().Where(u => u.HasPermission(PermissionKind.IsAdministrator) && !u.HasPermission(PermissionKind.IsDisabled)).Select(u => u.Id).Take(1001).ToArray());
     public async Task<CallerSession> RequireAdministratorAsync(HttpContext context, CancellationToken ct)
+        => await RequireCallerAsync(context, true, ct);
+    private async Task<CallerSession> RequireCallerAsync(HttpContext context, bool administrator, CancellationToken ct)
     {
         MediaBrowser.Controller.Net.AuthorizationInfo info;
-        try { info = await Jellyfin.PluginSupport.NativeAuthorization.RequireAsync(context, services, administrator: true, elevated: true); }
+        try { info = await Jellyfin.PluginSupport.NativeAuthorization.RequireAsync(context, services, administrator, elevated: administrator); }
         catch (Jellyfin.PluginSupport.NativeAuthorizationFailure) { throw new SecurityFailure("unauthorized", 403); }
         var app = services.GetRequiredService<IServerApplicationHost>();
         // Native host configuration supplies listener/BaseUrl. Host/Forwarded headers never select the target.
         var trusted = new Uri(app.GetLocalApiUrl("127.0.0.1", "http", app.HttpPort).TrimEnd('/') + '/');
         if (string.IsNullOrEmpty(info.Token)) throw new SecurityFailure("unauthorized", 401);
         return new(info.UserId, info.Token, trusted);
+    }
+    public async Task RequireResetSessionAsync(HttpContext context, Guid target, CancellationToken ct)
+    {
+        var caller = await RequireCallerAsync(context, false, ct);
+        if (caller.UserId != target || !await UserExistsAsync(target, ct)) throw new SecurityFailure("reset_account_mismatch", 403);
+        if (!services.GetRequiredService<ISecurityCompatibility>().Check().IsOk) throw new SecurityFailure("reset_verification_unavailable", 503);
+        var sessions = services.GetRequiredService<ISecuritySessionVerification>();
+        void RequireVerdict()
+        {
+            var verified = sessions.IsVerified(caller);
+            if (verified is null) throw new SecurityFailure("reset_verification_unavailable", 503);
+            if (!verified.Value) throw new SecurityFailure("reset_session_required", 403);
+        }
+        RequireVerdict();
+        var status = await services.GetRequiredService<SecurityClient>().MyStatusAsync(caller, ct);
+        if (status.UserId != target || status.IsLockedOut != false) throw new SecurityFailure("reset_session_required", 403);
+        // Follow the native session verdict, not factor counts, a client boolean,
+        // a per-user step-up window, or the administrator mirror. No proof is minted.
+        RequireVerdict();
+        if (!await UserExistsAsync(target, ct) || !await LocalPasswordFlowsAllowedAsync(ct)) throw new SecurityFailure("password_login_disabled", 403);
     }
     public Task<(SecuritySettings Settings, long Revision)> ReadSettingsAsync(CancellationToken ct) => store.ReadAsync(async (db, token) =>
     {

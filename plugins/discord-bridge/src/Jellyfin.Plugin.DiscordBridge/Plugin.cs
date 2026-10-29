@@ -14,6 +14,14 @@ public sealed class Configuration : BasePluginConfiguration
     public string[] AllowedChannelIds { get; set; } = [];
     public bool EnableSelfServiceCommands { get; set; } = true;
     public bool EnableWatchPartyCommands { get; set; } = true;
+    public int InviteDefaultUses { get; set; } = 1;
+    public int InviteMaxUses { get; set; } = 10;
+    public int InviteDefaultExpiryMinutes { get; set; } = 60;
+    public int InviteMaxExpiryMinutes { get; set; } = 1440;
+    public bool WatchPartyGuests { get; set; }
+    public int WatchPartyUses { get; set; } = 1;
+    public int WatchPartyExpiryMinutes { get; set; } = 30;
+    public BridgePermissionSettings Permissions { get; set; } = new();
     public bool LibraryAnnouncementsEnabled { get; set; }
     public bool LibraryEpisodes { get; set; } = true;
     public bool LibraryMovies { get; set; } = true;

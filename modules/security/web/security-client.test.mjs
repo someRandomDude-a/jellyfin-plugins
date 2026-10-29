@@ -21,7 +21,7 @@ test('pending callback once, no retry and proof cleared', async () => {
     let paused = false;
     await assert.rejects(() => securityRequest(api, 'security/users/f61091cf-75bf-420c-9b5e-afb375d8f6de/force-logout', {
         method: 'POST', body: { stepUp: proof }, pending2fa: () => { paused = true; }
-    }), /two_factor_required/);
+    }), error=>error.code==='two_factor_required'&&!error.message.includes('two_factor_required'));
     assert.equal(count, 1);
     assert.equal(paused, true);
     assert.equal(proof.code, undefined);
@@ -33,4 +33,11 @@ test('public hint never attaches Jellyfin credentials', async () => {
         return { ok: true, json: async () => ({ passwordLoginDisabled: true }) };
     };
     assert.equal(await passwordLoginHint(api), true);
+});
+test('security failures never echo backend codes, prose or network exception details',async()=>{
+    const id='11111111-1111-4111-8111-111111111111';
+    globalThis.fetch=async()=>({ok:false,status:403,json:async()=>({error:{code:'private-code',message:'private-password',errorId:id}})});
+    await assert.rejects(securityRequest(api,'security/users'),error=>{assert.match(error.message,/do not have permission/);assert.match(error.message,new RegExp(id));assert.doesNotMatch(error.message,/private-/);return true;});
+    globalThis.fetch=async()=>{throw new Error('private-link');};
+    await assert.rejects(securityRequest(api,'security/users'),error=>{assert.match(error.message,/could not confirm/);assert.doesNotMatch(error.message,/private-/);return true;});
 });

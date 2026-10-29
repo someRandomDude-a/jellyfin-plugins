@@ -139,6 +139,22 @@ public sealed class ResetOperationsTests
     }
 
     [Fact]
+    public async Task FailedSessionAuthorizationDoesNotConsumeTheResetOrRunAnyNativeEffect()
+    {
+        using var folder = new TempFolder(); var store = new PluginStore(folder.Path);
+        await IssueAsync(store, "factor-gated", Guid.NewGuid()); var effects = 0;
+        Task Effect() { effects++; return Task.CompletedTask; }
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new ResetOperations(store).CompleteAsync("factor-gated", Effect, Effect,
+            authorize: _ => Task.FromException(new UnauthorizedAccessException())));
+        Assert.Equal(0, effects); Assert.Null((await store.GetResetTokenAsync("factor-gated"))!.UsedAt);
+        var authorizations = 0;
+        await new ResetOperations(store).CompleteAsync("factor-gated", Effect, Effect, authorize: _ => { authorizations++; return Task.CompletedTask; });
+        Assert.Equal(2, effects); Assert.Equal(1, authorizations);
+        await Assert.ThrowsAsync<UserManagerException>(() => new ResetOperations(store).CompleteAsync("factor-gated", Effect, Effect, authorize: _ => { authorizations++; return Task.CompletedTask; }));
+        Assert.Equal(1, authorizations); Assert.Equal(2, effects);
+    }
+
+    [Fact]
     public async Task KnownPasswordSuccess_RevocationFailureRetriesOnlyRevocation()
     {
         using var folder = new TempFolder();

@@ -12,6 +12,32 @@ public sealed class LibraryNoticeTests : IDisposable
     private string Database => Path.Combine(directory, "bridge.db");
     private static readonly DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1792800000);
     private static LibraryNotice Notice() => new(Guid.NewGuid(), Guid.NewGuid(), [Guid.NewGuid()], "episode", "New episode available", "Disposable series · Season 1, episode 2", Now, []);
+    [Fact]public void SharedBridgeIntakeRejectsAllPrivateAudienceArraysBeforeStorage(){
+        var receiver=new BridgeLibraryNotices(null!);var user=Guid.NewGuid();
+        foreach(var notice in new[]{Notice() with{Audience=[user]},Notice() with{FavouriteAudience=[user]},Notice() with{RequesterAudience=[user]},Notice() with{EnrichmentVersion=2,WatchlistedAudience=[user]}})
+            Assert.Throws<ArgumentException>(()=>receiver.Accept(notice));
+    }
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, true, true, true)]
+    public void NativeWatchlistAndFavouriteFlagsRemainIndependent(bool likes, bool favourite, bool expectedFavourite, bool expectedWatchlisted) {
+        var data = new MediaBrowser.Controller.Entities.UserItemData { Key = "native-interest-fixture", Likes = likes, IsFavorite = favourite };
+        var interests = LibraryNoticeFactory.Interests(data, null);
+        Assert.Equal(expectedFavourite, interests.Favourite); Assert.Equal(expectedWatchlisted, interests.Watchlisted);
+        Assert.Equal(interests, LibraryNoticeFactory.Interests(null, data));
+        Assert.Equal((false, false), LibraryNoticeFactory.Interests(null, null));
+    }
+    [Fact] public void NewWatchlistEnrichmentSurvivesRestartWithoutReinterpretingOlderNotices() {
+        var store = new LibraryNoticeStore(Database); var user = Guid.NewGuid();
+        var notice = Notice() with { EnrichmentVersion = 2, Audience = [user], WatchlistedAudience = [user] };
+        Assert.True(store.Capture(notice.ItemId, notice.Kind, Now, notice));
+        var frozen = Assert.Single(new LibraryNoticeStore(Database).Due(Now)).Notice!;
+        Assert.Equal(2, frozen.EnrichmentVersion); Assert.Equal(user, Assert.Single(frozen.WatchlistedAudience!));
+        Assert.Throws<ArgumentException>(() => LibraryNoticeFactory.Validate(notice with { EnrichmentVersion = 1 }));
+        Assert.Throws<ArgumentException>(() => LibraryNoticeFactory.Validate(notice with { WatchlistedAudience = [Guid.Empty] }));
+        LibraryNoticeFactory.Validate(Notice() with { EnrichmentVersion = 1, FavouriteAudience = [user] });
+    }
     [Fact]
     public void IntakeIsDelayedDeduplicatedAndDurableAcrossRestart()
     {

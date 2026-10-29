@@ -5,6 +5,7 @@ namespace Jellyfin.Plugin.AutomaticDeletionRequests;
 public sealed record Condition(string Field, string Operator, JsonElement Value)
 {
     public string? ReferenceField{get;init;}
+    public string? Conversion { get; init; }
 }
 public sealed record Rule(string Id, string Name, bool Enabled, string Match, Condition[] Conditions)
 {
@@ -44,8 +45,19 @@ public static class RuleEngine
             foreach (var c in r.Conditions) {
                 if (c is null || !Fields.Contains(c.Field) || c.Value.ValueKind == JsonValueKind.Undefined || c.Value.GetRawText().Length > 500) throw new InvalidOperationException("Unsupported field");
                 var field=MetadataCatalog.Find(c.Field)!;
+                if(c.Conversion is {} conversion){
+                    if(!field.Conversions.Contains(conversion)||c.Operator is not ("equals" or "not-equals" or "greater" or "less")||
+                        c.Value.ValueKind!=JsonValueKind.Number||!c.Value.TryGetDouble(out var threshold)||!double.IsFinite(threshold))throw new InvalidOperationException("Invalid metadata conversion");
+                    var difference=conversion.StartsWith("difference-",StringComparison.Ordinal);
+                    if(difference ? c.ReferenceField is null||MetadataCatalog.Find(c.ReferenceField)?.Type!="date" : c.ReferenceField is not null)throw new InvalidOperationException("Invalid conversion operand");
+                    continue;
+                }
                 if(!field.Operators.Contains(c.Operator))throw new InvalidOperationException("Invalid comparison");
                 if(c.ReferenceField is {} reference){
+                    if(field.Type=="list"&&c.Operator is "contains" or "not-contains"){
+                        if(MetadataCatalog.Find(reference)?.Type!=field.ElementType)throw new InvalidOperationException("List membership requires a compatible element type");
+                        continue;
+                    }
                     var target=MetadataCatalog.Find(reference);if(target is null||target.Type!=field.Type||target.Unit!=field.Unit||c.Operator is not ("equals" or "not-equals" or "greater" or "less" or "before" or "after")||field.Type=="list")throw new InvalidOperationException("Incompatible metadata comparison");
                     continue;
                 }
@@ -94,7 +106,36 @@ public static class RuleEngine
                 return ValidEvidence(c,value)?c.Operator=="exists":null;
             }
             if(!ValidEvidence(c,value))return null;
-            if(c.ReferenceField is {} reference){if(!evidence.TryGetValue(reference,out var other)||!ValidEvidence(c with{Field=reference},other))return null;c=c with{Value=other};}
+            if(c.Conversion is {} conversion){
+                if(!MetadataCatalog.Find(c.Field)!.Conversions.Contains(conversion))return null;
+                double number;
+                if(conversion=="count")number=value.GetArrayLength();
+                else if(conversion=="boolean-number")number=value.GetBoolean()?1:0;
+                else if(conversion=="text-number"){
+                    if(!double.TryParse(value.GetString(),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out number))return null;
+                }
+                else if(conversion=="unix-seconds")number=(value.GetDateTimeOffset()-DateTimeOffset.UnixEpoch).TotalSeconds;
+                else{
+                    var end=now;
+                    if(conversion.StartsWith("difference-",StringComparison.Ordinal)){
+                        if(c.ReferenceField is not {} field||!evidence.TryGetValue(field,out var date)||MetadataCatalog.Find(field)?.Type!="date"||!ValidEvidence(c with{Field=field},date))return null;
+                        end=value.GetDateTimeOffset();value=date;
+                    }
+                    var delta=end-value.GetDateTimeOffset();
+                    number=conversion.EndsWith("hours",StringComparison.Ordinal)?delta.TotalHours:delta.TotalDays;
+                }
+                if(!double.IsFinite(number))return null;
+                return Compare(c with{Field="year",Conversion=null,ReferenceField=null},JsonSerializer.SerializeToElement(number),now);
+            }
+            if(c.ReferenceField is {} reference){if(!evidence.TryGetValue(reference,out var other)||!ValidEvidence(c with{Field=reference},other))return null;
+                var field=MetadataCatalog.Find(c.Field)!;
+                if(field.Type=="list"&&field.ElementType=="user"&&c.Operator is "contains" or "not-contains"){
+                    if(!Guid.TryParse(other.GetString(),out var user)||user==Guid.Empty)return null;
+                    var ids=value.EnumerateArray().Select(v=>Guid.TryParse(v.GetString(),out var id)&&id!=Guid.Empty?(Guid?)id:null).ToArray();
+                    if(ids.Any(id=>id is null))return null;
+                    return c.Operator=="contains"?ids.Contains(user):!ids.Contains(user);
+                }
+                c=c with{Value=other};}
             return Compare(c,value,now);
         }
         catch (Exception e) when (e is InvalidOperationException or FormatException or OverflowException) { return null; }

@@ -61,7 +61,7 @@ public sealed class SeerrDelegationTests
     [Fact] public async Task SeriesOwnershipRequiresEveryManagedSeasonAndNoOtherApprovedOwner()
     {
         var owner = Guid.NewGuid(); var other = Guid.NewGuid();
-        Task<JsonElement> User(int id, CancellationToken _) => Task.FromResult(Json($$"""{"jellyfinUserId":"{{(id == 1 ? owner : other)}}"}"""));
+        Task<JsonElement> User(int id, CancellationToken _) => Task.FromResult(Json($$"""{"id":{{id}},"jellyfinUserId":"{{(id == 1 ? owner : other)}}"}"""));
         var info = Json("""{"seasons":[{"seasonNumber":1,"status":5},{"seasonNumber":2,"status":4}],"requests":[{"status":2,"is4k":false,"requestedBy":{"id":1},"seasons":[{"seasonNumber":1},{"seasonNumber":2}]}]}""");
         Assert.True(await SeerrOwnership.OwnsAsync(info, owner, false, true, User, default));
         var partial = Json(info.GetRawText().Replace(",{" + "\"seasonNumber\":2}", ""));
@@ -70,6 +70,16 @@ public sealed class SeerrDelegationTests
         Assert.False(await SeerrOwnership.OwnsAsync(mixed, owner, false, true, User, default));
         Assert.False(await SeerrOwnership.OwnsAsync(info, owner, true, true, User, default));
         Assert.False(await SeerrOwnership.OwnsAsync(Json("{}"), owner, false, true, User, default));
+    }
+
+    [Theory]
+    [InlineData(0)] [InlineData(2)]
+    public async Task OwnRequestPermissionRejectsMissingOrMismatchedSeerrUserIdentity(int returnedId)
+    {
+        var owner = Guid.NewGuid();
+        var info = Json("""{"requests":[{"id":10,"status":2,"is4k":false,"requestedBy":{"id":1}}]}""");
+        Assert.False(await SeerrOwnership.OwnsAsync(info, owner, false, false,
+            (_, _) => Task.FromResult(Json($$"""{"id":{{returnedId}},"jellyfinUserId":"{{owner}}"}""")), default));
     }
 
     [Fact] public async Task MissingOrExcessiveOwnershipEvidenceFailsClosed()

@@ -105,6 +105,26 @@ public sealed class HubAdapterTests
         Assert.Equal(403, Assert.Throws<HubAdapterException>(() => service.Execute(_admin, "settings", request)).Status);
     }
 
+    [Theory] [InlineData(false, "false")] [InlineData(true, "true")] [InlineData(true, "")]
+    public void HttpAdapterRequiresAnAuthenticatedNonApiKeySession(bool authenticated, string apiKey)
+    {
+        var controller = new HubAdminController(Service(), null!, _store) { ControllerContext = new() { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext {
+            User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+                new("Jellyfin-UserId", _admin.ToString()), new("Jellyfin-IsApiKey", apiKey)], authenticated ? "fixture" : null))
+        } } };
+        Assert.Equal(403, Assert.IsType<Microsoft.AspNetCore.Mvc.JsonResult>(controller.Capabilities()).StatusCode);
+    }
+    [Fact] public void DisabledAdministratorsRemainProtectedTargetsButCannotAuthorizeCommands()
+    {
+        var enabled = true;
+        var service = new HubPolicyService(() => _config, c => _config = c, () => [new(_admin, "Admin", true, enabled)], _store);
+        var request = Request(new { revision = HubWire.Revision(_config), commandId = Guid.NewGuid(), settings = new { maxViewers = 20 } });
+        service.Execute(_admin, "settings", request); enabled = false;
+        Assert.False(service.IsAdministrator(_admin));
+        Assert.Equal(403, Assert.Throws<HubAdapterException>(() => service.Execute(_admin, "settings", request)).Status);
+        var view = HubWire.Node(service.Policy(0, 50)); Assert.True(Assert.Single(view["users"]!.AsArray())!["administrator"]!.GetValue<bool>());
+    }
+
     [Fact] public void LargeResetHasBoundedDetailAndNoPartyParticipantsOrGuestCredentials()
     {
         var members = Enumerable.Range(0, 600).Select(n => new HubUser(Guid.NewGuid(), "Member " + n, false)).Append(new(_admin, "Admin", true)).ToArray();

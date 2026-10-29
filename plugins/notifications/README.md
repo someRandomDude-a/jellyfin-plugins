@@ -1,8 +1,31 @@
 # Notifications
 
-Independent Jellyfin 12.3 notification inbox, user preferences, server delivery settings and shared producer API. No Account Hub installation is required. Discord delivery uses Discord Bridge; verified DM identity links remain owned by Account Hub.
+## Dependencies and installation
+
+Install Notifications from the [combined platform catalog](../../README.md#installation-and-upgrades),
+restart Jellyfin and open **Dashboard → Plugins → Notifications** for server settings.
+Signed-in users configure their own categories through the bell's **Settings**.
+No Account Hub installation is required for the standalone inbox. Discord delivery
+requires Bridge; verified personal-DM links also require Hub. Use a package matching
+the server ABI; latest-only test/release gates do not certify arbitrary package skew.
+
+## Overview
+
+Independent notification inbox, user preferences, server delivery settings and shared producer API.
 
 The plugin owns one Web bell, `/Notifications/api/v1/notifications`, its own native administrator page, storage and delivery worker. Other suite plugins use the framework-only producer client; notification traffic prefers `Notifications.Api.1` even if Hub is unavailable. Hub's old API remains a compatibility adapter to the shared service when both plugins are installed, not another notification worker or bell.
+
+Notifications is also the sole native library-event observer. Its standalone
+**Library events** settings select future movie/episode additions and libraries;
+Hub is not required. Each registered type offers simulated examples, administrator
+defaults and a safe **Notification Studio** for text/image/font layouts. Previews
+never send; personal choices and mandatory critical alerts retain precedence.
+The responsive designer separates canvas, layers and a compact native inspector.
+Drag to move, use the corner to resize, and use **Ctrl+Z / Ctrl+Y** for undo/redo.
+Selection alone never changes the saved design; geometry and save revisions remain
+validated. Text fields keep native editing behavior and Tab order.
+See [library setup](../../docs/library-notifications.md) and
+[studio/defaults](../../docs/notification-channels.md#administrator-defaults-and-notification-studio).
 
 ## Upgrade and migration
 
@@ -14,17 +37,25 @@ The migration uses a locked staging database, a source snapshot, integrity/schem
 
 Interrupted staging, cutover and source-retirement phases resume to the same stable completed state. Missing keys/databases, unknown schemas or changed source data fail closed; they are never repaired by resetting history. Restore the original consistent backup and restart if migration cannot be validated. No Jellyfin native schema/index is changed.
 
+Library intake migration separately reads retained Hub/Bridge library tables
+without deleting them. It preserves event IDs, terminal/uncertain send states and
+legacy personal library preferences; oversized intake fails closed rather than
+dropping history or reopening ambiguous sends. Update consumers together so old
+Hub/Bridge observers are retired before the new Notifications observer starts.
+
 ## Verification
 
 `pwsh -File scripts/test-plugin.ps1 -Plugin notifications` runs the notification backend, frontend and migration/common suites. `pwsh -File scripts/test-plugin-package.ps1 -Plugin notifications` checks all three platform packages. Notifications has its own release task and shares the combined architecture feeds with the other plugins.
 
 ## Optional Web Push and live updates
 
-Administrators can enable **Notifications → Web Push** and set a `mailto:` or HTTPS VAPID contact. Each user then explicitly enables browser notifications in the bell's settings on HTTPS (or localhost). Pushes contain only fixed generic text, never media details, user identities or action capabilities. Device subscriptions and VAPID private keys are protected; disabling removes subscriptions/jobs. The plugin's narrow service-worker scope does not replace Jellyfin's native worker. See [setup, supported services and limitations](../../docs/web-push.md).
+Administrators turn on **Allow browser notifications** and can configure **Enable on devices by default**; both save automatically. Server address and keys are handled automatically using Jellyfin's public/smart URL or the client's current host, with no advanced setup fields. The bell's **Notifications on this device** switch lets users opt in or out on HTTPS (or localhost). The global default respects saved opt-outs and browser permission; blocked permissions show unblocking instructions. Pushes contain only fixed generic text, never media details, user identities or action capabilities. Device subscriptions and VAPID private keys are protected; disabling removes subscriptions/jobs. The plugin's narrow service-worker scope does not replace Jellyfin's native worker. See [setup, supported services and limitations](../../docs/web-push.md).
 
 Open pages also receive content-free socket invalidations using short-lived single-use grants, with native reauthentication and polling fallback. Native session tokens never appear in socket URLs. Actual browser-vendor-to-device Push delivery remains subject to OS/browser support and has not been physically certified by the local fixtures.
 
-Notification layouts can optionally archive after the first server-recorded view (`ExpireAfterViewHours`, 1–8760). Repeated views do not renew the clock; History retains archived rows without executable commands. Library additions support master/all/requested/favourite categories and native-authorized cached thumbnails; requester/favourite audiences are never forwarded to shared Discord channels.
+Notification layouts can optionally archive after the first server-recorded view (`ExpireAfterViewHours`, 1–8760). Repeated views do not renew the clock; History retains archived rows without executable commands. Library additions support All additions, Requested, Watchlisted and Favorited categories and native-authorized cached thumbnails; private interest/requester audiences are never forwarded to shared Discord channels.
+
+Every signed-in user has personal Android-style category switches and inherited **Important, Alerting, Silent and Low** choices. Muted notices are retained in **Blocked** (default 500/user within the history period, configurable 0–1000), and can become visible after preferences change without replaying external delivery or popups. Current native permissions still apply. Mobile swipes and desktop drags reveal ordinary read/hide actions; a deliberate right gesture on an eligible Deletion Queue consent request submits Allow and dismisses only after success. Native approvals, revision checks and delays remain authoritative. See [categories, gestures and blocked history](../../docs/notification-channels.md).
 
 ## Compact inbox and producer presentation
 
@@ -72,4 +103,11 @@ For domain-specific permissions, register `RegisterNotificationAccess(source, fa
 
 Administrators can review registered triggers/recipients/actions and override density, summary length and detail expansion under **Notifications → Registered notification types**. Overrides are persisted in Notifications' own database with revision checks, survive producer re-registration/restarts, and do not alter recipient policy or grant permissions. Removed type overrides are retired. Shared delivery settings separately select administrator Discord/webhook routing.
 
-The menu groups recent administrator/warning/high/critical notices under **Important**, other recent notices under **Other**, and notices at least seven days old under **Older**. Exact localized timestamps appear on hover/accessibility labels alongside relative time. Primary notification links open the source; registered actions remain inline, with Hide/read/source-mute options in the per-row menu. Muting controls are not offered as a way to suppress mandatory administrator or critical alerts.
+The menu groups effective High-importance notices under **Important**, other recent notices under **Other**, and notices at least seven days old under **Older**. Exact localized timestamps appear on hover/accessibility labels alongside relative time. Primary notification links open the source; registered actions remain inline, with Hide/read/source-mute options in the per-row menu. Noncritical administrator notices can be muted; critical alerts remain mandatory and High.
+
+## References
+
+- [Installation and dependency matrix](../../docs/dependencies.md)
+- [Personal controls and consent gestures](../../docs/notification-channels.md)
+- [Library capture and interests](../../docs/library-notifications.md) · [Browser Push](../../docs/web-push.md)
+- [Skin/browser acceptance](../../docs/theme-acceptance.md) · [Current evidence](../../docs/review-status.md)

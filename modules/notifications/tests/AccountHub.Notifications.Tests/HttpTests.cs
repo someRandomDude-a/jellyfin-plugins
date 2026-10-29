@@ -83,9 +83,10 @@ public sealed class HttpTests
             alice.PutAsync(Base + "/notifications/preferences/rule", Body(new("account-hub", "library.episode.added", "in-app", false))),
             alice.PutAsync(Base + "/notifications/preferences/rule", Body(new("deletion-queue", "*", "in-app", false))));
         foreach (var response in responses) { Assert.Equal(HttpStatusCode.OK, response.StatusCode); response.Dispose(); }
-        Assert.Equal(3, f.Store.Preferences(f.Host.Alice).Length); Assert.Contains(global, f.Store.Preferences(f.Host.Alice)); Assert.Empty(f.Store.Preferences(f.Host.Bob));
+        Assert.Equal(4, f.Store.Preferences(f.Host.Alice).Length); Assert.Contains(global, f.Store.Preferences(f.Host.Alice)); Assert.Empty(f.Store.Preferences(f.Host.Bob));
+        Assert.False(Assert.Single(f.Store.Preferences(f.Host.Alice),p=>p.Source=="notifications"&&p.Type=="library.episode.added").Enabled);
         await bob.PutAsync(Base + "/notifications/preferences/rule", Body(new("example", "*", "in-app", false)));
-        Assert.Equal(3, f.Store.Preferences(f.Host.Alice).Length); Assert.Single(f.Store.Preferences(f.Host.Bob));
+        Assert.Equal(4, f.Store.Preferences(f.Host.Alice).Length); Assert.Single(f.Store.Preferences(f.Host.Bob));
     }
     [Fact]
     public async Task OnlyAdministratorsCanReviewTypesAndChangeRevisionedLayouts()
@@ -105,6 +106,21 @@ public sealed class HttpTests
         var updated = await alice.GetAsync(Base + "/notifications"); Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         Assert.Contains("\"summaryLength\":180", await updated.Content.ReadAsStringAsync());
         Assert.Equal(140, f.Store.Inbox(f.Host.Alice, 0, 25, null, false).Single().Event.Layout!.SummaryLength);
+    }
+    [Fact] public async Task NotificationDefaultsRequireAdministratorProofAndRevisionAndPreviewsSendNothing()
+    {
+        var f=new Fixture();f.Service.Register(new("deletion-queue","1",[new("proposal.updated","Proposal","A change","explicit-users",new(),[]){Example=new("Simulated","Never sent")} ]));
+        await using var app=await App(f);using var anonymous=Client(app);using var alice=Client(app,f.Host.Alice);using var bob=Client(app,f.Host.Bob);
+        var update=new NotificationDefaultsUpdate("deletion-queue","proposal.updated",1,new(Importance:"low"));
+        Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,(await alice.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update)).StatusCode);
+        f.Host.DenyStepUp=true;Assert.Equal(HttpStatusCode.Forbidden,(await bob.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update)).StatusCode);f.Host.DenyStepUp=false;
+        Assert.Equal(HttpStatusCode.OK,(await bob.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,(await bob.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,(await bob.PutAsJsonAsync(Base+"/settings/notifications/types/defaults",update with{Revision=2,Defaults=new(Importance:"administrator")})).StatusCode);
+        Assert.Contains("Simulated",await bob.GetStringAsync(Base+"/settings/notifications/types"));
+        Assert.Contains("\"importance\":\"low\"",await alice.GetStringAsync(Base+"/notifications/categories"));
+        Assert.Empty(f.Store.Inbox(f.Host.Alice,0,25,null,false));Assert.Null(f.Store.Claim());Assert.Empty(f.Bot.Sent);
     }
     [Fact]
     public async Task Administrator_details_and_actions_are_not_visible_to_ordinary_or_demoted_users()
@@ -140,6 +156,43 @@ public sealed class HttpTests
         Assert.Contains("\"count\":0", await client.GetStringAsync(Base + "/notifications/unread-count"));
     }
     private const string Base = "/AccountHub/api/v1";
+    [Fact]public async Task BlockedTabIsRecipientScopedReadOnlyAndPersonalImportanceDoesNotRequireAdministrator(){
+        var f=new Fixture();f.Store.Preferences(f.Host.Alice,[new("*","*","in-app",false)]);await f.Publish(f.Event());await using var app=await App(f);using var alice=Client(app,f.Host.Alice);using var bob=Client(app,f.Host.Bob);
+        var blocked=await alice.GetStringAsync(Base+"/notifications?blocked=true");Assert.Contains("Proposal updated",blocked);using var parsed=JsonDocument.Parse(blocked);var id=parsed.RootElement.GetProperty("data").GetProperty("notifications")[0].GetProperty("id").GetGuid();
+        Assert.DoesNotContain("Proposal updated",await bob.GetStringAsync(Base+"/notifications?blocked=true"));Assert.Equal(HttpStatusCode.NotFound,(await alice.PostAsJsonAsync(Base+"/notifications/"+id+"/actions",new{id="allow",commandId=Guid.NewGuid(),revision=0,snapshot=""})).StatusCode);
+        (await alice.PutAsJsonAsync(Base+"/notifications/preferences/rule",new Preference("deletion-queue","*","in-app",true){Importance="high"})).EnsureSuccessStatusCode();
+        (await bob.PutAsJsonAsync(Base+"/notifications/preferences/rule",new Preference("deletion-queue","*","in-app",true){Importance="silent"})).EnsureSuccessStatusCode();
+        (await alice.PutAsJsonAsync(Base+"/notifications/preferences/rule",new Preference("*","*","in-app",true))).EnsureSuccessStatusCode();Assert.Contains("\"retroactive\":true",await alice.GetStringAsync(Base+"/notifications"));
+    }
+    [Fact]
+    public async Task PersonalCategoriesExcludeAdministratorDefinitionsAndServerLayouts()
+    {
+        var f = new Fixture();
+        f.Service.Register(new("deletion-queue", "1", [
+            new("proposal.updated", "Your removal requests", "A request changes", "explicit-users", new() { MessageTemplate = "Private server template" }, []),
+            new("approval.required", "Administrator approvals", "Private administrative workflow", "administrators", new(), [])
+        ]));
+        await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var bob = Client(app, f.Host.Bob); using var anonymous = Client(app);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(Base + "/notifications/categories")).StatusCode);
+        var personal = await alice.GetStringAsync(Base + "/notifications/categories");
+        Assert.Contains("Your removal requests", personal); Assert.DoesNotContain("Administrator approvals", personal);
+        Assert.DoesNotContain("Private server template", personal); Assert.DoesNotContain("messageTemplate", personal);
+        Assert.Contains("Administrator approvals", await bob.GetStringAsync(Base + "/notifications/categories"));
+        f.Host.Admins.Remove(f.Host.Bob);
+        Assert.DoesNotContain("Administrator approvals", await bob.GetStringAsync(Base + "/notifications/categories"));
+    }
+    [Fact]
+    public async Task AnyUserCanSaveOwnImportanceInSingleOrBatchRulesWithoutGainingAdministration()
+    {
+        var f = new Fixture(); await using var app = await App(f); using var alice = Client(app, f.Host.Alice); using var anonymous = Client(app);
+        var rule = new Preference("account-hub", "category.library.watchlisted", "in-app", true) { Importance = "high" };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PutAsJsonAsync(Base + "/notifications/preferences/rule", rule)).StatusCode);
+        (await alice.PutAsJsonAsync(Base + "/notifications/preferences", new[] { rule })).EnsureSuccessStatusCode();
+        Assert.Equal("high", Assert.Single(f.Store.Preferences(f.Host.Alice),p=>p.Source=="notifications").Importance); Assert.Empty(f.Store.Preferences(f.Host.Bob));
+        Assert.Equal(HttpStatusCode.Forbidden, (await alice.GetAsync(Base + "/settings/notifications/types")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await alice.PutAsJsonAsync(Base + "/notifications/preferences/rule", rule with { Importance = "urgent-admin" })).StatusCode);
+        Assert.Equal("high", Assert.Single(f.Store.Preferences(f.Host.Alice),p=>p.Source=="notifications").Importance);
+    }
     [Fact]public async Task WebPushAdministrationRequiresNativeAdministratorAndWorkerContainsNoCredentials(){
         var f=new Fixture();await using var app=await App(f);using var anonymous=Client(app);using var alice=Client(app,f.Host.Alice);using var bob=Client(app,f.Host.Bob);
         Assert.Equal(HttpStatusCode.Unauthorized,(await anonymous.GetAsync(Base+"/notifications/push")).StatusCode);
@@ -147,7 +200,10 @@ public sealed class HttpTests
         Assert.Equal(HttpStatusCode.Forbidden,(await alice.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true})).StatusCode);
         f.Host.Admins.Add(f.Host.Bob);f.Host.DenyStepUp=true;
         Assert.Equal(HttpStatusCode.Forbidden,(await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true})).StatusCode);
-        f.Host.DenyStepUp=false;(await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true,subject="mailto:test@example.test"})).EnsureSuccessStatusCode();
+        f.Host.DenyStepUp=false;(await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=0,enabled=true})).EnsureSuccessStatusCode();
+        Assert.Equal("https://localhost/",f.Store.PushSettings().Subject);
+        (await bob.PutAsJsonAsync(Base+"/settings/notifications/push",new{revision=1,enabled=true,defaultOn=true})).EnsureSuccessStatusCode();
+        Assert.Contains("\"defaultOn\":true",await alice.GetStringAsync(Base+"/notifications/push"));
         var settings=await bob.GetStringAsync(Base+"/settings/notifications/push");Assert.DoesNotContain("privateKey",settings);Assert.Contains("\"enabled\":true",settings);
     }
     [Theory]

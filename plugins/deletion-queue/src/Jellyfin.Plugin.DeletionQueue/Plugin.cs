@@ -43,7 +43,9 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"deletion-queue");
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("deletion-queue", "1", [
+            new("proposal.approval_required","Removal approvals","A request enters or leaves administrator review","administrators",new(),[new("Review approvals","normal")]),
             new("proposal.*", "Removal requests", "A removal request changes or needs consent", "explicit-users", new(), [new("Review request")]) { Commands = ["allow", "keep", "undo"] },
             new("proposal.uncertain", "Removal outcome updates", "Compatibility updates about an uncertain removal", "event", new(), [new("Review request")]) { Commands = ["allow", "keep", "undo"] },
             new("removal.playback_reset", "Playback resets removal", "The requester plays media pending removal", "explicit-users", new() { ToastSeconds = 6 }, [new("View request")]) { Commands = ["undo"], KeepNavigationActions = true },
@@ -86,6 +88,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, WebInjection>();
         services.AddHostedService<ActivityWorker>();
         services.AddHostedService<ExecutionWorker>();
+        services.AddHostedService<QueueReevaluationWorker>();
         services.AddHostedService<HubDispatcher>();
     }
 }

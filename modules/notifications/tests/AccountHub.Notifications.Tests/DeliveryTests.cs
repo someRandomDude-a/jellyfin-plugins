@@ -19,6 +19,13 @@ public sealed class DeliveryTests
     private static DeliveryWorker Worker(Fixture f) => new(f.Store, f.Service, f.Host, f.Bot, new(f.Clock), f.Clock, NullLogger<DeliveryWorker>.Instance);
     private static Route Dm => new("dm", "*", "*", "discord", "linked-user", AdminOnly: false, DirectMessage: true);
     private static Route Channel => new("channel", "*", "*", "discord", "12345");
+    [Fact] public async Task SharedChannelsUseUsefulStaticProducerDescriptionsNotPrivateEventContent()
+    {
+        var f=new Fixture();f.Service.Register(new("deletion-queue","1",[new("proposal.updated","Removal proposal updated","A removal proposal needs review","administrators",new(),[])]));
+        f.Store.SaveSettings(new(0,[Channel]));await f.Publish(f.Event(true) with{Title="Private media title",Body="Private user activity",Details="Private details"});
+        Assert.True((await Worker(f).DeliverAsync(f.Store.Claim()!,default)).Delivered);
+        var sent=Assert.Single(f.Bot.Sent);Assert.Contains("Removal proposal updated",sent);Assert.Contains("needs review",sent);Assert.DoesNotContain("Private",sent);
+    }
     [Fact]
     public async Task Private_event_requires_DM_optin_and_never_goes_to_shared_route()
     {

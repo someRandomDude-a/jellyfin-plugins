@@ -7,6 +7,7 @@
   <Project Path="shared/DiscordBridge.Api/DiscordBridge.Api.csproj" />
   <Project Path="shared/Jellyfin.Security.Api/Jellyfin.Security.Api.csproj" />
   <Project Path="shared/Jellyfin.LibraryNotifications/Jellyfin.LibraryNotifications.csproj" />
+  <Project Path="shared/Jellyfin.Diagnostics/Jellyfin.Diagnostics.csproj" />
   <Project Path="plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Jellyfin.Plugin.DiscordBridge.csproj" />
   <Project Path="plugins/discord-bridge/tests/DiscordBridge.Tests/DiscordBridge.Tests.csproj" />
   <Project Path="plugins/account-hub/src/AccountHub/AccountHub.csproj" />

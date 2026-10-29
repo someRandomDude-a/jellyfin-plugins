@@ -11,10 +11,22 @@ on:
       package_tag:
         type: string
         default: v0.2.0
+      targets_artifact:
+        type: string
+        default: ''
 permissions:
   contents: read
+env:
+  GH_TOKEN: ${{ github.token }}
 jobs:
+  targets:
+    uses: ./.github/workflows/latest-targets.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      targets_artifact: ${{ inputs.targets_artifact }}
+      key: ${{ inputs.plugin }}
   unit:
+    needs: targets
     strategy:
       fail-fast: false
       matrix:
@@ -22,45 +34,49 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
       - name: Install shared frontend test harness
         run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
-      - if: inputs.plugin == 'discord-bridge'
-        run: npm ci --ignore-scripts
-        working-directory: plugins/discord-bridge/activity
       - name: Selected plugin and common/dependency tests only
         shell: pwsh
         env:
           PLUGIN: ${{ inputs.plugin }}
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/test-plugin.ps1 -Plugin $env:PLUGIN
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: tests-${{ inputs.plugin }}-${{ matrix.os }}
           path: '**/TestResults/*.trx'
   installed:
+    needs: targets
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
       - if: inputs.plugin == 'private-syncplay'
         run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
@@ -76,11 +92,11 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
         run: |
           $keys = @{ 'account-hub'='hub'; 'discord-bridge'='discord'; 'private-syncplay'='syncplay'; 'deletion-queue'='deletion'; 'notifications'='notifications'; 'automatic-deletion-requests'='automatic' }
-          curl --fail --location --output "$env:RUNNER_TEMP/security-jf12.zip" https://github.com/ZL154/JellyfinSecurity/releases/download/v2.6.4/Jellyfin.Plugin.TwoFactorAuthv2.6.4.0-jf12.zip
-          if ($LASTEXITCODE) { throw 'Pinned Security download failed' }
-          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" --notifications-restart
+          $library = if ($env:PLUGIN -eq 'notifications') { @('--library') } else { @() }
+          $studio = if ($env:PLUGIN -eq 'notifications') { @('--notification-studio') } else { @() }
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" --notifications-restart @library @studio
           if ($LASTEXITCODE) { throw 'Standalone installed test failed' }
-          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" "--security=$env:RUNNER_TEMP/security-jf12.zip" --notifications-restart
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" --security=latest --notifications-restart @library
           if ($LASTEXITCODE) { throw 'Standalone Security compatibility failed' }
       - name: Full native SyncPlay, guest media and SDK consumer integration
         if: inputs.plugin == 'private-syncplay'

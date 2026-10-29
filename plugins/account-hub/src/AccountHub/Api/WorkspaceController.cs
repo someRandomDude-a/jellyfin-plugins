@@ -14,8 +14,9 @@ using Microsoft.EntityFrameworkCore;
 namespace AccountHub.Api;
 
 [ApiController, Authorize(Policy = Policies.RequiresElevation), Route("AccountHub/api/v1"), TypeFilter(typeof(HubBodyFilter)), RequestSizeLimit(65536)]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUserService users, PluginStore lifecycle,
-    PluginSettingsService settings, ExternalCommandGate commands, IntegrationSecretService secrets, DiscordBridgeClient discord, HubSettingsService hubSettings, Jellyfin.LibraryNotifications.LibraryNoticeStore libraryNotices, AccountHub.Groups.IGroupPolicyNative nativePolicies, NativeUserWrites writes) : ControllerBase
+    PluginSettingsService settings, ExternalCommandGate commands, IntegrationSecretService secrets, DiscordBridgeClient discord, HubSettingsService hubSettings, AccountHub.Groups.IGroupPolicyNative nativePolicies, NativeUserWrites writes) : ControllerBase
 {
     [HttpGet("workspace")]
     public Task<IActionResult> Workspace(CancellationToken ct) => Run(async () =>
@@ -35,12 +36,11 @@ public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUs
         await host.RequireAdministratorAsync(HttpContext, ct);
         if (skip < 0 || limit is < 1 or > 100 || search?.Length > 128) throw new HubException("invalid_request", "Invalid pagination");
         var all = users.GetUsers().Where(u => string.IsNullOrEmpty(search) || u.Username.Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
-        return new { total = all.Length, items = all.Skip(skip).Take(limit).Select(u => new { id = u.Id, username = u.Username, administrator = users.IsAdministrator(u.Id), disabled = users.IsDisabled(u.Id), policy = ManagedPolicy.Project(users.GetPolicy(u.Id)) }) };
+        var linked = (await lifecycle.GetLinksAsync(ct)).Select(link => Guid.TryParse(link.JellyfinUserId,out var id)?id:Guid.Empty).ToHashSet();
+        return new { total = all.Length, items = all.Skip(skip).Take(limit).Select(u => new { id = u.Id, username = u.Username, administrator = users.IsAdministrator(u.Id), disabled = users.IsDisabled(u.Id), discordLinked = linked.Contains(u.Id), policy = ManagedPolicy.Project(users.GetPolicy(u.Id)) }) };
     });
     [HttpGet("groups")]
     public Task<IActionResult> Groups(CancellationToken ct) => Run(async () => { await host.RequireAdministratorAsync(HttpContext, ct); return new { items = await lifecycle.GetPresetsAsync(ct) }; });
-    [HttpGet("library/settings")]
-    public Task<IActionResult> LibrarySettings(CancellationToken ct) => Run(async () => { await host.RequireAdministratorAsync(HttpContext, ct); return new { settings = libraryNotices.Settings(), health = libraryNotices.Health() }; });
     [HttpPost("policy/preview")]
     public Task<IActionResult> Preview(JsonElement body, CancellationToken ct) => Run(async () =>
     {
@@ -51,12 +51,17 @@ public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUs
     public Task<IActionResult> Snapshots(JsonElement body, CancellationToken ct) => Run(async () =>
     {
         await host.AuthorizeAsync(HttpContext, CommandRisk.Audit, ct);
-        var id = body.GetProperty("userId").GetGuid().ToString("D");
-        return await store.ReadAsync(async (db, token) => new { items = (await db.Audit.AsNoTracking().Where(a => a.EventJson.Contains("\"eventType\":\"user.policy.snapshot\"") && a.EventJson.Contains(id)).OrderByDescending(a => a.Sequence).Take(50).Select(a => a.EventJson).ToArrayAsync(token)).Select(json => JsonSerializer.Deserialize<Contracts.AuditEvent>(json, Contracts.Wire.Options)).Where(a => a?.SubjectId == id).ToArray() }, ct);
+        var id = body.GetProperty("userId").Deserialize<Guid>(SecurityJson.Options).ToString("D");
+        var subject = "\"subjectId\":" + JsonSerializer.Serialize(id);
+        return await store.ReadAsync(async (db, token) => new { items = (await db.Audit.AsNoTracking().Where(a => a.EventJson.Contains("\"eventType\":\"user.policy.snapshot\"") && a.EventJson.Contains(subject)).OrderByDescending(a => a.Sequence).Take(50).Select(a => new { a.Id, a.EventJson }).ToArrayAsync(token)).Select(row =>
+        {
+            var entry = JsonSerializer.Deserialize<Contracts.AuditEvent>(row.EventJson, Contracts.Wire.Options)!;
+            return new { snapshotId = row.Id, entry.EventId, entry.OccurredAt, entry.Metadata };
+        }).ToArray() }, ct);
     });
     private object PreviewPolicies(JsonElement body)
     {
-        var ids = body.GetProperty("userIds").Deserialize<Guid[]>()!;
+        var ids = body.GetProperty("userIds").Deserialize<Guid[]>(SecurityJson.Options)!;
         if (ids.Length is < 1 or > 100) throw new HubException("invalid_request", "Select 1–100 users");
         var patch = body.GetProperty("managedFields");
         var skipped = ids.Where(users.IsAdministrator).ToArray();
@@ -66,26 +71,27 @@ public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUs
     public Task<IActionResult> Command(string operation, JsonElement body, CancellationToken ct) => Run(async () =>
     {
         var caller = await host.RequireAdministratorAsync(HttpContext, ct);
-        if (operation is not ("user.disable" or "user.enable" or "user.sessions.revoke" or "policy.apply" or "policy.rollback" or "group.save" or "group.delete" or "settings.public-url" or "settings.seerr" or "settings.library")) throw new HubException("invalid_request", "Unknown workspace command");
+        if (operation is not ("user.disable" or "user.enable" or "user.sessions.revoke" or "user.discord.unlink" or "policy.apply" or "policy.rollback" or "group.save" or "group.delete" or "settings.public-url" or "settings.seerr")) throw new HubException("invalid_request", "Unknown workspace command");
         var payload = body.GetProperty("payload");
         var revision = body.GetProperty("revision").GetInt64(); var command = body.GetProperty("commandId").GetGuid();
         return await commands.ExecuteAsync(caller.UserId, operation, command, revision, payload,
-            async (_, token) => await host.AuthorizeAsync(HttpContext, operation is "settings.seerr" or "settings.library" ? CommandRisk.Operational : operation is "group.save" or "settings.public-url" ? CommandRisk.Configuration : CommandRisk.Destructive, token),
+            async (_, token) => await host.AuthorizeAsync(HttpContext, operation is "settings.seerr" ? CommandRisk.Operational : operation is "group.save" or "settings.public-url" ? CommandRisk.Configuration : CommandRisk.Destructive, token),
             async token =>
             {
                 object result;
                 if (operation.StartsWith("user.", StringComparison.Ordinal))
                 {
-                    var id = payload.GetProperty("userId").GetGuid();
+                    var id = payload.GetProperty("userId").Deserialize<Guid>(SecurityJson.Options);
                     if (users.GetUser(id) is null) throw new HubException("invalid_request", "Unknown user");
                     if (operation == "user.disable" && (id == caller.UserId || users.IsAdministrator(id) && (await host.AdministratorsAsync(token)).Count <= 1)) throw new SecurityFailure("administrator_protected", 403);
-                    if (operation == "user.sessions.revoke") await users.RevokeSessionsAsync(id);
+                    if (operation == "user.discord.unlink") await lifecycle.DeleteLinkAsync(id.ToString("N"),token);
+                    else if (operation == "user.sessions.revoke") await users.RevokeSessionsAsync(id);
                     else { await writes.SetDisabledAsync(id, caller.UserId, operation == "user.disable", token); if (operation == "user.disable") await users.RevokeSessionsAsync(id); }
                     result = new { status = "applied", userId = id };
                 }
                 else if (operation is "policy.apply" or "policy.rollback")
                 {
-                    var ids = payload.GetProperty("userIds").Deserialize<Guid[]>()!;
+                    var ids = payload.GetProperty("userIds").Deserialize<Guid[]>(SecurityJson.Options)!;
                     if (ids.Length is < 1 or > 100) throw new HubException("invalid_request", "Select 1–100 users");
                     var outcomes = new List<object>();
                     foreach (var id in ids.Distinct())
@@ -123,11 +129,6 @@ public sealed class WorkspaceController(HubStore store, HubHost host, JellyfinUs
                     var id = payload.GetProperty("id").GetString()!;
                     if ((await lifecycle.GetUserPresetsAsync(token)).Values.Contains(id)) throw new HubException("rejected", "Group is assigned to users");
                     await lifecycle.DeletePresetAsync(id, token); result = new { status = "deleted" };
-                }
-                else if (operation == "settings.library")
-                {
-                    var value = payload.Deserialize<Jellyfin.LibraryNotifications.LibraryNoticeSettings>(Jellyfin.LibraryNotifications.LibraryNoticeFactory.Json) ?? throw new ArgumentException();
-                    libraryNotices.SaveSettings(value); result = new { status = "saved" };
                 }
                 else if (operation == "settings.seerr")
                 {

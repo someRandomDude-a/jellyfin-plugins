@@ -95,6 +95,36 @@ public sealed class ContractTests
     }
 
     [Fact]
+    public async Task NotificationAuditHookUsesOnlyFrameworkJsonAcrossAnIsolatedSdk()
+    {
+        await using var fixture = new StoreFixture();
+        await fixture.InitializeAsync();
+        var registrations = new ServiceCollection();
+        new PluginServiceRegistrator().RegisterServices(registrations, null!);
+        registrations.AddSingleton(fixture.Store);
+        using var services = registrations.BuildServiceProvider();
+        var callback = services.GetKeyedService<Func<string, CancellationToken, Task<string>>>("Notifications.HubAudit.1");
+        Assert.NotNull(callback);
+        var context = new IsolatedContext("notification-audit-producer", ["AccountHub.Api"]);
+        try
+        {
+            var sdk = context.LoadFromAssemblyPath(typeof(AccountHub.Api.AuditEvent).Assembly.Location);
+            var type = sdk.GetType("AccountHub.Api.AuditEvent")!;
+            Assert.NotSame(typeof(AccountHub.Api.AuditEvent), type);
+            var json = JsonSerializer.Serialize(FoundationTests.Event(), Wire.Options);
+            var foreign = JsonSerializer.Deserialize(json, type, AccountHub.Api.Contract.Json)!;
+            json = JsonSerializer.Serialize(foreign, type, AccountHub.Api.Contract.Json);
+            using var first = JsonDocument.Parse(await callback(json, CancellationToken.None));
+            using var repeated = JsonDocument.Parse(await callback(json, CancellationToken.None));
+            Assert.Equal("accepted", first.RootElement.GetProperty("status").GetString());
+            Assert.Equal("duplicate", repeated.RootElement.GetProperty("status").GetString());
+            Assert.Equal(first.RootElement.GetProperty("auditId").GetGuid(), repeated.RootElement.GetProperty("auditId").GetGuid());
+            Assert.True((await fixture.Store.VerifyAuditAsync()).Valid);
+        }
+        finally { context.Unload(); }
+    }
+
+    [Fact]
     public void WireNamesSurviveHostPascalCaseSerializerAndMetadataOrderIsStable()
     {
         var json = JsonSerializer.SerializeToElement(ApiResponse.Success(new { status = "accepted" }),

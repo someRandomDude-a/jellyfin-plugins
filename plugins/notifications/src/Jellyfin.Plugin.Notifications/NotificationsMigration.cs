@@ -12,7 +12,7 @@ public static class NotificationsMigration
 {
     private static readonly string[] Tables=["nh_schema","nh_events","nh_event_content","nh_logical","nh_inbox","nh_deliveries","nh_preferences","nh_settings","nh_tokens","nh_receipts"];
     private static readonly string[] OptionalTables=["nh_push_settings","nh_push_subscriptions","nh_push_jobs"];
-    private static IEnumerable<string> ExistingTables(SqliteConnection db)=>Tables.Concat(OptionalTables.Where(t=>Has(db,t)));
+    private static IEnumerable<string> ExistingTables(SqliteConnection db)=>Tables.Concat(OptionalTables.Concat(new[]{"nh_suppressed"}).Where(t=>Has(db,t)));
     private const string Purpose="AccountHub.Notifications.v1";
     public static string Initialize(string configurations)=>Initialize(configurations,null);
     internal static string Initialize(string configurations,Action<string>? checkpoint)

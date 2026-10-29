@@ -29,6 +29,169 @@ async function seerr(t, request) {
 }
 const connection = { baseUrl: 'https://seerr.test', keyConfigured: true, warnings: [] };
 const people = { items: [{ id: 'a', username: 'Alice' }, { id: 'b', username: 'Bob' }], total: 2 };
+async function workspace(t, respond) {
+    const w = environment(t, '<main class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></main>'), calls = [];
+    w.fetch = async (url, options) => {
+        const path = url.split('/api/v1/')[1], body = options.body && JSON.parse(options.body); calls.push({ path, body });
+        return { ok: true, status: 200, json: async () => ({ ok: true, data: await respond(path, body) }) };
+    };
+    w.eval((await source(hub + 'workspace.js')).replace(/^import[^\r\n]*\r?\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function'));
+    w.mountWorkspace(w.document.querySelector('main'), { getUrl: path => 'https://example.test/' + path, accessToken: () => 'disposable-token' });
+    await turn(); await turn(); return { w, calls };
+}
+test('a late account preview cannot authorize an edited permission draft', async t => {
+    const pending = deferred();
+    const { w } = await workspace(t, path => path === 'dependencies' ? { items: [] } : path.startsWith('users?') ? { items: [{ id: 'a', username: 'Alice', policy: { MaxActiveSessions: 3 } }], total: 1 } : path === 'policy/preview' ? pending.promise : { revision: 0 });
+    await click(w, 'Edit access'); find(w, 'Preview').click(); await turn();
+    const input = w.document.querySelector('dialog input[type=number]'); input.value = '5'; input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    pending.resolve({ users: [{ userId: 'a', before: { MaxActiveSessions: 3 }, after: { MaxActiveSessions: 3 } }], skippedAdmins: [] }); await turn();
+    assert(find(w, 'Apply reviewed changes').disabled, 'An edited draft must need another preview');
+});
+test('account rollback uses the stored snapshot ID rather than its distinct event ID', async t => {
+    const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [] } : path.startsWith('users?') ? { items: [{ id: 'a', username: 'Alice', policy: { MaxActiveSessions: 3 } }], total: 1 } : path === 'policy/snapshots' ? { items: [{ snapshotId: 'stored-snapshot', eventId: 'source-event', metadata: { before: { MaxActiveSessions: 1 }, after: { MaxActiveSessions: 3 } } }] } : { revision: 0 });
+    await click(w, 'Edit access'); await click(w, 'Review rollback history'); await click(w, 'Rollback managed fields');
+    const confirm = [...w.document.querySelectorAll('dialog')].at(-1); confirm.querySelector('input').value = 'CONFIRM ACCOUNT HUB CHANGE'; confirm.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
+    assert.equal(calls.find(call => call.path === 'commands/policy.rollback').body.payload.snapshotId, 'stored-snapshot');
+});
+test('individual permissions retain empty libraries and nullable ratings and show readable diffs', async t => {
+    const policy = { EnabledFolders: null, MaxParentalRating: null, EnableMediaPlayback: true };
+    const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [] } : path.startsWith('users?') ? { items: [{ id: 'a', username: 'Alice', policy }], total: 1 } : path === 'policy/preview' ? { users: [{ userId: 'a', before: policy, after: { ...policy, EnabledFolders: [], EnableMediaPlayback: false } }] } : { revision: 0 });
+    await click(w, 'Edit access'); const checkbox = w.document.querySelector('dialog input[type=checkbox]'); checkbox.checked = false; checkbox.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await click(w, 'Preview');
+    assert.deepEqual(calls.find(call => call.path === 'policy/preview').body.managedFields, { EnabledFolders: [], MaxParentalRating: null, EnableMediaPlayback: false });
+    assert.match(w.document.querySelector('dialog').textContent, /Enable Media PlaybackAllowDeny/);
+    assert(!w.document.querySelector('dialog').textContent.includes('"before"'));
+});
+test('simplified settings preserve native enum values and the existing authorization boundary', async t => {
+    const state = { revision: 4, publicBaseUrl: 'https://example.test/suite', auditRetentionDays: 30, notificationRetentionDays: 30, stepUpLevelMirror: 'AllConfigChanges', securityAlertMode: 'both', passwordLoginPolicy: 'auto' };
+    const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [] } : path.startsWith('users?') ? { items: [], total: 0 } : path === 'user-creation' ? { owner: 'hub' } : state);
+    await click(w, 'Settings');
+    const advanced = [...w.document.querySelectorAll('details')].find(node => node.querySelector('summary')?.textContent === 'Advanced settings'); assert(advanced); assert.equal(advanced.open, false);
+    const labels = [...advanced.querySelectorAll('label')], select = name => w.document.getElementById(labels.find(label => label.textContent === name).htmlFor);
+    assert.equal(select('Extra verification level').value, 'AllConfigChanges'); assert.equal(select('Local password login').selectedOptions[0].textContent, 'Follow native sign-in policy');
+    select('Security alerts').value = 'hub'; await click(w, 'Save Security integration settings'); assert(!calls.some(call => call.path === 'security/settings'));
+    const dialog = w.document.querySelector('dialog'); dialog.querySelector('input').value = 'CONFIRM ACCOUNT HUB CHANGE'; dialog.querySelector('input[type=password]').value = 'fresh-proof'; dialog.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
+    const saved = calls.find(call => call.path === 'security/settings'); assert.equal(saved.body.confirmation, 'CHANGE SECURITY SETTINGS'); assert.equal(saved.body.stepUp.code, 'fresh-proof');
+    assert.deepEqual(saved.body.settings, { stepUpLevelMirror: 'AllConfigChanges', alertMode: 'hub', passwordLoginPolicy: 'auto' });
+    assert(find(w, 'Removal permissions').disabled); assert(find(w, 'Automatic request rules').disabled);
+});
+test('removal and automation permissions link to their owning plugin without granting native access', async t => {
+    const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [{ id: 'deletion-queue', available: true }, { id: 'automatic', available: true }] } : path.startsWith('users?') ? { items: [], total: 0 } : path === 'user-creation' ? { owner: 'hub' } : { revision: 0 });
+    await click(w, 'Settings'); await click(w, 'Removal permissions'); assert.equal(w.location.hash, '#/configurationpage?name=DeletionQueueAdmin');
+    await click(w, 'Automatic request rules'); assert.equal(w.location.hash, '#/configurationpage?name=AutomaticDeletionRequests');
+    assert(!calls.some(call => call.path.startsWith('commands/')));
+});
+test('party errors keep technical detail behind hover and keyboard-accessible help',async t=>{
+    const w=environment(t,'<script src="https://example.test/PrivateSyncPlay/assets/ui.js"></script><p role="status"></p>');
+    Object.defineProperty(w.document,'currentScript',{value:w.document.querySelector('script'),configurable:true});w.eval(await source(sync+'ui.js'));
+    const status=w.document.querySelector('p');w.PrivateSyncPlayUI.message(status,'Check your party.',true,'The original request is not automatically repeated.');
+    assert.equal(status.firstChild.textContent,'Check your party.');const help=status.querySelector('details');assert.equal(help.open,false);assert.equal(help.querySelector('summary').getAttribute('aria-label'),'More information');
+    help.dispatchEvent(new w.Event('mouseenter'));assert(help.open);help.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(help.open,false);
+    w.PrivateSyncPlayUI.message(status,'Ready.');assert.equal(status.querySelector('details'),null);
+});
+test('human Discord linking pins confirmation to the reviewed native account and re-reviews account changes',async t=>{
+    const w=environment(t,'<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="link"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>'),calls=[];
+    w.history.replaceState(null,'','/suite/AccountHub/discord/link#token='+'a'.repeat(43));
+    w.localStorage.setItem('jellyfin_credentials',JSON.stringify({Servers:[{ManualAddress:'https://example.test/suite',AccessToken:'native-session'}]}));
+    let account='11111111-1111-1111-1111-111111111111',changed=true;
+    w.fetch=async(url,options)=>{const body=JSON.parse(options.body);calls.push({url:String(url),options,body});const confirming=String(url).endsWith('/confirm');return{ok:!confirming||!changed,status:confirming&&changed?409:200,json:async()=>confirming&&changed?{ok:false,error:{code:'account_changed'}}:{ok:true,data:confirming?{status:'linked'}:{userId:account,jellyfinUsername:'Reviewed user',discordId:'123456789012345678',discordUsername:'friendly.user'}}};};
+    w.eval(await source(hub+'public.js'));assert.equal(w.location.hash,'');
+    await click(w,'Review link');assert.match(w.document.querySelector('.hubPublicAccounts').textContent,/@friendly.userDiscord ID123456789012345678/);await click(w,'Link my Discord account');
+    assert.equal(calls[1].body.userId,account);assert.equal(calls[1].options.headers.Authorization,'MediaBrowser Token="native-session"');
+    assert.match(w.document.querySelector('[role=status],.hubPublicStatus').textContent,/Review the link again/);
+    assert(find(w,'Review link'));assert.equal(calls.length,2,'An account change cannot auto-confirm another account');
+    account='22222222-2222-2222-2222-222222222222';changed=false;
+    await click(w,'Review link');await click(w,'Link my Discord account');
+    assert.equal(calls[3].body.userId,account);assert.equal(w.document.querySelector('.hubPublicStatus').textContent,'Discord linked. You can close this page.');
+});
+test('human password recovery clears secrets and never resubmits an uncertain native password effect',async t=>{
+    const w=environment(t,'<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="reset"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>');
+    w.history.replaceState(null,'','/suite/AccountHub/reset#token='+'a'.repeat(43));let writes=0;
+    w.localStorage.setItem('jellyfin_credentials',JSON.stringify({Servers:[{ManualAddress:'https://example.test/suite',AccessToken:'native-session'}]}));
+    w.fetch=async(url,options)=>{if(String(url).endsWith('/complete')){writes++;assert.equal(options.headers.Authorization,'MediaBrowser Token="native-session"');assert.equal(JSON.parse(options.body).stepUp,undefined);throw new TypeError('Network unavailable');}return{ok:true,json:async()=>String(url).includes('public-config')?{passwordLoginDisabled:false}:{ok:true,data:String(url).endsWith('/session')?{ready:true}:{valid:true,verificationAvailable:true}}};};
+    w.eval(await source(hub+'public.js'));await turn();await turn();const form=w.document.querySelector('form');
+    const passwords=form.querySelectorAll('input');for(const input of passwords)input.value='Disposable-chosen-password-9714!';
+    form.dispatchEvent(new w.Event('submit',{cancelable:true}));await turn();
+    assert.equal(writes,1);assert([...passwords].every(input=>input.value===''&&input.disabled));assert(find(w,'Reset my password').disabled);
+    assert.match(w.document.querySelector('.hubPublicStatus').textContent,/Unable to confirm the change/);
+    form.dispatchEvent(new w.Event('submit',{cancelable:true}));await turn();assert.equal(writes,1);
+});
+test('a reset link alone cannot submit a password change and missing verification blocks the form',async t=>{
+    const w=environment(t,'<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="reset"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>');
+    w.history.replaceState(null,'','/suite/AccountHub/reset#token='+'a'.repeat(43));let writes=0;
+    w.fetch=async(url)=>{if(String(url).endsWith('/complete'))writes++;return{ok:true,json:async()=>String(url).includes('public-config')?{passwordLoginDisabled:false}:{ok:true,data:{valid:true,verificationAvailable:true}}};};
+    const code=await source(hub+'public.js');w.eval(code);await turn();await turn();
+    assert.equal(w.document.querySelector('form'),null);assert.equal(writes,0);assert.match(w.document.querySelector('.hubPublicStatus').textContent,/Sign in/);assert(!find(w,'Check signed-in session').disabled);
+    w.fetch=async()=>({ok:true,json:async()=>({ok:true,data:{valid:true,verificationAvailable:false}})});
+    w.history.replaceState(null,'','/suite/AccountHub/reset#token='+'a'.repeat(43));w.document.querySelector('.hubPublicContent').replaceChildren();w.eval(code);await turn();
+    assert.equal(w.document.querySelector('form'),null);assert.match(w.document.querySelector('.hubPublicStatus').textContent,/verification is unavailable/);
+});
+test('reset UI trusts the server session verdict, not a browser flag, and has no fresh factor prompt',async t=>{
+    const w=environment(t,'<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="reset"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>');
+    w.history.replaceState(null,'','/suite/AccountHub/reset#token='+'a'.repeat(43));
+    w.localStorage.setItem('jellyfin_credentials',JSON.stringify({Servers:[{ManualAddress:'https://example.test/suite',AccessToken:'native-session'}]}));w.localStorage.setItem('twoFactorVerified','true');
+    let verified=false;const calls=[];
+    w.fetch=async(url,options)=>{calls.push({url:String(url),options});const session=String(url).endsWith('/session');return{ok:!session||verified,status:session&&!verified?403:200,json:async()=>String(url).includes('public-config')?{passwordLoginDisabled:false}:session&&!verified?{ok:false,error:{code:'reset_session_required'}}:{ok:true,data:session?{ready:true}:{valid:true,verificationAvailable:true}}};};
+    w.eval(await source(hub+'public.js'));await turn();await turn();assert.equal(w.document.querySelector('form'),null);
+    verified=true;await click(w,'Check signed-in session');assert.equal(w.document.querySelectorAll('form input').length,2);assert.equal(w.document.querySelector('#verification-code'),null);
+    for(const input of w.document.querySelectorAll('form input'))input.value='Disposable-chosen-password-9714!';w.document.querySelector('form').dispatchEvent(new w.Event('submit',{cancelable:true}));await turn();
+    const sent=calls.find(call=>call.url.endsWith('/complete'));assert(sent);assert.equal(sent.options.headers.Authorization,'MediaBrowser Token="native-session"');assert.deepEqual(Object.keys(JSON.parse(sent.options.body)).sort(),['password','token']);
+});
+test('invite defaults preselect the template and save only explicit delegated creator permissions',async t=>{
+    const w=environment(t),calls=[],group='11111111-1111-1111-1111-111111111111',user='22222222-2222-2222-2222-222222222222';
+    w.eval(await source(hub+'invite-admin.js'));
+    await w.AccountHubInvites.mount(w.document.querySelector('main'),{discordAvailable:true,read:async path=>path==='invite-defaults'?{defaultGroupId:group,discordCreationEnabled:false,allowedCreators:[user],discordExpiryMinutes:60,dailyLimit:5}:path.startsWith('users?')?{items:[{id:user,username:'Linked user'}],total:1}:path.startsWith('group-policy/')?{items:[{id:group,name:'Standard access'}],total:1}:{items:[]},write:async(path,body)=>{calls.push({path,body});}});
+    const selects=w.document.querySelectorAll('select');assert.equal(selects[0].value,group);
+    await click(w,'Save invitation defaults');assert.equal(calls[0].path,'invite-defaults');assert.equal(calls[0].body.settings.defaultGroupId,group);assert.equal(calls[0].body.settings.discordCreationEnabled,false);assert.deepEqual([...calls[0].body.settings.allowedCreators],[user]);
+});
+test('bulk account access previews only selected fields and invalidates the preview when edited', async t => {
+    const w = environment(t, '<main class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></main>'), calls = [];
+    const policy = { EnableMediaPlayback: true, EnableRemoteAccess: true, MaxActiveSessions: 3 };
+    w.fetch = async (url, options) => {
+        calls.push({ url, options });
+        const data = url.endsWith('/dependencies') ? { items: [] } : url.includes('/users?') ? {
+            items: [{ id: 'a', username: 'Alice', discordLinked: true, policy }, { id: 'b', username: 'Bob', policy }, { id: 'admin', username: 'Administrator', administrator: true, policy }], total: 3
+        } : url.endsWith('/policy/preview') ? { users: ['a', 'b'].map(userId => ({ userId, before: policy, after: { ...policy, MaxActiveSessions: 5 } })), skippedAdmins: [] } : { revision: 0 };
+        return { ok: true, status: 200, json: async () => ({ ok: true, data }) };
+    };
+    w.eval((await source(hub + 'workspace.js')).replace(/^import[^\r\n]*\r?\n/, 'const mountSecurityPanel = () => () => {};\n').replace('export function mountWorkspace', 'window.mountWorkspace = function'));
+    w.mountWorkspace(w.document.querySelector('main'), { getUrl: path => 'https://example.test/' + path, accessToken: () => 'disposable-token' });
+    await turn(); await turn();
+    assert.equal([...w.document.querySelectorAll('button')].filter(button=>button.textContent==='Unlink Discord').length,1);
+    await click(w,'Unlink Discord');
+    assert(w.document.querySelector('dialog input[type=password]'),'Unlink must use the existing native confirmation/proof transport');
+    assert(!calls.some(call=>call.url.endsWith('/commands/user.discord.unlink')));
+    await click(w,'Cancel');
+    const choices = w.document.querySelectorAll('.hubTable input[type=checkbox]');
+    assert.equal(choices.length, 3); assert(choices[2].disabled);
+    for (const choice of [...choices].slice(0, 2)) { choice.checked = true; choice.dispatchEvent(new w.Event('change')); }
+    await click(w, 'Edit selected access');
+    const dialog = w.document.querySelector('dialog');
+    const include = [...dialog.querySelectorAll('label')].find(label => label.textContent === 'Change Max Active Sessions').querySelector('input');
+    include.checked = true; include.dispatchEvent(new w.Event('change'));
+    const sessions = dialog.querySelector('input[type=number]'); sessions.value = '5'; sessions.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await click(w, 'Preview');
+    const body = JSON.parse(calls.find(call => call.url.endsWith('/policy/preview')).options.body);
+    assert.deepEqual(body, { userIds: ['a', 'b'], managedFields: { MaxActiveSessions: 5 } });
+    assert.equal(find(w, 'Apply reviewed changes').disabled, false);
+    sessions.value = '6'; sessions.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert(find(w, 'Apply reviewed changes').disabled);
+    w.document.querySelector('main').dispatchEvent(new w.Event('viewhide'));
+    assert.equal(w.document.querySelectorAll('dialog').length, 0);
+    assert(!calls.some(call => call.url.endsWith('/commands/policy.apply')));
+});
+test('template paging preserves off-page defaults and explicit native-default choices', async t => {
+    const w = environment(t), saved = '11111111-1111-1111-1111-111111111111', other = '22222222-2222-2222-2222-222222222222';
+    w.eval(await source(hub + 'invite-admin.js'));
+    await w.AccountHubInvites.mount(w.document.querySelector('main'), { read: async path => path === 'invite-defaults' ? { defaultGroupId: saved } : path.startsWith('users?') ? { items: [], total: 0 } : path.startsWith('group-policy/') ? { items: [{ id: other, name: 'Other template' }], total: 101 } : { items: [] } });
+    const [inviteTemplate, defaultTemplate] = w.document.querySelectorAll('select');
+    assert.equal(inviteTemplate.value, saved); assert.equal(defaultTemplate.value, saved);
+    await click(w, 'Next templates');
+    assert.equal(inviteTemplate.value, saved); assert.equal(defaultTemplate.value, saved);
+    inviteTemplate.value = ''; defaultTemplate.value = '';
+    await click(w, 'Previous templates');
+    assert.equal(inviteTemplate.value, ''); assert.equal(defaultTemplate.value, '');
+});
 test('Unconfigured Seerr greys dependent actions but retains local jobs and explains remediation', async t => {
     const calls = [];
     const { w } = await seerr(t, async path => { calls.push(path); return path === 'seerr/connection' ? { warnings: [], keyConfigured: false } : path.startsWith('users?') ? people : { items: [{ id: 'job', state: 'failed' }], total: 1, attention: 1 }; });

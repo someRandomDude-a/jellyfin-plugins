@@ -30,16 +30,16 @@
     function api() { return window.ApiClient; }
     async function request(path, method = 'GET', body) {
         const epoch = UI.navigationEpoch;
-        if (!api()?.accessToken()) throw new Error('Sign in to Jellyfin first.');
+        if (!api()?.accessToken()) throw UI.localError('authentication');
         const result = await api().ajax({ url: api().getUrl(path), type: method,
             data: body === undefined ? undefined : JSON.stringify(body), contentType: 'application/json',
             dataType: method === 'GET' || path.endsWith('/Invites') || path.endsWith('/Groups') ? 'json' : undefined }).catch(error => { if (epoch !== UI.navigationEpoch) throw new DOMException('View closed', 'AbortError'); throw UI.authError ? UI.authError(error) : error; });
         if (epoch !== UI.navigationEpoch) throw new DOMException('View closed', 'AbortError');
         return normalize(result);
     }
-    function error(message) {
+    function error(message,detail) {
         if (!current?.dialog.open) { current = UI.dialog('Watch parties'); current.dialog.showModal(); }
-        UI.message(current.feedback, message, true);
+        UI.message(current.feedback, message, true,detail);
     }
     function action(label, parent, run, kind = 'default', id) {
         const button = UI.button(label, parent, run, kind); if (id) button.dataset.pspAction = id; return button;
@@ -47,12 +47,12 @@
     function description(text, parent) { return UI.element('p', text, parent, 'fieldDescription'); }
     async function joinSession(path, body) {
         const me = await request('PrivateSyncPlay/Me');
-        if (!me.realtimeReady) throw new Error('Jellyfin is still connecting this device. Wait for its connection, then try again. No group action was sent.');
+        if (!me.realtimeReady) throw UI.localError('device_connecting');
         // Release modal keyboard/command guards BEFORE native GroupJoined and
         // PlayQueue events can arrive. Do not reopen a dialog over the player.
         UI.disposeDialogs(); current = null;
         try { await request(path, 'POST', body); }
-        catch (e) { if (e.name !== 'AbortError') error('Group action could not be confirmed. Check your current party before retrying; no action was automatically repeated.'); }
+        catch (e) { if (e.name !== 'AbortError') error('Unable to confirm the change. Check your party.','The operation may have reached the server. Check the current party before trying again. No automatic retry was made.'); }
     }
     function confirm(title, text, run) {
         const popup = UI.dialog(title); description(text, popup.content);
@@ -231,7 +231,7 @@
                 svg.append(path); launcher.append(svg);
             }
             else UI.element('span', null, launcher, 'material-icons group_add').setAttribute('aria-hidden', 'true');
-            launcher.onclick = () => { void show().catch(e => { if (e.name !== 'AbortError') error(e.message || 'Could not load watch parties.'); }); };
+            launcher.onclick = () => { void show().catch(e => { if (e.name !== 'AbortError') error(UI.authError(e).message); }); };
             native.after(launcher);
         }
         if (pending && native && !twoFactorPending && Date.now() >= retryAt) {
@@ -261,7 +261,7 @@
                 if (e?.code === 'two_factor_required') { pending = token; twoFactorPending = true; error(e.message); return; }
                 if (!joinSent && (!e?.status || e.status >= 500) && inviteAttempts < 3) { pending = token; retryAt = Date.now() + 5000; }
                 else { try { sessionStorage.removeItem(inviteKey); } catch { } }
-                error(joinSent ? 'Invitation join could not be confirmed. Check your current party before retrying; no action was automatically repeated.' : 'Could not check this invitation. It may be expired, full, revoked, or your account may not have access to its media.');
+                error(joinSent ? 'Unable to confirm joining. Check your party.' : 'This invitation is unavailable.',joinSent?'Check the current party before trying again. The original join is not automatically repeated.':'The invitation may be expired, full or revoked, or you may not have access to the media.');
             });
         }
     }

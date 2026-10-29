@@ -44,7 +44,10 @@ public sealed class WatchPartyClient(IServiceProvider services) : IWatchPartySer
             using var json = JsonDocument.Parse(response);
             var root = json.RootElement;
             var status = root.GetProperty("statusCode").GetInt32();
-            if (status is >= 400 and <= 599) throw new WatchPartyException(status, root.GetProperty("error").GetString() ?? "Watch-party operation failed.");
+            if (status is >= 400 and <= 599) {
+                var id=root.TryGetProperty("errorId",out var diagnostic)&&diagnostic.ValueKind==JsonValueKind.String?diagnostic.GetString():null;
+                throw new WatchPartyException(status, root.GetProperty("error").GetString() ?? "Watch-party operation failed."){ErrorId=Guid.TryParseExact(id,"D",out _)?id:null};
+            }
             if (status != 200) throw new JsonException();
             var result = root.GetProperty("value").Deserialize<T>(Json);
             if (result is null && operation != "GetCurrentParty") throw new JsonException();

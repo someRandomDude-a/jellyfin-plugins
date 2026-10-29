@@ -20,7 +20,7 @@
         const root=node('div',undefined,'dq-timeline dq-flow-timeline');root.tabIndex=0;root.setAttribute('aria-label',preview?'Removal policy timeline':'Removal request timeline');
         root.setAttribute('aria-description','All users inactive OR every relevant active viewer consents. Both paths require verified history, no active playback and all safety checks. Administrator denial or timeout closes the request when approval is required.');
         if(get(p,'closureExplanation'))root.setAttribute('aria-description',root.getAttribute('aria-description')+' '+get(p,'closureExplanation'));
-        const grid=node('div',undefined,'dq-flow-grid'),list=node('ol',undefined,'dq-flow-nodes');root.append(grid);grid.append(list);
+        const viewport=node('div',undefined,'dq-flow-viewport'),grid=node('div',undefined,'dq-flow-grid'),list=node('ol',undefined,'dq-flow-nodes');root.append(viewport);viewport.append(grid);grid.append(list);
         const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('dq-flow-wires');svg.setAttribute('aria-hidden','true');grid.prepend(svg);
         const labels=node('div',undefined,'dq-flow-labels');labels.setAttribute('aria-hidden','true');grid.append(labels);
         const points=new Map(),edges=[],elements=new Map();
@@ -38,7 +38,7 @@
         const passed=paths.some(s=>state(s)==='complete');
         add(find('requested'),1,2);add(activity,2,1);add(consent,2,3);add({...checks,key:'checks',label:'Verify safeguards',state:passed?'complete':state(checks)},3,2);
         edge('requested','activity',state(activity),duration(activity));edge('requested','consent',state(consent),duration(consent)||'Current snapshot');edge('activity','checks',state(activity));edge('consent','checks',state(consent));
-        if(activityTimeout){add(activityTimeout,3,5);edge('requested','activity-timeout',state(activityTimeout),duration(activityTimeout));edge('activity-timeout','cancelled',state(activityTimeout));}
+        if(activityTimeout){add(activityTimeout,3,4);edge('requested','activity-timeout',state(activityTimeout),duration(activityTimeout));edge('activity-timeout','cancelled',state(activityTimeout));}
         let next=4;
         if(approval&&approvalPaths.length){
             const approved=approvalPaths.find(s=>get(s,'key')==='approved'),timeout=approvalPaths.find(s=>get(s,'key')==='approval-timeout');
@@ -48,22 +48,31 @@
         add(find('delay'),next,1);add(find('removing'),next+1,1);
         const closed=find('closed'),confirmed=find('confirmed');
         add({key:'completed',label:'Completed',state:status==='Completed'?'complete':cancelled?'stopped':'pending',at:status==='Completed'?get(closed,'at')||get(confirmed,'at'):null},next+2,1);
-        add({key:'cancelled',label:'Cancelled',state:cancelled?'cancelled':status==='Completed'?'stopped':'pending',at:cancelled?get(closed,'at')||get(p,'closedAt'):null},next+2,activityTimeout?5:3);
+        add({key:'cancelled',label:'Cancelled',state:cancelled?'cancelled':status==='Completed'?'stopped':'pending',at:cancelled?get(closed,'at')||get(p,'closedAt'):null},next+2,activityTimeout?4:3);
         edge(approval&&approvalPaths.length?'approved':'checks','delay',['complete','current','cancelled'].includes(state(find('delay')))?'complete':'pending');
         edge('delay','removing',['complete','current'].includes(state(find('removing')))?'complete':'pending',duration(find('delay')||{}));edge('removing','completed',status==='Completed'?'complete':'pending');
         const closedAt=get(p,'closedCheckpoint');
         if(cancelled&&!['AdministratorDenied','AdministratorApprovalExpired'].includes(get(p,'reason'))&&['checks','delay','approval'].includes(closedAt))edge(closedAt,'cancelled','cancelled');
         else if(!ended&&(!approval||!approvalPaths.length))edge('checks','cancelled','pending','Undo');
         list.style.setProperty('--dq-flow-columns',String(next+2));
+        list.style.setProperty('--dq-flow-rows',activityTimeout?'4':'3');
         let current=status==='Completed'?'completed':cancelled?'cancelled':['Claimed','Uncertain','FilesDeleted'].includes(status)?'removing':['Waiting','Ready'].includes(status)?'delay':get(p,'reason')==='AdministratorApprovalRequired'?'approval':get(p,'reason')==='ConsentRequired'?'consent':state(activity)==='current'?'activity':'checks';
         if(!preview&&elements.has(current)){const element=elements.get(current);element.setAttribute('aria-current','step');const marker=node('span',undefined,'dq-media-marker');marker.dataset.checkpoint=current;marker.dataset.stopped=String(cancelled);marker.dataset.completed=String(status==='Completed');marker.setAttribute('aria-label',ended?'Request ended':'Current stage');element.append(marker);}
-        function draw(){svg.replaceChildren();labels.replaceChildren();if(!grid.isConnected)return;const bounds=grid.getBoundingClientRect();svg.setAttribute('viewBox','0 0 '+Math.max(1,grid.scrollWidth)+' '+Math.max(1,grid.scrollHeight));for(const e of edges){const from=elements.get(e.from),to=elements.get(e.to);if(!from||!to)continue;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),x=a.right-bounds.left,y=a.top+a.height/2-bounds.top,tx=b.left-bounds.left,ty=b.top+b.height/2-bounds.top,mid=x+(tx-x)/2;const path=document.createElementNS(svg.namespaceURI,'path');let labelX=mid,labelY=(y+ty)/2;
-            if(e.to==='activity-timeout'){const sx=a.left+a.width/2-bounds.left,sy=a.bottom-bounds.top;path.setAttribute('d',`M ${sx} ${sy} L ${sx} ${ty-12} Q ${sx} ${ty}, ${sx+12} ${ty} L ${tx} ${ty}`);labelX=(sx+tx)/2;labelY=ty;}
+        let scale=1,drag=null,userPanned=false;
+        function draw(){svg.replaceChildren();labels.replaceChildren();if(!grid.isConnected)return;const bounds=grid.getBoundingClientRect();svg.setAttribute('viewBox','0 0 '+Math.max(1,grid.scrollWidth)+' '+Math.max(1,grid.scrollHeight));for(const e of edges){const from=elements.get(e.from),to=elements.get(e.to);if(!from||!to)continue;const a=from.getBoundingClientRect(),b=to.getBoundingClientRect(),x=(a.right-bounds.left)/scale,y=(a.top+a.height/2-bounds.top)/scale,tx=(b.left-bounds.left)/scale,ty=(b.top+b.height/2-bounds.top)/scale,mid=x+(tx-x)/2;const path=document.createElementNS(svg.namespaceURI,'path');let labelX=mid,labelY=(y+ty)/2;
+            if(e.to==='activity-timeout'){const sx=(a.left+a.width/2-bounds.left)/scale,sy=(a.bottom-bounds.top)/scale;path.setAttribute('d',`M ${sx} ${sy} L ${sx} ${ty-12} Q ${sx} ${ty}, ${sx+12} ${ty} L ${tx} ${ty}`);labelX=(sx+tx)/2;labelY=ty;}
             else path.setAttribute('d',`M ${x} ${y} C ${mid} ${y}, ${mid} ${ty}, ${tx} ${ty}`);
             path.dataset.from=e.from;path.dataset.to=e.to;path.dataset.state=e.state;svg.append(path);if(e.label){const label=node('span',e.label,'dq-flow-edge-label paperList');label.dataset.from=e.from;label.dataset.to=e.to;label.style.left=labelX+'px';label.style.top=labelY+'px';labels.append(label);}}}
-        const center=()=>{const marker=elements.get(current);if(!preview&&root.isConnected&&marker&&root.clientWidth){const r=marker.getBoundingClientRect(),box=root.getBoundingClientRect();root.scrollLeft+=r.left-box.left-root.clientWidth/2+r.width/2;}};
-        content.append(root);draw();frame(()=>{draw();center();});
-        if(typeof ResizeObserver==='function'){let width=root.clientWidth;const observer=new ResizeObserver(()=>{if(!grid.isConnected)observer.disconnect();else{draw();if(width!==root.clientWidth){width=root.clientWidth;center();}}});observer.observe(grid);observer.observe(root);}
+        const center=()=>{const marker=elements.get(current);if(!preview&&root.isConnected&&marker&&root.clientWidth&&!userPanned){const r=marker.getBoundingClientRect(),box=root.getBoundingClientRect();root.scrollLeft+=r.left-box.left-root.clientWidth/2+r.width/2;}};
+        const layout=()=>{if(!root.isConnected)return;if(!root.clientWidth){draw();return;}scale=Math.min(1,Math.max(.85,(root.clientWidth-16)/Math.max(1,grid.offsetWidth)));grid.style.transform='scale('+scale+')';viewport.style.width=(grid.offsetWidth*scale)+'px';viewport.style.height=(grid.offsetHeight*scale)+'px';root.dataset.scale=String(scale);draw();center();};
+        root.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){userPanned=true;return;}if(e.button!==0||e.target.closest('button,a,input,select,textarea'))return;drag={id:e.pointerId,x:e.clientX,left:root.scrollLeft,moved:false};root.setPointerCapture?.(e.pointerId);});
+        root.addEventListener('wheel',e=>{if(e.deltaX||e.shiftKey)userPanned=true;},{passive:true});
+        root.addEventListener('focusin',e=>{if(e.target!==root)userPanned=true;});
+        root.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;if(Math.abs(e.clientX-drag.x)>4){drag.moved=true;userPanned=true;root.dataset.dragging='true';root.setPointerCapture?.(e.pointerId);root.scrollLeft=drag.left-(e.clientX-drag.x);e.preventDefault();}});
+        const stop=()=>{drag=null;delete root.dataset.dragging;};root.addEventListener('pointerup',stop);root.addEventListener('pointercancel',stop);root.addEventListener('lostpointercapture',stop);
+        root.addEventListener('keydown',e=>{if(e.target!==root)return;if(e.key==='ArrowLeft'||e.key==='ArrowRight'){userPanned=true;root.scrollLeft+=e.key==='ArrowLeft'?-100:100;e.preventDefault();}if(e.key==='Home'){userPanned=false;center();e.preventDefault();}});
+        content.append(root);draw();frame(layout);
+        if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(()=>{if(!grid.isConnected)observer.disconnect();else layout();});observer.observe(grid);observer.observe(root);}
         return true;
     }
     function policy(content,{activityDays,delayHours,approvalDays,requireApproval,paused,activityTimeoutEnabled,activityTimeoutDays}){

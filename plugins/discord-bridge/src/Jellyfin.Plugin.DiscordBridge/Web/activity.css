@@ -1,4 +1,0 @@
-/* Layout only; native installed Jellyfin theme owns controls and colors. */
-.discordActivity { box-sizing: border-box; max-width: 48em; margin: auto; padding: max(1em, env(safe-area-inset-top)) max(1em, env(safe-area-inset-right)) max(1em, env(safe-area-inset-bottom)) max(1em, env(safe-area-inset-left)); overflow-wrap: anywhere; }
-.discordActivity form { margin-block: 1.5em; }
-.discordActivity input { box-sizing: border-box; max-width: 100%; }

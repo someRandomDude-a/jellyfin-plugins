@@ -107,7 +107,8 @@ public sealed class AccountService
         Guid? createdByUserId,
         string baseUrl,
         TimeSpan? lifetime = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? expectedDiscordUserId = null)
     {
         var user = _users.GetUser(userId) ?? throw new UserManagerException(404, "User not found.");
         if (_users.IsDisabled(userId)) throw new UserManagerException(403, "Disabled accounts cannot request password recovery.");
@@ -122,7 +123,7 @@ public sealed class AccountService
             CreatedByUserId = createdByUserId?.ToString("N") ?? "system",
             CreatedAt = now.ToUnixTimeMilliseconds(),
             ExpiresAt = expires.ToUnixTimeMilliseconds()
-        }, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken, expectedDiscordUserId).ConfigureAwait(false);
 
         var url = BuildResetUrl(baseUrl, token);
         return new ResetTokenResult(token, expires, url);
@@ -132,8 +133,10 @@ public sealed class AccountService
         string token,
         string newPassword,
         string? ipAddress,
+        Func<Guid, CancellationToken, Task> authorizeReset,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(authorizeReset);
         var hash = TokenTools.HashToken(token);
         var record = await _store.GetResetTokenAsync(hash, cancellationToken).ConfigureAwait(false);
         if (record is null
@@ -154,7 +157,8 @@ public sealed class AccountService
 
         await new ResetOperations(_store).CompleteAsync(hash,
             () => _users.ChangePasswordAsync(userId, newPassword, cancellationToken),
-            () => _users.RevokeSessionsAsync(userId), cancellationToken).ConfigureAwait(false);
+            () => _users.RevokeSessionsAsync(userId), cancellationToken,
+            ct => authorizeReset(userId, ct)).ConfigureAwait(false);
         await _audit.LogAsync(
             AuditService.ActionPasswordReset,
             "self-service",
@@ -200,7 +204,7 @@ public sealed class AccountService
             return false;
         }
 
-        var reset = await CreateResetTokenAsync(user.Id, null, baseUrl, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var reset = await CreateResetTokenAsync(user.Id, null, baseUrl, cancellationToken: cancellationToken, expectedDiscordUserId: link.DiscordUserId).ConfigureAwait(false);
         var sent = await TrySendResetAsync(user.Id, reset, cancellationToken).ConfigureAwait(false);
         if (!sent)
         {

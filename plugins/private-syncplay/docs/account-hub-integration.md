@@ -1,15 +1,18 @@
 # Private SyncPlay Account Hub adapter v1
 
-Implementation baseline: `3db22d9c63e4a57d54031f187c8ac832ede2f751` (Jellyfin 12.2 / .NET 10).
-The user authorized the **plan-defined v1** contract as the implementation baseline. `src/AccountHub.Api` is a producer-side implementation of that contract, not an imported/published canonical Hub SDK. Its version is 1.0.0; canonical SDK/host acceptance remains a handoff requirement. The existing `Jellyfin.Plugin.PrivateSyncPlay.Api.1.1` party SDK, identity, signature and API 1.1.0 are unchanged.
+The shared `AccountHub.Api` SDK is the canonical framework-only producer contract.
+The native party SDK retains its independent 1.1 identity/signature; do not change
+that identity to match plugin release versions. Current build targets are discovered
+automatically. The original 12.2 implementation baseline is historical provenance,
+not a version pin or current certification.
 
 ## Boundary and configuration
 
-- Hub discovery is lazy keyed DI: `AccountHub.Api.1`, exactly `Func<string,CancellationToken,Task<string>>`. No Hub implementation assembly or standing HTTP token is used.
+- Audit discovery uses lazy keyed DI `AccountHub.Api.1`; standalone notification publication uses `Notifications.Api.1`. Both use framework-only JSON delegates, not Hub implementation assemblies or standing HTTP tokens.
 - `hello` verifies v1 and required operations; `health.ready` gates delivery. Missing, disabled, incompatible, malformed, throwing or timed-out hosts do not authorize or stop parties. Non-cooperative timed-out calls cannot accumulate new pending calls in the client.
 - Defaults: `notificationMode=Auto`, `hubIntegrationEnabled=true`, `publishAudit=true`, `nativeNotifications=true`.
 - Auto: unavailable notification delivery falls back locally; audit keeps its independent retry state. Local: optional native notifications and independent audit, no Hub notifications. Hub: bounded retry (five attempts or freshness deadline). Disabled: no optional notifications, independent audit remains controlled by `publishAudit`.
-- `nativeNotifications` controls optional message notices, not mandatory native SyncPlay guest-joined feedback. The guest-joined toast is never sent a second time by the optional fallback. Accepted Hub notices do not also take the optional native path. There is **no second bell**; the Hub owns its bell, and local party UI remains available.
+- `nativeNotifications` controls optional message notices, not mandatory native SyncPlay guest-joined feedback. The guest-joined toast is never sent a second time by optional fallback. Accepted shared notices do not also take the optional native path. There is no second bell; standalone Notifications owns the shared bell, and local party UI remains available.
 - Summaries use constant text, party/user IDs, stable `Guest N` labels and reason categories. They exclude invitation secrets, guest cookies, session/device IDs, names, email addresses, IPs, media IDs/paths/URLs and account tokens. Config audit uses an explicit policy projection; guest layout is reported as changed, not copied.
 - Playback-start summaries come from a real signed-in member's playback-start event, once per party. Invite creation/revocation, guest admission/departure/revocation, party closure and moderation have separate transition IDs. Lease refresh/preflight emits no admission event.
 
@@ -75,4 +78,8 @@ Account Hub must enforce its own step-up mirror before invoking this adapter. Th
 
 Tests include native permission non-regression, adapter revision/replay/admin exclusion/preview/reset, separate-ALC client dispatch, absent-host fallback, independent audit acknowledgment, leases/freshness/pruning, bounded payloads, schema rejection and redaction. Real disposable Jellyfin integration exercises installed-package loading, auth/elevation, native guest isolation, the existing consumer SDK, adapter preview/replay/revisions and read-only integrity of both databases.
 
-**Still unverified without the real dependencies:** canonical SDK replacement/compatibility, actual Account Hub durable acceptance/bell/Discord delivery, installed Jellyfin Security 2FA/step-up behavior, full combined P0–P9 acceptance and production proxy/BaseUrl behavior. Fixtures are not a claim of live Hub or Security acceptance. See `account-hub-handoff.md` for actual commands/results.
+Use [current status](../../../docs/review-status.md) and the [evidence register](../../../docs/verification.md)
+for actual installed Hub/Security/package scopes. Earlier adapter-only fixtures do
+not certify later packages, all failure paths, production proxies or human playback.
+Failed local outbox writes cannot be backfilled. Native XML/outbox backups must be
+consistent, and restoring an older receipt set does not promise idempotency.

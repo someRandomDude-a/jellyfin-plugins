@@ -131,4 +131,6 @@ public sealed class WatchPartyException(int statusCode, string message) : Except
 {
     /// <summary>Gets the failure status code.</summary>
     public int StatusCode { get; } = statusCode;
+    /// <summary>Gets the opaque administrator diagnostic ID, when supplied by the owning plugin.</summary>
+    public string? ErrorId { get; init; }
 }

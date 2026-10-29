@@ -120,6 +120,7 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
             Number(info, "tmdbId") != tmdb || Text(info, "mediaType") != (item is Series ? "tv" : "movie"))
             throw new QueueException("TargetUnavailable");
         var mediaId = Number(info, "id");
+        if(Number(info,selection.Is4K?"status4k":"status")==7)throw new QueueException("TargetAlreadyRemoved");
         var serviceProperty = selection.Is4K ? "serviceId4k" : "serviceId";
         var externalProperty = selection.Is4K ? "externalServiceId4k" : "externalServiceId";
         if (mediaId <= 0 || !info.TryGetProperty(serviceProperty, out var service) || service.ValueKind != JsonValueKind.Number ||
@@ -149,7 +150,9 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         if (metadata is not null) {
             try {
                 var requesterIds = await SeerrOwnership.RequesterIdsAsync(info, selection.Is4K, seerr.UserAsync,
-                    id => users.GetUserById(id) is { } user && !user.HasPermission(Jellyfin.Database.Implementations.Enums.PermissionKind.IsDisabled), ct);
+                    // Identity and authorization are separate: retain a known disabled
+                    // requester so automation rejects it instead of falling back to its administrator.
+                    id => users.GetUserById(id) is not null, ct);
                 requester=requesterIds is {Length:1}?requesterIds[0]:null;
                 metadata["seerr.requesters"]=requesterIds?.Select(id=>id.ToString("D")).ToArray();
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -182,7 +185,7 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         if (status is not (1 or 2 or 4) || Number(info, selection.Is4K ? "status4k" : "status") is not (1 or 2 or 3)) throw new QueueException("TargetUnavailable");
         if (!request.TryGetProperty("requestedBy", out var owner) || Number(owner, "id") <= 0) throw new QueueException("ProposalNotPermitted");
         var ownerRecord = await seerr.UserAsync(Number(owner, "id"), ct);
-        if (!Guid.TryParse(Text(ownerRecord, "jellyfinUserId"), out var ownerId) || ownerId != caller.Id) throw new QueueException("ProposalNotPermitted");
+        if (Number(ownerRecord, "id") != Number(owner, "id") || !Guid.TryParse(Text(ownerRecord, "jellyfinUserId"), out var ownerId) || ownerId != caller.Id) throw new QueueException("ProposalNotPermitted");
         var serviceName = selection.Is4K ? "serviceId4k" : "serviceId";
         var external = Number(info, selection.Is4K ? "externalServiceId4k" : "externalServiceId");
         var managed = info.TryGetProperty(serviceName, out var service) && service.ValueKind == JsonValueKind.Number && service.TryGetInt32(out var serviceId) && serviceId >= 0 && external > 0;
@@ -195,7 +198,7 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
             foreach (var related in requests.EnumerateArray().Where(r => Bool(r, "is4k") == selection.Is4K && Number(r, "status") is 1 or 2 or 4 or 5)) {
                 if (!related.TryGetProperty("requestedBy", out var relatedOwner) || Number(relatedOwner, "id") <= 0) throw new QueueException("ProposalNotPermitted");
                 var record = await seerr.UserAsync(Number(relatedOwner, "id"), ct);
-                if (!Guid.TryParse(Text(record, "jellyfinUserId"), out var relatedId) || relatedId != caller.Id) throw new QueueException("ProposalNotPermitted");
+                if (Number(record, "id") != Number(relatedOwner, "id") || !Guid.TryParse(Text(record, "jellyfinUserId"), out var relatedId) || relatedId != caller.Id) throw new QueueException("ProposalNotPermitted");
             }
         }
         var activityKey = $"{type}:{tmdb}";
@@ -208,6 +211,38 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
             Number(info, "id"), selection.Is4K, true, true, false, config.Revision, scope) { RequestId = selection.RequestId, RequestOwnerId = ownerId, RequestOnly = requestOnly };
     }
 
+    public async Task<ExternalTargetChange?> InspectExternalChangeAsync(Proposal proposal,CancellationToken ct)
+    {
+        var state=runtime.Read();var target=proposal.Target;
+        if(proposal.Terminal||proposal.Claim is not null||target.ConfigurationRevision!=state.Seerr.Revision||!target.MappingVerified)return null;
+        using var seerr=seerrClients.Create(state.Seerr);
+        // Establish the configured server association before interpreting a 404.
+        // Auth/network/schema failures remain verification failures, not deletion.
+        var association=await seerr.JellyfinSettingsAsync(ct);
+        if(!string.Equals(state.Seerr.JellyfinServerId,host.SystemId,StringComparison.OrdinalIgnoreCase)||
+            !string.Equals(Text(association,"serverId"),host.SystemId,StringComparison.OrdinalIgnoreCase))throw new QueueException("SeerrServerAssociationUnverified");
+        try {
+            if(target.RequestOnly&&target.RequestId is {} requestId){
+                var request=await seerr.RequestAsync(requestId,ct);
+                if(Number(request,"id")!=requestId||!request.TryGetProperty("is4k",out var quality)||quality.ValueKind is not (JsonValueKind.True or JsonValueKind.False)||Bool(request,"is4k")!=target.Is4K||!request.TryGetProperty("media",out var media)||Number(media,"id")!=target.SeerrMediaId)return null;
+                return Number(request,"status")==3?new("RequestClosedOutsideQueue"):null;
+            }
+            var record=await seerr.MediaRecordAsync(target.SeerrMediaId,ct);
+            return MatchesMediaRecord(target,record)&&Number(record,target.Is4K?"status4k":"status")==7?new("RemovedOutsideQueue"):null;
+        }catch(HttpRequestException error)when(error.StatusCode==System.Net.HttpStatusCode.NotFound){return new("UpstreamTargetMissing");}
+    }
+    public static bool MatchesMediaRecord(VerifiedTarget target,JsonElement record)
+    {
+        var kind=target.Kind==MediaKind.Series?"tv":"movie";
+        if(Number(record,"id")!=target.SeerrMediaId||Number(record,"tmdbId")<=0||target.ActivityKey!=$"{kind}:{Number(record,"tmdbId")}"||
+            record.TryGetProperty("mediaType",out _)&&Text(record,"mediaType")!=kind)return false;
+        var native=Text(record,target.Is4K?"jellyfinMediaId4k":"jellyfinMediaId");
+        if(native.Length>0&&(!Guid.TryParse(native,out var nativeId)||target.JellyfinItemId!=Guid.Empty&&nativeId!=target.JellyfinItemId))return false;
+        var service=target.Is4K?"serviceId4k":"serviceId";var external=target.Is4K?"externalServiceId4k":"externalServiceId";
+        if(record.TryGetProperty(service,out var serviceId)&&serviceId.ValueKind==JsonValueKind.Number&&serviceId.TryGetInt32(out var instance)&&instance>=0&&Number(record,external)>0&&
+            target.DestructiveScopeKey is {} expected&&expected!=$"{(target.Kind==MediaKind.Series?"sonarr":"radarr")}|{instance}|{Number(record,external)}")return false;
+        return true;
+    }
     private static int Number(JsonElement item, string key) => item.ValueKind == JsonValueKind.Object && item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var n) ? n : 0;
     private static bool Bool(JsonElement item, string key) => item.ValueKind == JsonValueKind.Object && item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
     private static string Text(JsonElement item, string key) => item.ValueKind == JsonValueKind.Object && item.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";

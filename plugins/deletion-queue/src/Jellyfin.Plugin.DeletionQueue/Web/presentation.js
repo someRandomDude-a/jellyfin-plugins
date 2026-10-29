@@ -11,7 +11,7 @@
             const response = await fetch(ApiClient.getUrl('DeletionQueue/admin/presentation' + suffix), { method, cache: 'no-store', credentials: 'omit', signal: controller.signal,
                 headers: { Authorization: 'MediaBrowser Token="' + encodeURIComponent(ApiClient.accessToken()) + '"', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
             if (!active || generation !== epoch) throw new DOMException('View closed', 'AbortError');
-            if (!response.ok) throw new Error('Operation unavailable. Refresh settings and review your administrator session, revision and artwork diagnostics.');
+            if (!response.ok) throw new Error(window.SuiteAdminUI?.failure?.(null,response,'Operation unavailable. Refresh settings and check administrator authorization.')||'Operation unavailable. Refresh settings and check administrator authorization.');
             return response.status === 204 ? null : blob ? await response.blob() : await response.json();
         } finally { controllers.delete(controller); }
     }

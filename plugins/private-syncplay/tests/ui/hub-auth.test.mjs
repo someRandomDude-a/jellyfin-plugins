@@ -12,8 +12,8 @@ test('only marked 403/401 are pending 2FA, without touching playback or treating
         for(const status of [401,403]){
             const error=w.PrivateSyncPlayUI.authError({status,responseJSON:{twoFactorRequired:true}});
             assert.equal(error.code,'two_factor_required');assert.equal(error.status,status);assert(!video.muted);
-            const plain={status,responseJSON:{error:'Denied'}};assert.equal(w.PrivateSyncPlayUI.authError(plain),plain);
+            const plain={status,responseJSON:{error:'private-provider-detail'}};const mapped=w.PrivateSyncPlayUI.authError(plain);assert.notEqual(mapped,plain);assert.equal(mapped.status,status);assert.equal(mapped.code,undefined);assert.doesNotMatch(mapped.message,/private-provider-detail/);
         }
-        const expired={status:401,responseText:'{"twoFactorRequired":false}'};assert.equal(w.PrivateSyncPlayUI.authError(expired),expired);
+        const expired={status:401,responseText:'{"twoFactorRequired":false}'};const mapped=w.PrivateSyncPlayUI.authError(expired);assert.equal(mapped.code,undefined);assert.match(mapped.message,/session needs attention/);
     }finally{w.close();}
 });

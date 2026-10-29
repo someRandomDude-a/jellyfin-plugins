@@ -12,12 +12,20 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost host)
     {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"discord-bridge");
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("discord-bridge", "1", [
             new("transport.*", "Discord alerts", "Discord transport needs administrator attention", "administrators", new(), [new("Open Discord settings")])
         ]));
         services.AddSingleton(sp => new BridgeStore(Path.Combine(sp.GetRequiredService<IApplicationPaths>().PluginConfigurationsPath, "DiscordBridge")));
         services.AddSingleton<BridgeRuntime>();
-        services.AddSingleton<Jellyfin.Plugin.PrivateSyncPlay.NativeWebStyles>();
+        services.AddKeyedSingleton<Func<Guid,int,int,bool>>(DiscordBridgeClient.InvitePolicyKey,(sp,_) => (user,uses,minutes) => {
+            var c=sp.GetRequiredService<BridgeStore>().Read().Settings;
+            return c.Enabled && BridgePermissions.Permitted(c,"invite.create",user) && uses>=1 && uses<=c.InviteMaxUses && minutes>=15 && minutes<=c.InviteMaxExpiryMinutes;
+        });
+        services.AddKeyedSingleton<Func<Guid, string, bool>>(DiscordBridgeClient.PermissionKey, (sp, _) => (user, action) => {
+            var config = sp.GetRequiredService<BridgeStore>().Read().Settings;
+            return BridgePermissions.Permitted(config, action, user);
+        });
         services.AddHostedService(sp => sp.GetRequiredService<BridgeRuntime>());
         services.AddPrivateSyncPlayClient();
         services.AddSingleton<WatchPartyCommands>();

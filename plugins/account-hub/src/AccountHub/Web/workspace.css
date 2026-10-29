@@ -8,8 +8,37 @@
 .accountHubPage .hubGrid, .accountHubDialog .hubGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18em), 1fr)); gap: 1em; }
 .accountHubPage .hubField, .accountHubDialog .hubField { min-width: 0; }
 .accountHubPage .hubActions { display: flex; flex-wrap: wrap; gap: .5em; }
+.accountHubPage .hubToolbar > .hubField { flex: 1 1 15rem; }
+.accountHubPage .hubToolbar > *, .accountHubPage .hubActions > * { min-width: 0; max-width: 100%; }
+.accountHubPage .hubActions button, .accountHubPage .hubToolbar button, .accountHubDialog button, .accountHubPublic button { white-space: normal; overflow-wrap: anywhere; }
+.accountHubDialog { color: inherit; font: inherit; box-sizing: border-box; width: min(56em, 92vw); }
+.accountHubDialog .hubGrid { margin-block: 1rem; }
+.accountHubDialog .hubTableWrap { max-width: 100%; overflow-x: auto; }
+.accountHubDialog .hubTable { width: 100%; border-collapse: collapse; }
+.accountHubDialog .hubTable th, .accountHubDialog .hubTable td { padding: .6em; text-align: start; vertical-align: top; overflow-wrap: anywhere; }
+.accountHubPage fieldset.hubGrid { min-inline-size: 0; }
+.accountHubPage fieldset.hubGrid > legend { grid-column: 1 / -1; }
+.accountHubPage .hubField input:not([type=checkbox]), .accountHubPage .hubField select, .accountHubDialog .hubField input:not([type=checkbox]) { width: 100%; box-sizing: border-box; }
 .accountHubDialog { max-width: min(56em, 92vw); max-height: 85vh; overflow: auto; padding: 1.5em; }
 .accountHubPage .hubSummary, .accountHubPublic .hubSummary { white-space: pre-wrap; overflow-wrap: anywhere; }
-.accountHubPublic { max-width: 42em; margin: 2em auto; padding: 1.5em; }
+.accountHubPublic { box-sizing: border-box; width: calc(100% - 2rem); max-width: 30rem; margin: clamp(1rem, 8vh, 5rem) auto; padding: clamp(1rem, 4vw, 2rem); overflow-wrap: anywhere; }
+.accountHubPublic h1 { font-size: 1.7em; margin-block: 0 .75em; }
+.accountHubPublic .hubPublicStatus { line-height: 1.5; margin-block: 0 1.5rem; }
+.accountHubPublic .hubPublicContent { display: flex; flex-direction: column; align-items: stretch; gap: 1rem; }
+.accountHubPublic .hubPublicSignIn { align-self: start; }
+.accountHubPublic form { margin: 0; }
+.accountHubPublic .hubPublicAccounts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .65rem 1rem; margin: 0; padding-block: .5rem; }
+.accountHubPublic .hubPublicAccounts dt { opacity: .7; }
+.accountHubPublic .hubPublicAccounts dd { margin: 0; }
+.accountHubPublic input { box-sizing: border-box; width: 100%; max-width: 100%; }
+.accountHubPublic button { max-width: 100%; min-height: 2.75em; }
+.accountHubPublic .inputLabel { display: block; margin-block-end: .4em; }
+@media (max-width: 600px) {
+    .accountHubDialog { padding: 1rem; max-height: 85dvh; }
+    .accountHubDialog .hubGrid { grid-template-columns: minmax(0, 1fr); }
+    .accountHubPublic .hubPublicAccounts { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+    .accountHubPublic .hubPublicAccounts dd { margin-block-end: .75rem; }
+    .accountHubPublic form button { width: 100%; margin-inline: 0; }
+}
 .accountHubPublic .inputContainer { margin-block-end: 1em; }
 .accountHubPage [hidden], .accountHubPublic [hidden] { display: none !important; }

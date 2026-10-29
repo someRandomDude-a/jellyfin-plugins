@@ -44,7 +44,7 @@ public sealed class HubIntegration(PartyStore store, HubOutbox outbox, AccountHu
     {
         var config = configuration();
         if (config.NotificationMode != NotificationMode.Disabled && (config.NotificationMode == NotificationMode.Local || !config.HubIntegrationEnabled))
-            NativeNotice(value.Type, value.Owner == Guid.Empty ? policies.Administrators() : [value.Owner], "A watch party event occurred. Open Private SyncPlay for details.");
+            NativeNotice(value.Type, value.Owner == Guid.Empty ? policies.Administrators() : [value.Owner], WatchPartyNotice.Text(value.Type,value.GuestLabel,value.Reason).Body);
         Publish(value);
     }
     private void NativeNotice(string type, Guid[] audience, string text)
@@ -91,11 +91,13 @@ public sealed class HubIntegration(PartyStore store, HubOutbox outbox, AccountHu
                     "party.ended" => value.Participants.Append(value.Owner).Concat(policies.Administrators()).ToArray(),
                     _ => new[] { value.Owner }.Concat(policies.Administrators()).ToArray()
                 };
-                var noticeMetadata = new Dictionary<string, string> { ["partyId"] = value.PartyId.ToString("D") };
+                var noticeMetadata = new Dictionary<string, string>();
+                if(value.PartyId!=Guid.Empty)noticeMetadata["partyId"]=value.PartyId.ToString("D");
                 if (value.GuestLabel is not null) noticeMetadata["guestLabel"] = value.GuestLabel;
                 if (value.Reason is not null) noticeMetadata["reason"] = value.Reason;
+                var text=WatchPartyNotice.Text(value.Type,value.GuestLabel,value.Reason);
                 var notification = new { schemaVersion = 1, eventId = id, source = "private-syncplay", type = value.Type, severity = "info",
-                    title = "Watch party update", body = value.Type == "party.guest.joined" ? value.GuestLabel + " joined a watch party." : "A watch party event occurred. Open Private SyncPlay for details.",
+                    title = text.Title, body = text.Body,
                     audience = participants.Where(u => u != Guid.Empty).Distinct().ToArray(), adminOnly = false, dedupeKey = "syncplay:" + id,
                     occurredAt = now, correlationId = id, metadata = noticeMetadata };
                 Queue(id, "notification", JsonSerializer.Serialize(notification, HubWire.Json), now, TimeSpan.FromMinutes(2));

@@ -8,6 +8,31 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
+test('finished-viewer lists offer a requester metadata membership operand without requiring JSON',async()=>{
+    const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
+    try{
+        w.RemovalMetadataCatalog=[{id:'jellyfin.allEpisodesSeenBy',source:'jellyfin',label:'Every episode watched by',type:'list',elementType:'user',operators:['contains','not-contains'],conversions:['count']},{id:'seerr.requesterId',source:'seerr',label:'Requester',type:'user',operators:['equals','not-equals']},{id:'title',source:'jellyfin',label:'Title',type:'text',operators:['equals']}];
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        const rule={match:'all',conditions:[{field:'jellyfin.allEpisodesSeenBy',operator:'contains',value:''}]};w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{});
+        const operand=w.document.querySelector('[aria-label="Comparison operand"]');operand.value='metadata';operand.dispatchEvent(new w.Event('change'));
+        const second=w.document.querySelector('[aria-label="Second metadata field"]');assert.deepEqual([...second.options].map(o=>o.value),['','seerr.requesterId']);second.value='seerr.requesterId';second.dispatchEvent(new w.Event('change'));
+        assert.equal(rule.conditions[0].referenceField,'seerr.requesterId');assert.equal(w.document.querySelector('[aria-label="Condition value"]'),null);w.RemovalCircuit.check(rule.circuit);
+    }finally{w.close();}
+});
+test('date conversion editor wires a second source and keeps numeric comparisons numeric',async()=>{
+    const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
+    try{
+        w.RemovalMetadataCatalog=[{id:'added',source:'jellyfin',label:'Added',type:'date',operators:['before','older-days'],conversions:['age-days','difference-days']},{id:'radarr.added',source:'radarr',label:'Radarr added',type:'date',operators:['before','older-days']}];
+        w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
+        const rule={match:'all',conditions:[{field:'added',operator:'older-days',value:30}]};w.RemovalCircuit.mount(w.document.querySelector('main'),rule,()=>{});
+        const select=(label,value)=>{const input=w.document.querySelector('[aria-label="'+label+'"]');assert(input);input.value=value;input.dispatchEvent(new w.Event('change'));};
+        select('Metadata conversion','difference-days');select('Second metadata field','radarr.added');
+        const condition=rule.circuit.nodes.find(n=>n.kind==='condition');assert.equal(condition.condition.conversion,'difference-days');assert.equal(condition.condition.referenceField,'radarr.added');assert.equal(rule.circuit.nodes.find(n=>n.id===condition.inputs[1]).source,'radarr');
+        select('Condition comparison','equals');assert.equal(w.document.querySelector('[aria-label="Condition value"]').type,'number');
+        w.RemovalCircuit.check(rule.circuit);select('Metadata conversion','none');assert.equal(condition.inputs.length,1);assert.equal(condition.condition.referenceField,undefined);
+        assert(w.document.querySelector('[aria-label="Metadata field"]'));assert([...w.document.querySelectorAll('button')].some(b=>b.textContent==='Arrange blocks'));
+    }finally{w.close();}
+});
 test('Automation chrome defers surfaces and typography to native skins',async()=>{
     const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
     assert(!/#151a24|#e3e9f3|#182131|#252e3e|font-family\s*:/i.test(html));
@@ -246,6 +271,7 @@ test('Notifications page does not remount during initial viewshow or discard an 
     const html = await source('plugins/notifications/src/Jellyfin.Plugin.Notifications/Web/admin.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const w = dom.window, page = w.document.querySelector('#notificationsAdmin'); let release, mounts = 0, cleanups = 0;
+    w.ApiClient={getUrl:path=>path};w.NotificationCard={};w.NotificationStudio={};
     const gate = new Promise(resolve => { release = resolve; });
     w.AccountHubNotificationSettings = { mount: async () => { mounts++; await gate; return () => { cleanups++; }; } };
     w.eval(w.document.querySelector('script').textContent);
@@ -278,14 +304,15 @@ test('Opening the catalog before initial settings finish does not trigger a seco
         return { deliveries: [] };
     });
     const panel = root.querySelector('details'); panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn();
-    const density = panel.querySelector('select'); assert(density); assert.equal(reads, 1);
+    const layoutSelect=()=>w.document.getElementById([...panel.querySelectorAll('label')].find(label=>label.textContent==='Layout').htmlFor);
+    const density = layoutSelect(); assert(density); assert.equal(reads, 1);
     assert.equal(root.getAttribute('aria-busy'), 'true'); assert(density.matches(':disabled'));
     density.value = 'standard'; // Also prove DOM identity/draft preservation independently of disabled controls.
     releaseSettings(); const cleanup = await mounted;
-    assert.equal(reads, 1); assert.equal(panel.querySelector('select'), density); assert.equal(density.value, 'standard');
+    assert.equal(reads, 1); assert.equal(layoutSelect(), density); assert.equal(density.value, 'standard');
     assert.equal(root.getAttribute('aria-busy'), 'false'); assert(!density.matches(':disabled'));
     const reload = [...root.querySelectorAll('button')].find(button => button.textContent === 'Reload'); reload.click(); await turn(); await turn();
-    assert.equal(reads, 2); assert.notEqual(panel.querySelector('select'), density); // Explicit reload still discards drafts.
+    assert.equal(reads, 2); assert.notEqual(layoutSelect(), density); // Explicit reload still discards drafts.
     cleanup(); dom.window.close();
 });
 test('Aborting a pending notification settings mount cannot clear the next editor', async () => {
@@ -350,15 +377,15 @@ test('Discord transport settings stay enabled without Hub, while dependent comma
     assert.match(window.document.querySelector('.bridgeIdentityReason').textContent, /Install Account Hub/); assert.match(window.document.querySelector('.bridgePartyReason').textContent, /Private SyncPlay/); dom.window.close();
 });
 test('Library inbox controls remain native and independent when Discord is missing', async () => {
-    const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
-    const { window } = dom;
-    window.fetch = async url => response(url.endsWith('/dependencies') ? { items: [{ id: 'discord', available: false, reason: 'Bridge is missing.', fix: 'Install Discord Bridge and restart Jellyfin.' }] } : url.endsWith('/library/settings') ? { settings: { revision: 0, enabled: false, episodes: true, movies: true }, health: { retained: 0, pending: 0 } } : url.includes('/users?') ? { items: [], total: 0 } : { revision: 0 });
-    let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = workspaceScript(code); window.eval(code);
-    const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
-    const tab = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Library'); assert.equal(tab.disabled, false); tab.click(); await turn(); await turn();
-    assert.equal(root.querySelectorAll('.hubContent input.emby-checkbox').length, 3);
-    const buttons = [...root.querySelectorAll('.hubContent button')]; assert.equal(buttons.find(n => n.textContent === 'Save library notifications').disabled, false);
-    const discord = buttons.find(n => n.textContent === 'Open Discord library announcement settings'); assert(discord.disabled); assert.match(discord.title, /Install Discord Bridge/); dom.window.close();
+    const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
+    const { window } = dom,root=window.document.querySelector('main'),writes=[];window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
+    const cleanup=await window.AccountHubNotificationSettings.mount(root,async(path,method,body)=>{
+        if(path.endsWith('/library')){if(method==='PUT')writes.push(body);return{settings:{revision:2,enabled:false,episodes:true,movies:true,libraryIds:[]},health:{retained:0,pending:0,uncertainDiscord:0},libraries:[{id:'library-id',name:'<b>Not HTML</b>'}]};}
+        if(path.endsWith('/types'))return{catalogs:[]};if(path.includes('deliveries'))return{deliveries:[]};return{revision:0,routes:[]};
+    });
+    try{const panel=[...root.querySelectorAll('section')].find(n=>n.textContent.includes('Library events'));assert.equal(panel.hidden,false);assert.equal(panel.querySelectorAll('input[type=checkbox]').length,3);assert.equal(panel.querySelector('select').options[0].textContent,'<b>Not HTML</b>');
+        const save=[...panel.querySelectorAll('button')].find(n=>n.textContent==='Save library events');assert.equal(save.disabled,false);save.click();await turn();assert.equal(writes[0].revision,2);
+    }finally{cleanup();dom.window.close();}
 });
 test('Discord library controls load explicit scopes safely, without requiring public invitation URL', async () => {
     const html = await source('plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Web/settings.html');
@@ -422,7 +449,7 @@ test('Late Notifications mount cleanup and stale requests cannot affect a newer 
     const secret = f.content.querySelector('input[type=password]'); secret.value = 'new-view-secret';
     release(); await turn(); await turn();
     assert.equal(disposed, 1);
-    assert.equal(f.content.querySelector('h2').textContent, 'Account Hub settings');
+    assert.equal(f.content.querySelector('h2').textContent, 'Account settings');
     assert.equal(secret.value, 'new-view-secret');
     await f.tab('People'); assert.equal(disposed, 1);
     assert.equal(secret.value, '');
@@ -493,5 +520,5 @@ test('Deletion Queue retains native surfaces and scoped semantic selection tints
     const panel = dom.window.getComputedStyle(dom.window.document.querySelector('dialog')), card = dom.window.getComputedStyle(dom.window.document.querySelector('button'));
     assert.equal(panel.backgroundColor, 'rgb(10, 20, 30)'); assert.equal(panel.color, 'rgb(230, 220, 210)'); assert.equal(panel.borderRadius, '1rem');
     assert.equal(card.backgroundColor, 'rgb(40, 50, 60)'); assert.equal(card.color, 'rgb(210, 200, 190)'); assert.equal(card.borderRadius, '7px');
-    assert.equal(panel.position, 'fixed'); assert.equal(card.position, '');
+    assert.equal(panel.position, 'fixed'); assert.equal(card.position, 'static');
 });

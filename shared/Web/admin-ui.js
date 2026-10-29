@@ -32,17 +32,23 @@
     .suiteAdmin td, .suiteAdmin th { padding: .8rem; border-bottom: 1px solid var(--suite-line); vertical-align: top; }
     .suiteAdmin tbody tr:hover { background: var(--suite-surface); }
     .suiteAdmin details.suiteCard > summary { cursor: pointer; font-weight: 600; padding-block: .3rem; }
+    .suiteAdmin .suiteDiagnostics > form { border: 0; padding: 0; background: none; }
+    .suiteAdmin .suiteDiagnostics summary, .suiteAdmin .suiteDiagnostics dd { overflow-wrap: anywhere; }
+    .suiteAdmin .suiteDiagnostics dl { display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr); gap: .5rem 1rem; }
+    .suiteAdmin .suiteDiagnostics dd { margin: 0; white-space: pre-wrap; }
+    @media (max-width: 600px) { .suiteAdmin .suiteDiagnostics dl { grid-template-columns: minmax(0, 1fr); } }
     .suiteAdmin pre, .suiteAdmin textarea[data-json] { border: 1px solid var(--suite-line); border-radius: .65rem; padding: 1rem; background: var(--suite-surface); font: .85rem/1.65 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; max-height: 28rem; tab-size: 2; }
     .suiteAdmin pre code { font: inherit; color: inherit; }
     .suiteAdmin .suiteHelp { display: inline-block; vertical-align: middle; margin-inline-start: .45rem; position: relative; font-size: 1rem; font-weight: normal; letter-spacing: normal; }
     .suiteAdmin .suiteHelpButton { display: inline-grid; place-items: center; padding: 0; margin: 0; min-width: 0; width: 1.4rem; height: 1.4rem; border: 1px solid var(--suite-line); border-radius: 50%; background: transparent; color: inherit; font: inherit; cursor: help; }
     .suiteAdmin .suiteHelpText { position: absolute; z-index: 100; inset-inline-start: 0; inset-block-start: 100%; width: min(20rem, 65vw); box-sizing: border-box; padding: .85rem 1rem; border: 1px solid var(--suite-line); border-radius: .65rem; background: var(--theme-background-color, Canvas); color: var(--theme-text-color, CanvasText); box-shadow: 0 .4rem 1.5rem #0004; font-size: .9rem; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
     .suiteAdmin .suiteCodeTools { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .9em; }
-    .suiteAdmin .suiteIntegrationBadges, .suiteAdmin .suiteJobBadges { display:flex; flex-wrap:wrap; gap:.55rem; margin-block:1rem; }
+    .suiteAdmin .suiteIntegrationBadges, .suiteAdmin .suiteJobBadges { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr)); gap:.55rem; margin-block:1rem; }
+    .suiteAdmin .suiteIntegrationBadge, .suiteAdmin .suiteJobBadge { box-sizing:border-box; width:100%; }
     .suiteAdmin .suiteIntegrationBadge, .suiteAdmin .suiteJobBadge { display:flex; align-items:center; gap:.65rem; border:1px solid var(--suite-line); border-radius:.8rem; background:var(--suite-surface); color:inherit; padding:.65rem .85rem; text-align:start; text-decoration:none; font:inherit; min-width:0; max-width:100%; cursor:pointer; }
     .suiteAdmin .suiteBadgeDot { width:.55rem; height:.55rem; border-radius:50%; background:currentColor; opacity:.45; flex:none; }
-    .suiteAdmin [data-health=ok] .suiteBadgeDot { background:#35b879; opacity:1; }
-    .suiteAdmin [data-health=bad] .suiteBadgeDot { background:#de6565; opacity:1; }
+    .suiteAdmin [data-health=ok] .suiteBadgeDot { background:var(--suite-success-color,#35b879); opacity:1; }
+    .suiteAdmin [data-health=bad] .suiteBadgeDot { background:var(--suite-danger-color,#de6565); opacity:1; }
     .suiteAdmin .suiteBadgeTitle { display:block; font-size:.85rem; font-weight:600; overflow-wrap:anywhere; }
     .suiteAdmin .suiteBadgeMeta { display:block; font-size:.73rem; opacity:.7; margin-top:.2rem; overflow-wrap:anywhere; }
     .suiteAdmin .suiteBadgeDetail { border-inline-start:3px solid var(--theme-primary-color,currentColor); padding:.7rem 1rem; font-size:.9rem; line-height:1.6; background:var(--suite-surface); overflow-wrap:anywhere; }
@@ -67,8 +73,12 @@
         button.setAttribute('aria-describedby', tip.id); button.setAttribute('aria-expanded', 'false');
         const show = () => {
             tip.hidden = false; button.setAttribute('aria-expanded', 'true'); tip.style.transform = '';
+            // A transform can move the painted bubble inside the viewport while
+            // its original box still expands document scroll overflow. Position
+            // the actual absolute box instead, including in RTL layouts.
+            tip.style.insetInlineStart = 'auto'; tip.style.right = 'auto'; tip.style.left = '0px';
             const box = tip.getBoundingClientRect(), left = Math.max(8, Math.min(box.left, window.innerWidth - box.width - 8));
-            tip.style.transform = 'translateX(' + (left - box.left) + 'px)';
+            tip.style.left = (left - box.left) + 'px';
         };
         const hide = () => { tip.hidden = true; button.setAttribute('aria-expanded', 'false'); };
         button.onclick = show; wrap.onmouseenter = show; wrap.onmouseleave = () => { if (!wrap.contains(document.activeElement)) hide(); };
@@ -167,11 +177,81 @@
         }
         entry(host,Array.isArray(value)?'Entries':'Object',value,0);
     }
+    let diagnosticControlSequence=0;
+    function diagnostics(root){
+        if(!root.dataset.suitePlugin)return;
+        const pages={'account-hub':'AccountHub','notifications':'Notifications','discord-bridge':'DiscordBridge','private-syncplay':'privateSyncPlay','deletion-queue':'DeletionQueueAdmin','automatic-deletion-requests':'AutomaticDeletionRequests'};
+        const owner={discord:'discord-bridge',automatic:'automatic-deletion-requests'}[root.dataset.suitePlugin]||root.dataset.suitePlugin;
+        const create=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
+        const field=(caption,control)=>{
+            const select=control.tagName==='SELECT',wrapper=create('div'),label=create('label',caption);wrapper.className=select?'selectContainer':'inputContainer';
+            control.id='suiteDiagnosticControl-'+(++diagnosticControlSequence);label.htmlFor=control.id;label.className=select?'selectLabel selectLabelUnfocused':'inputLabel inputLabelUnfocused';control.labelElement=label;
+            control.addEventListener('focus',()=>{label.classList.add(select?'selectLabelFocused':'inputLabelFocused');label.classList.remove(select?'selectLabelUnfocused':'inputLabelUnfocused');});
+            control.addEventListener('blur',()=>{label.classList.remove(select?'selectLabelFocused':'inputLabelFocused');label.classList.add(select?'selectLabelUnfocused':'inputLabelUnfocused');});
+            wrapper.append(label,control);
+            if(select){control.classList.add('emby-select-withcolor');const arrow=create('div'),icon=create('span');arrow.className='selectArrowContainer';arrow.setAttribute('aria-hidden','true');icon.className='selectArrow material-icons keyboard_arrow_down';arrow.append(icon);wrapper.append(arrow);}
+            return wrapper;
+        };
+        const panel=create('details');panel.className='suiteCard suiteDiagnostics';panel.append(create('summary','Errors & diagnostics'));
+        const form=create('form');form.className='hubGrid';const input=create('input');input.className='emby-input';input.setAttribute('is','emby-input');input.setAttribute('aria-label','Error ID');input.placeholder='Error ID (optional)';input.maxLength=36;input.autocomplete='off';
+        const source=create('select'),level=create('select');for(const [select,label]of [[source,'Plugin'],[level,'Level']]){select.className='emby-select';select.setAttribute('is','emby-select');select.setAttribute('aria-label',label);const option=create('option','All '+label.toLowerCase()+'s');option.value='';select.append(option);}
+        for(const value of ['debug','info','warning','error','critical']){const option=create('option',value);option.value=value;level.append(option);}
+        const button=(text,action)=>{const node=create('button',text);node.type='button';node.className='emby-button raised';node.setAttribute('is','emby-button');node.onclick=action;return node;};
+        const status=create('p'),list=create('div'),requests=new Set();status.setAttribute('role','status');let revision,skip=0,generation=0,active=true,busy=false,pendingLoad=false,identityToken=window.ApiClient?.accessToken?.();
+        const minimum=create('select');minimum.className='emby-select';minimum.setAttribute('is','emby-select');minimum.setAttribute('aria-label','Minimum recorded diagnostic level');for(const value of ['debug','info','warning','error','critical']){const option=create('option',value);option.value=value;minimum.append(option);}
+        const settings=create('details');settings.append(create('summary','Recording settings'),create('p','One shared database for installed plugins. Credentials, request bodies, private links and exception messages are not recorded. The minimum level controls background logs; user-facing failures remain searchable. At most 10,000 records are retained. Clearing diagnostics does not retry actions or alter plugin state.'),field('Minimum recorded diagnostic level',minimum));
+        const confirmation=create('input');confirmation.className='emby-input';confirmation.setAttribute('is','emby-input');confirmation.setAttribute('aria-label','Type CLEAR DIAGNOSTICS to clear selected errors');confirmation.placeholder='Type CLEAR DIAGNOSTICS';confirmation.autocomplete='off';
+        const current=()=>active&&root.isConnected;
+        async function request(path,body){
+            identityChanged();const token=window.ApiClient?.accessToken?.();if(!token)throw Error();const epoch=generation,controller=new AbortController();requests.add(controller);const deadline=setTimeout(()=>controller.abort(),15000);
+            try{
+                const response=await fetch(window.ApiClient.getUrl('SuiteDiagnostics/api/v1/'+path),{method:body?'POST':'GET',headers:{Authorization:'MediaBrowser Token="'+token+'"',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,credentials:'omit',cache:'no-store',signal:controller.signal});
+                const value=await response.json();if(!current()||epoch!==generation)throw Error();if(token!==window.ApiClient?.accessToken?.()){identityChanged();throw Error();}if(!response.ok||!value.ok){list.replaceChildren();revision=undefined;throw Error();}return value.data;
+            }finally{clearTimeout(deadline);requests.delete(controller);}
+        }
+        async function load(){
+            identityChanged();if(!current())return;if(busy){pendingLoad=true;return;}if(input.value&&!/^[a-f0-9-]{36}$/i.test(input.value)){status.textContent='Enter a valid error ID.';return;}
+            busy=true;const epoch=generation,query={id:input.value,source:source.value,level:level.value,skip:String(skip)};status.textContent='Loading diagnostics…';
+            try{
+                const data=await request('errors?'+new URLSearchParams(query));
+                if(!current()||epoch!==generation||pendingLoad)return;
+                const installed=new Map((data.plugins||[]).map(plugin=>[plugin.source,plugin.page]));const chosen=source.value;source.replaceChildren();const all=create('option','All plugins');all.value='';source.append(all);for(const plugin of data.plugins||[]){const option=create('option',plugin.source);option.value=plugin.source;source.append(option);}source.value=chosen;
+                if(query.id&&data.items.length===1){const row=data.items[0];if(row.source!==owner&&installed.has(row.source)&&pages[row.source]===installed.get(row.source)){location.hash='#/configurationpage?name='+encodeURIComponent(pages[row.source])+'&suiteError='+encodeURIComponent(row.id);return;}}
+                revision=data.settings.revision;minimum.value=data.settings.minimumLevel;list.replaceChildren();
+                for(const row of data.items){
+                    const entry=create('details'),summary=create('summary'),check=create('input');check.type='checkbox';check.dataset.diagnosticId=row.id;check.setAttribute('aria-label','Select error '+row.id);
+                    summary.textContent=new Date(row.createdAt).toLocaleString()+' · '+row.source+' · '+row.level+' · '+row.code;entry.append(summary);
+                    if(!installed.has(row.source))entry.append(create('p','The owning plugin is not currently installed. Its retained diagnostics remain available here.'));
+                    const selected=create('label'),caption=create('span','Select this record'),outline=create('span'),checked=create('span'),unchecked=create('span');selected.className='emby-checkbox-label';caption.className='checkboxLabel';outline.className='checkboxOutline';outline.setAttribute('aria-hidden','true');checked.className='material-icons checkboxIcon checkboxIcon-checked check';unchecked.className='material-icons checkboxIcon checkboxIcon-unchecked';outline.append(checked,unchecked);check.className='emby-checkbox';check.setAttribute('data-embycheckbox','true');check.setAttribute('is','emby-checkbox');selected.append(check,caption,outline);entry.append(selected);
+                    const details=create('dl');for(const [label,value]of [['Error ID',row.id],['Plugin',row.source],['Plugin version',row.pluginVersion],['Level',row.level],['Code',row.code],['Status',row.statusCode],['Operation',row.operation],['Exception type',row.exceptionType]])if(value){details.append(create('dt',label),create('dd',String(value)));}entry.append(details);
+                    if(row.frames){const frames=create('pre',row.frames);frames.dataset.suiteJsonSkip='true';entry.append(frames);}list.append(entry);
+                }
+                status.textContent=data.items.length?data.items.length+' records shown.':'No matching retained records. Check the ID, filters and recording level.';older.disabled=data.items.length<100;
+            }catch{if(current()&&epoch===generation&&!pendingLoad)status.textContent='Diagnostics are unavailable or administrator authorization is required. No plugin actions were retried.';}
+            finally{if(epoch===generation){busy=false;if(pendingLoad){pendingLoad=false;void load();}}}
+        }
+        form.onsubmit=event=>{event.preventDefault();event.stopPropagation();skip=0;void load();};const search=button('Search errors');search.type='submit';form.append(field('Error ID',input),field('Plugin',source),field('Level',level),search);
+        settings.append(button('Save recording level',async()=>{try{await request('settings',{revision,minimumLevel:minimum.value});status.textContent='Recording level saved.';await load();}catch{if(current())status.textContent='Could not confirm the recording level change. Reload and check administrator authorization before trying again.';}}));
+        const older=button('Older errors',()=>{skip+=100;void load();});older.disabled=true;
+        const clear=button('Clear selected errors',async()=>{
+            if(confirmation.value!=='CLEAR DIAGNOSTICS'){status.textContent='Type CLEAR DIAGNOSTICS to confirm clearing the selected records.';return;}
+            const ids=[...list.querySelectorAll('input[data-diagnostic-id]:checked')].map(node=>node.dataset.diagnosticId);if(!ids.length){status.textContent='Select the records to clear.';return;}
+            clear.disabled=true;try{await request('clear',{confirmation:confirmation.value,ids});confirmation.value='';await load();}catch{if(current())status.textContent='Could not confirm clearing the records. Reload diagnostics before trying again.';}finally{clear.disabled=false;}
+        });
+        panel.append(form,status,list,older,settings,field('Type CLEAR DIAGNOSTICS to clear selected errors',confirmation),clear);(root.querySelector('.content-primary')||root).append(panel);
+        panel.addEventListener('toggle',()=>{if(panel.open&&revision===undefined)void load();});
+        const hide=()=>{active=false;generation++;busy=false;pendingLoad=false;for(const request of requests)request.abort();requests.clear();list.replaceChildren();confirmation.value='';identityToken=undefined;};
+        root.addEventListener('viewhide',hide);root.addEventListener('viewdestroy',()=>{hide();window.removeEventListener('storage',identityChanged);window.removeEventListener('focus',identityChanged);});root.addEventListener('viewshow',()=>{active=true;generation++;busy=false;pendingLoad=false;identityToken=window.ApiClient?.accessToken?.();restoreSearch();if(panel.open)void load();});
+        function identityChanged(){const token=window.ApiClient?.accessToken?.();if(token===identityToken)return;identityToken=token;generation++;busy=false;pendingLoad=false;for(const request of requests)request.abort();requests.clear();list.replaceChildren();confirmation.value='';revision=undefined;status.textContent='Your session changed. Reopen diagnostics with an administrator account.';}window.addEventListener('storage',identityChanged);window.addEventListener('focus',identityChanged);
+        function restoreSearch(){const query=new URLSearchParams(location.hash.split('?')[1]||''),id=query.get('suiteError');if(query.get('name')!==pages[owner]||!id||!/^[a-f0-9-]{36}$/i.test(id))return false;input.value=id;skip=0;panel.open=true;panel.scrollIntoView?.({block:'start'});return true;}
+        if(restoreSearch())void load();
+    }
     const mounted = new WeakSet();
     function mount() {
         for (const root of document.querySelectorAll('.suiteAdmin')) {
             if (mounted.has(root)) continue; mounted.add(root);
             statusWidgets(root);
+            diagnostics(root);
             const viewers=new WeakMap(),parts=new Set(),editPreviews=new Set();
             function showJson(pre){
                 if(pre.dataset.suiteJsonSkip)return;
@@ -225,5 +305,7 @@
             root.addEventListener('viewshow', start); root.addEventListener('viewhide', stop); root.addEventListener('viewdestroy', stop); start();
         }
     }
-    window.SuiteAdminUI = { mount, help, integration }; mount();
+    const failure=(body,response,message='Unable to complete this request. Contact an administrator.')=>{const nature=body?.error?.nature||body?.nature;const safe={validation:'Some details are invalid. Check your entries and try again.',username:'Invalid or unavailable username. Choose another username.',authentication:'Your session needs attention. Complete Jellyfin sign-in and verification to continue.',authorization:'You do not have permission to perform this action.',expired:'This item or link is unavailable or has expired.',changed:'This item changed. Refresh and review it before trying again.',rate_limited:'Too many attempts. Please wait before trying again.',unavailable:'This service is currently unavailable. Contact an administrator if the problem continues.',action_unavailable:'This action is unavailable for this item.',uncertain:'We could not confirm the result. Check the current state or contact an administrator before trying again.'};const id=body?.error?.errorId||body?.errorId||body?.data?.errorId||response?.headers?.get?.('X-Suite-Error-Id')||response?.getResponseHeader?.('X-Suite-Error-Id');return (Object.hasOwn(safe,nature)?safe[nature]:message)+(typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)?' Error ID: '+id:'');};
+    const reportError=(root,error)=>{const message=failure(error?.responseJSON||error,error);if(!message.includes('Error ID:')||!root?.isConnected)return;const status=root.querySelector('.suiteRequestError')||document.createElement('p');status.className='suiteRequestError';status.setAttribute('role','alert');status.textContent=message;(root.querySelector('.content-primary')||root).append(status);};
+    window.SuiteAdminUI = { mount, help, integration, failure, reportError }; mount();
 })();

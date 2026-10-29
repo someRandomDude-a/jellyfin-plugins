@@ -67,7 +67,12 @@ public sealed class Activity
 
 public sealed record Consent(Answer Answer, string Snapshot, DateTimeOffset At);
 public sealed record AdministratorApproval(Guid UserId, string Snapshot, DateTimeOffset At);
-public sealed record ExecutionClaim(Guid Id, DateTimeOffset At, string TargetFingerprint, long ProposalRevision);
+public sealed record ExecutionClaim(Guid Id, DateTimeOffset At, string TargetFingerprint, long ProposalRevision)
+{
+    public long? ActivityGeneration { get; init; }
+}
+// Trusted, read-only upstream observation; never a request-body deletion grant.
+public sealed record ExternalTargetChange(string Reason);
 
 public sealed class Proposal
 {
@@ -75,8 +80,13 @@ public sealed class Proposal
     public string? AutomaticRuleId { get; set; }
     public Guid? AutomaticAuthorizerId { get; set; }
     public Guid? RequesterId { get; set; }
+    public Guid? AdministratorRequestedBy { get; set; }
+    public bool CreatorAutoApprovalDisabled { get; set; }
+    public string? LastApprovalNoticeSnapshot { get; set; }
     public bool Inactive { get; set; }
     public DateTimeOffset? ActivityVerifiedAt { get; set; }
+    public DateTimeOffset? LastCheckedAt { get; set; }
+    public EvaluationEvidence? LastCheckEvidence { get; set; }
     public DateTimeOffset? ApprovalWaitingSince { get; set; }
     public DateTimeOffset? ApprovalDeadline { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -142,6 +152,7 @@ public sealed record EvaluationEvidence(
 {
     public bool AutomaticRuleVerified { get; init; }
     public bool NativeHistoryVerified { get; init; }
+    public bool AdministratorCreatorAuthorized { get; init; }
 }
 
 // Deliberately does not contain another user's identity, vote, activity, paths or request IDs.
@@ -158,6 +169,8 @@ public sealed record UserProposal(
     public DateTimeOffset? ScheduledFor { get; init; }
     public RemovalCheckpoint[] Timeline { get; init; } = [];
     public DateTimeOffset EvaluatedAt { get; init; }
+    public DateTimeOffset? LastCheckedAt { get; init; }
+    public string CheckRefreshHelp { get; init; } = "";
     public int ActivityWindowDays { get; init; }
     public int SafetyDelayHours { get; init; }
     public string? ClosedCheckpoint { get; init; }
@@ -167,6 +180,8 @@ public sealed record UserProposal(
     public string ConsentStatus { get; init; } = "Checking";
     public string ActivityStatus { get; init; } = "Checking";
     public string RequesterLabel { get; init; } = "Another requester";
+    public bool CanApprove { get; init; }
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]public string? AdministratorApprovalSnapshot { get; init; }
 }
 public sealed record RemovalCheckpoint(string Key, string Label, string State, DateTimeOffset? At = null)
 {

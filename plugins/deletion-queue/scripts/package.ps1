@@ -8,6 +8,8 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-common.ps1')
 $root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $root '../../scripts/test-targets.ps1')
+Initialize-TestTargets
 $metadata = Get-PluginReleaseMetadata -Root $root -Tag $Tag
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $root 'artifacts' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
@@ -31,7 +33,7 @@ if ($ContinuousIntegration) { $arguments += '-p:ContinuousIntegrationBuild=true'
 if ($LASTEXITCODE -ne 0) { throw 'Plugin publish failed.' }
 $native = if ($Runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' }
 $keep = @('Jellyfin.Plugin.DeletionQueue.dll', 'Jellyfin.Plugin.DeletionQueue.deps.json', 'DeletionQueue.Core.dll',
-    'DeletionQueue.Infrastructure.dll', 'AccountHub.Api.dll', 'Microsoft.Data.Sqlite.dll', 'SQLitePCLRaw.core.dll',
+    'DeletionQueue.Infrastructure.dll', 'AccountHub.Api.dll', 'Jellyfin.Diagnostics.dll', 'Microsoft.Data.Sqlite.dll', 'SQLitePCLRaw.core.dll',
     'SQLitePCLRaw.provider.e_sqlite3.dll', 'SQLitePCLRaw.batteries_v2.dll', $native)
 foreach ($file in $keep) {
     $path = Join-Path $publish $file

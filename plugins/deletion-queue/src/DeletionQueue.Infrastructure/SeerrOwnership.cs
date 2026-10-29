@@ -53,7 +53,7 @@ public static class SeerrOwnership
             if (!owners.TryGetValue(ownerId, out var mapped))
             {
                 var user = await loadUser(ownerId, ct);
-                if (!Guid.TryParse(Text(user, "jellyfinUserId"), out mapped)) return false;
+                if (Number(user, "id") != ownerId || !Guid.TryParse(Text(user, "jellyfinUserId"), out mapped) || mapped == Guid.Empty) return false;
                 owners[ownerId] = mapped;
             }
             if (mapped != caller) { if (series) return false; continue; }

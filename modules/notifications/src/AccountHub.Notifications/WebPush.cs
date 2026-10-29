@@ -9,17 +9,19 @@ public sealed record PushSubscription(string Endpoint,string P256dh,string Auth)
 public sealed record PushConfiguration(long Revision,bool Enabled,string PublicKey,string PrivateKey)
 {
     public string Subject{get;init;}="";
+    public bool DefaultOn { get; init; }
 }
 public sealed record PushTarget(string Id,Guid User,PushSubscription Subscription);
 public sealed record PushJob(string Id,Guid User,Guid NotificationId,Guid EventId,int Attempts);
 public interface IWebPushTransport
 {
-    Task<HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct);
+    Task<HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct,string urgency);
 }
 public sealed class WebPushTransport:IWebPushTransport
 {
-    public async Task<HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct){
+    public async Task<HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct,string urgency){
         Validation.Require(WebPush.AllowedEndpoint(endpoint),"Unsupported push service");
+        Validation.Require(urgency is "normal" or "high","Unsupported push urgency");
         using var handler=new SocketsHttpHandler{AllowAutoRedirect=false,UseCookies=false,UseProxy=false,ConnectTimeout=TimeSpan.FromSeconds(5)};
         handler.ConnectCallback=async(context,token)=>{
             var addresses=await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host,token);
@@ -29,7 +31,7 @@ public sealed class WebPushTransport:IWebPushTransport
         };
         using var client=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(10)};
         using var request=new HttpRequestMessage(HttpMethod.Post,endpoint){Content=new ByteArrayContent([])};
-        request.Headers.TryAddWithoutValidation("Authorization",authorization);request.Headers.Add("TTL","60");request.Headers.Add("Urgency","normal");
+        request.Headers.TryAddWithoutValidation("Authorization",authorization);request.Headers.Add("TTL","60");request.Headers.Add("Urgency",urgency);
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,ct);return response.StatusCode;
     }
 }
@@ -38,6 +40,17 @@ public sealed class WebPushTransport:IWebPushTransport
 // capabilities leave Jellyfin. A push always displays the same generic message.
 public sealed class WebPush(NotificationStore store,INotificationHost host,TimeProvider clock,IWebPushTransport? transport=null)
 {
+    // Only an origin is sent to the push provider: no paths, queries, credentials,
+    // forwarded-header parsing or client-supplied arbitrary contact URLs.
+    public static string AutomaticSubject(string? serverUrl,Microsoft.AspNetCore.Http.HttpRequest request){
+        if(Uri.TryCreate(serverUrl,UriKind.Absolute,out var configured)&&configured.Scheme=="https"&&configured.UserInfo.Length==0)
+            return configured.GetLeftPart(UriPartial.Authority)+"/";
+        if(!Uri.TryCreate(request.Scheme+"://"+request.Host.ToUriComponent(),UriKind.Absolute,out var client)||client.UserInfo.Length!=0||client.Scheme is not ("http" or "https"))
+            throw new NotificationException("invalid_request","Open Jellyfin using its normal server address to enable notifications.");
+        // The VAPID server identifier must be HTTPS, even when setup is done
+        // over a local HTTP connection. It is not a callback or redirect URL.
+        return new UriBuilder(client){Scheme="https",Port=client.IsDefaultPort?-1:client.Port}.Uri.GetLeftPart(UriPartial.Authority)+"/";
+    }
     public static string Encode(byte[] bytes)=>Convert.ToBase64String(bytes).TrimEnd('=').Replace('+','-').Replace('/','_');
     private static byte[] Decode(string text)=>Convert.FromBase64String(text.Replace('-','+').Replace('_','/')+new string('=',(4-text.Length%4)%4));
     public static bool AllowedEndpoint(string endpoint)=>Uri.TryCreate(endpoint,UriKind.Absolute,out var uri)&&uri.Scheme=="https"&&uri.Port==443&&uri.UserInfo.Length==0&&uri.Fragment.Length==0&&endpoint.Length<=2048&&
@@ -61,7 +74,9 @@ public sealed class WebPush(NotificationStore store,INotificationHost host,TimeP
             ct.ThrowIfCancellationRequested();
             if(budget.IsCancellationRequested)break;
             var entry=store.InboxEvent(job.User,job.NotificationId,await host.IsAdministratorAsync(job.User,ct));
-            if(entry is null||entry.EventId!=job.EventId||!await host.UserExistsAsync(job.User,ct)||!await host.CanAccessNotificationAsync(job.User,entry,ct)||!NotificationService.Enabled(store.Preferences(job.User),entry,"in-app",true)||!NotificationService.CategoryEnabled(store.Preferences(job.User),entry,"in-app")){store.CompletePush(job,true);continue;}
+            if(entry is null||entry.EventId!=job.EventId||!await host.UserExistsAsync(job.User,ct)||!await host.CanAccessNotificationAsync(job.User,entry,ct)||entry.Severity!="critical"&&(!NotificationService.Enabled(store.Preferences(job.User),entry,"in-app",NotificationService.DefaultsFor(entry,store.NotificationTypes())?.InApp??true)||!NotificationService.CategoryEnabled(store.Preferences(job.User),entry,"in-app"))){store.CompletePush(job,true);continue;}
+            var importance=NotificationService.Importance(store.Preferences(job.User),entry,NotificationService.DefaultsFor(entry,store.NotificationTypes())?.Importance);
+            if(importance is "silent" or "low"){store.CompletePush(job,true);continue;}
             var failed=false;
             foreach(var target in store.PushTargets(job.User)){
                 if(budget.IsCancellationRequested){failed=true;break;}
@@ -70,7 +85,7 @@ public sealed class WebPush(NotificationStore store,INotificationHost host,TimeP
                 if(!store.PushTargets(job.User).Any(t=>t.Id==target.Id))continue;
                 try{
                     if(!AllowedEndpoint(target.Subscription.Endpoint)){store.RemovePush(job.User,target.Id);continue;}
-                    var status=await (transport??new WebPushTransport()).SendAsync(target.Subscription.Endpoint,Authorization(config,target.Subscription.Endpoint,clock.GetUtcNow()),budget.Token);
+                    var status=await (transport??new WebPushTransport()).SendAsync(target.Subscription.Endpoint,Authorization(config,target.Subscription.Endpoint,clock.GetUtcNow()),budget.Token,importance=="high"?"high":"normal");
                     if(status is HttpStatusCode.Gone or HttpStatusCode.NotFound)store.RemovePush(job.User,target.Id);
                     else failed|=(int)status>=500||(int)status==429;
                 }catch(OperationCanceledException)when(ct.IsCancellationRequested){throw;}catch{failed=true;}

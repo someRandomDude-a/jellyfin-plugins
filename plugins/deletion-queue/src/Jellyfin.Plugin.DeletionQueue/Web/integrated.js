@@ -15,6 +15,7 @@
     };
     let sessionKey = '', epoch = 0, frame = 0, notices = [], noticeProblem = '', context = null, pollingEpoch = -1, lastPoll = 0;
     const requests = new Set();
+    const safeErrors = new WeakSet();
     const capabilities = new Map();
     const itemStates = new Map();
     let pendingRequestFocus = null, calendarData = null, calendarLoading = false, calendarReadAt = 0;
@@ -67,22 +68,11 @@
                 }
                 if (response.status === 401 || response.status === 403) resetPrivate();
                 const code = get(data, 'code');
-                const messages = {
-                    ProposalNotPermitted: 'You may only request removal of your own requests, unless your administrator grants wider access.',
-                    SeerrNotConfigured: 'An administrator must configure Seerr, or import the Jellyfin-Enhanced connection in plugin settings.',
-                    NotificationsRequired: 'Install or update Notifications, enable it, then restart Jellyfin before requesting removal.',
-                    InvalidJson: 'The request could not be read. Reload Jellyfin to update the removal controls.',
-                    UpstreamUnavailable: 'Seerr could not be reached. Ask your administrator to test the saved connection.',
-                    SeerrServerAssociationUnverified: 'Seerr is not linked to this Jellyfin server. Ask your administrator to check the Seerr connection.',
-                    IntegrityUnavailable: 'Deletion storage could not be verified. Ask your administrator to check plugin storage.',
-                    TargetEditionUnverified: 'This edition could not be verified against Seerr.',
-                    SeerrTargetNotManaged: 'Seerr does not manage files for this media.',
-                    TargetUnavailable: 'This movie or whole series is unavailable for removal.',
-                    RevisionChanged: 'The removal request changed. Reopen it before acting.',
-                    SnapshotChanged: 'Your activity changed. Reopen the request to review it.',
-                    TargetChanged: 'The target changed. Close and reopen this action.'
-                };
-                const failure = new Error(messages[code] || 'Operation unavailable. Refresh and review your session or ask your administrator.'); failure.code = code; throw failure;
+                const messages={authorization:'You do not have permission to perform this action.',authentication:'Your session needs attention. Sign in through Jellyfin to continue.',validation:'Some details are invalid. Check your entries and try again.',expired:'This item or link is unavailable or has expired.',changed:'This item changed. Refresh and review it before trying again.',rate_limited:'Too many attempts. Please wait before trying again.',unavailable:'This service is currently unavailable. Contact an administrator if the problem continues.',action_unavailable:'This action is unavailable for this item. Contact an administrator if you need help.',uncertain:'We could not confirm the result. Check the current state or contact an administrator before trying again.'};
+                const legacyNature=new Map([['ProposalNotPermitted','authorization'],['SeerrNotConfigured','unavailable'],['NotificationsRequired','unavailable'],['UpstreamUnavailable','unavailable'],['IntegrityUnavailable','unavailable'],['TargetUnavailable','action_unavailable'],['TargetEditionUnverified','action_unavailable'],['SeerrTargetNotManaged','action_unavailable'],['SeerrServerAssociationUnverified','action_unavailable']]);
+                const nature=get(get(data,'error'),'nature')||get(data,'nature')||legacyNature.get(code);const generic=(Object.hasOwn(messages,nature)?messages[nature]:null)||(response.status===403?messages.authorization:response.status===401?messages.authentication:response.status===409?messages.changed:response.status===429?messages.rate_limited:response.status>=500?messages.unavailable:'This action is unavailable. Contact an administrator if the problem continues.');
+                const id=get(data,'errorId')||get(get(data,'error'),'errorId')||response.headers?.get?.('X-Suite-Error-Id');
+                const failure = new Error(generic+(typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)?' Error ID: '+id:'')); failure.code = code; safeErrors.add(failure);throw failure;
             }
             if (path === 'me/notices') noticeProblem = response.headers.get('X-DeletionQueue-Notice-Delivery') === 'incomplete'
                 ? 'Notification delivery is incomplete. Review the deletion queue as well.' : '';
@@ -125,11 +115,12 @@
     function showError(error, d) {
         if (twoFactorPending) return;
         if (!syncSession()) return;
+        const message=error&&safeErrors.has(error)?error.message:'We could not confirm the result. Check the current state or contact an administrator before trying again.';
         if (!d?.isConnected) {
-            window.dispatchEvent(new CustomEvent('suite-notification-message', { detail: { userId: session()?.user, title: 'Removal request', body: error?.message || 'Operation unavailable.' } }));
+            window.dispatchEvent(new CustomEvent('suite-notification-message', { detail: { userId: session()?.user, title: 'Removal request', body: message } }));
             return;
         }
-        d.querySelector('.dq-error').textContent = error?.message || 'Operation unavailable.';
+        d.querySelector('.dq-error').textContent = message;
         d.querySelector('.dq-close')?.remove();
     }
     const alive = panel => panel.d.isConnected && panel.generation === epoch && syncSession();
@@ -293,13 +284,19 @@
             observer.observe(timeline);
         }
     }
-    function renderProposal(p, content) {
+    function renderProposal(p, content,onDecision) {
         const id = get(p, 'id'), status = get(p, 'status'), revision = get(p, 'revision');
         const heading = node('div', undefined, 'dq-request-heading');
         const label = get(p, 'statusLabel') || ({ Blocked: 'Blocked', Waiting: 'Waiting', Ready: 'Ready for removal', Claimed: 'Removing', Uncertain: 'Needs review', FilesDeleted: 'Removal confirmed', Completed: 'Completed', Cancelled: 'Cancelled', Expired: 'Expired' })[status] || 'Pending checks';
         const help = get(p, 'statusHelp') || ({ ActivityCoverageIncomplete: 'Viewing-activity checks are not complete yet.', ConsentRequired: 'Required consent is missing or no longer current.', AdministratorApprovalRequired: 'Administrator approval is required.', DelayRequired: 'The safety delay must pass before removal.', RequestExpired: 'This request was not accepted within 30 days.', AdministratorDenied: 'This request was denied and closed.' })[get(p, 'reason')] || 'Removal is waiting for safety checks. No removal time is confirmed.';
         const badge = node('span', label, 'dq-status'); badge.dataset.status = status;
         heading.append(node('h3', get(p, 'title')), badge, statusHelp(get(p,'closureExplanation') || help)); content.append(heading);
+        const reasons={ConsentRequired:'Waiting for consent.',AdministratorApprovalRequired:'Waiting for approval.',ActivityCoverageIncomplete:'Waiting for verified history.',VerificationUnavailable:'Verification unavailable.',PlaybackActive:'Waiting for playback to stop.',Suspended:'Removal paused.',ClockUnverified:'Waiting for timing checks.',OwnerNotAuthorized:'Access review needed.',AutomaticRuleVerificationRequired:'Waiting for rule verification.',TargetVerificationRequired:'Waiting for media verification.',LocalCheckpointRequired:'Waiting for storage verification.',SeerrDelegationRequired:'Removal service unavailable.',DelayRequired:'Waiting for the safety delay.'};
+        content.append(node('p',reasons[get(p,'reason')]||label,'dq-check-explanation'));
+        if(get(p,'checkRefreshHelp')){
+            const checked=date(get(p,'lastCheckedAt'));
+            const hint=node('p',checked?'Last checked: '+checked.toLocaleString():'Not checked yet.','dq-hint');hint.append(statusHelp(get(p,'checkRefreshHelp')));content.append(hint);
+        }
         const badges=node('div',undefined,'dq-request-badges');
         for(const [key,title]of [['requesterLabel','Requester'],['consentStatus','Consent'],['activityStatus','Activity']])if(get(p,key)){const value=get(p,key),chip=node('span',value,'dq-request-badge');chip.dataset.kind=key;chip.dataset.state=['Allowed','Not needed','Inactive'].includes(value)?'complete':['Kept','Playing'].includes(value)?'blocked':value==='Awaiting consent'?'waiting':'neutral';chip.title=title;badges.append(chip);}if(badges.children.length)content.append(badges);
         if (get(p, 'stage') && get(p, 'stage') !== 'History') content.append(node('span', get(p, 'stage'), 'dq-stage'));
@@ -309,6 +306,10 @@
         const answer = get(p, 'ownAnswer');
         if (!['Claimed', 'Uncertain', 'FilesDeleted', 'Completed', 'Cancelled', 'Expired'].includes(status)) {
             const actions = node('div', undefined, 'dq-actions');
+            if(get(p,'canApprove'))for(const [label,approved]of [['Approve deletion',true],['Deny request',false]])actions.append(button(label,async()=>{
+                await api('admin/proposals/'+id+(approved?'/approval':'/deny'),'POST',{commandId:command(),revision,snapshot:get(p,'administratorApprovalSnapshot'),approved});
+                if(onDecision)await onDecision();window.dispatchEvent(new Event('suite-removal-changed'));void loadNotices();
+            }));
             if (get(p, 'canConsent') !== false) for (const [label, value] of [['Allow', 0], ['Keep', 1]]) {
                 const control = button(label, async () => {
                     await api('proposals/' + id + '/consent', 'POST', { commandId: command(), revision, snapshot: get(p, 'ownSnapshot'), answer: value });
@@ -330,7 +331,8 @@
     async function proposal(id) {
         return queue('active', id);
     }
-    async function queue(initialView = 'active', focusId = null) {
+    async function queue(initialView = null, focusId = null) {
+        initialView??=get(integration,'isAdministrator')?'approvals':'active';
         const panel = dialog('Deletion queue');
         panel.d.classList.add('dq-queue-popover');
         const anchor = document.querySelector('[data-notifications-bell], [data-account-hub-bell], .dq-local-shortcut, .dq-bell, .headerUserButton');
@@ -372,22 +374,27 @@
         schedule();
     }
     async function queueView(host, initialView = 'active', valid = () => host.isConnected && syncSession(), scrollRoot = host, focused = null) {
+        const generation=(host.dqQueueViewGeneration||0)+1,originalValid=valid;
+        host.dqQueueViewGeneration=generation;
+        valid=()=>host.dqQueueViewGeneration===generation&&originalValid();
         const tabs = node('div', undefined, 'dq-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Deletion requests');
         const rows = node('div', undefined, 'dq-queue-rows'); rows.setAttribute('role', 'tabpanel'); host.append(tabs, rows);
         let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true, lastSnapshot = '';
         const seen = new Set(), sameId = (a, b) => String(a).replaceAll('-', '').toLowerCase() === String(b).replaceAll('-', '').toLowerCase();
-        const historyGroups=new Map();let allUsers=false;
-        if(get(integration,'isAdministrator')){const all=button('All requesters',async()=>{allUsers=!allUsers;all.setAttribute('aria-pressed',String(allUsers));revision++;await refresh();},'emby-button button-flat');all.setAttribute('aria-pressed','false');host.insertBefore(all,tabs);}
-        for (const [key, label] of [['active', 'Active'], ['history', 'History']]) {
+        const historyGroups=new Map();let allUsers=false,allToggle;
+        if(get(integration,'isAdministrator')){const all=button('All requesters',async()=>{allUsers=!allUsers;all.setAttribute('aria-pressed',String(allUsers));revision++;await refresh();},'emby-button button-flat');allToggle=all;all.setAttribute('aria-pressed','false');host.insertBefore(all,tabs);}
+        for (const [key, label] of [...(get(integration,'isAdministrator')?[['approvals','Needs approval']]:[]),['active', 'Active'], ['history', 'History']]) {
             const tab = button(label, async () => { view = key; revision++; await refresh(); }, 'emby-button button-flat');
             tab.dataset.view = key; tab.setAttribute('role', 'tab'); tabs.append(tab);
         }
         async function refresh(append = false) {
             if (loading || !valid()) return; loading = true; const started = revision;
+            if(allToggle)allToggle.hidden=view==='approvals';
+            rows.setAttribute('aria-label',view==='approvals'?'Removal approvals':'Removal requests');
             try {
                 const start = append ? offset : 0;
                 if (focused && !append && !first) focused = await api('proposals/' + get(focused, 'id'));
-                const proposals = await api('proposals?skip=' + start + '&take=50&view=' + view+(allUsers?'&scope=all-users':'')); if (!valid() || revision !== started) return;
+                const proposals = await api(view==='approvals'?'admin/approvals?skip='+start+'&take=50':'proposals?skip=' + start + '&take=50&view=' + view+(allUsers?'&scope=all-users':'')); if (!valid() || revision !== started) return;
                 const snapshot = JSON.stringify([view,allUsers,Number(get(integration,'recentHistoryDays'))||7,Math.floor(Date.now()/86400000), proposals, focused], (key, value) => key.toLowerCase() === 'evaluatedat' ? undefined : value);
                 if (!append && snapshot === lastSnapshot) { refreshed = Date.now(); return; }
                 lastSnapshot = append ? '' : snapshot;
@@ -398,7 +405,7 @@
                 let selected;
                 for (const p of records) {
                     const key = String(get(p, 'id')).replaceAll('-', '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
-                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row);
+                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row,async()=>{lastSnapshot='';await refresh();});
                     row.dataset.requestId = get(p, 'id');
                     if (focused && sameId(get(p, 'id'), get(focused, 'id'))) { row.classList.add('dq-highlight'); row.tabIndex = -1; row.setAttribute('aria-label', 'Selected removal request'); selected = row; }
                     if(view==='history'){
@@ -409,7 +416,7 @@
                 if (first && selected) requestAnimationFrame(() => { if (valid() && selected.isConnected) { selected.focus({ preventScroll: true }); selected.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } });
                 first = false;
                 offset = start + proposals.length; more = proposals.length === 50; refreshed = Date.now();
-                if (!seen.size) rows.append(node('p', 'No removal requests.'));
+                if (!seen.size) rows.append(node('p', view==='approvals'?'No requests need approval.':'No removal requests.'));
                 for (const tab of tabs.querySelectorAll('[role=tab]')) { tab.setAttribute('aria-selected', String(tab.dataset.view === view)); tab.tabIndex = tab.dataset.view === view ? 0 : -1; }
             } catch (error) { if (valid()) { rows.replaceChildren(node('p', error.message || 'Requests unavailable.')); seen.clear(); focused = null; more = false; showError(error, host.closest('dialog')); } }
             finally { loading = false; if (valid() && revision !== started) void refresh(); }
@@ -418,6 +425,8 @@
         host.addEventListener('pointerdown', event => { if (!event.target.closest('button, input, a, .dq-help, .dq-timeline') && Date.now() - refreshed > 5000) void refresh(); });
         scrollRoot.addEventListener('scroll', () => { if (more && scrollRoot.scrollTop + scrollRoot.clientHeight >= scrollRoot.scrollHeight - 120) void refresh(true); });
         await refresh();
+        const poll=async()=>{if(!valid())return;if(!document.hidden)await refresh();if(valid())setTimeout(poll,15000);};
+        setTimeout(poll,15000);
     }
     async function preferences() {
         const panel = dialog('Deletion queue preferences');
@@ -582,7 +591,7 @@
                 if (!view.children.length || pendingRequestFocus) {
                     const id = pendingRequestFocus; pendingRequestFocus = null; let focused;
                     if (id) focused = await api('proposals/' + id);
-                    view.replaceChildren(); await queueView(view, focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : 'active', undefined, view, focused);
+                    view.replaceChildren(); await queueView(view, focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : !focused&&get(integration,'isAdministrator')?'approvals':'active', undefined, view, focused);
                 }
             }, 'je-requests-tab emby-button dq-deletion-tab dq-web-owned');
             tabs.addEventListener('click', event => {
@@ -693,6 +702,8 @@
         if (twoFactorPending) return;
         mountEnhanced();
         const deepLink = guid(new URLSearchParams(location.hash.split('?')[1] || '').get('deletionQueueProposal'));
+        const approvalLink=new URLSearchParams(location.hash.split('?')[1]||'').get('deletionQueueApprovals')==='1';
+        if(approvalLink&&get(integration,'isAdministrator')&&linkedProposal!=='approvals'){linkedProposal='approvals';void queue('approvals');}
         if (deepLink && linkedProposal !== deepLink) { linkedProposal = deepLink; proposal(deepLink).catch(() => {}); }
         // Keep thumbnails untouched: library-card actions belong to the native menu.
         document.querySelectorAll('.card .dq-card-action').forEach(action => action.remove());
@@ -833,6 +844,7 @@
         let destination; try { destination = new URL(link.href, location.href); } catch { return; }
         const web = new URL(serverRoot + '/web/');
         if (destination.origin !== web.origin || ![web.pathname, web.pathname + 'index.html'].includes(destination.pathname)) return;
+        if(new URLSearchParams(destination.hash.split('?')[1]||'').get('deletionQueueApprovals')==='1'&&syncSession()&&get(integration,'isAdministrator')){event.preventDefault();event.stopPropagation();void queue('approvals').catch(error=>showError(error));return;}
         const id = guid(new URLSearchParams(destination.hash.split('?')[1] || '').get('deletionQueueProposal'));
         if (!id || !syncSession()) return;
         event.preventDefault(); event.stopPropagation(); void proposal(id).catch(error => showError(error));

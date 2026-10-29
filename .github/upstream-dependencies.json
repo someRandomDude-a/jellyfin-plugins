@@ -1,0 +1,11 @@
+{
+  "purpose": "Update detection only. Tests/builds independently discover latest stable software and never use this file as a target or fallback.",
+  "dependencies": [
+    { "repository": "jellyfin/jellyfin", "version": "12.4" },
+    { "repository": "ZL154/JellyfinSecurity", "version": "2.6.5" },
+    { "repository": "n00bcodr/Jellyfin-Enhanced", "version": "12.14.0.0" },
+    { "repository": "seerr-team/seerr", "version": "3.5.1" },
+    { "repository": "Sonarr/Sonarr", "version": "4.0.20.3014" },
+    { "repository": "Radarr/Radarr", "version": "6.4.4.10685" }
+  ]
+}

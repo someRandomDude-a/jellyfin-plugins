@@ -5,13 +5,15 @@ $ErrorActionPreference = 'Stop'
 $jsonOptions = @{}
 if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $jsonOptions.DateKind = 'String' }
 $root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $root '../../scripts/test-targets.ps1')
+Initialize-TestTargets
 if (-not $Version) {
     $project = [xml](Get-Content (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay/Jellyfin.Plugin.PrivateSyncPlay.csproj') -Raw)
     $Version = ([string]$project.Project.PropertyGroup.Version) -replace '\.0$', ''
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must have the form X.Y.Z' }
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Repository must have the form owner/name' }
-$targetPath = Join-Path $root '../../Jellyfin.Target.props'
+$targetPath = $env:SUITE_JELLYFIN_PROPS
 $target = [xml](Get-Content $targetPath -Raw)
 $targetAbi = [string]$target.Project.PropertyGroup.JellyfinVersion + '.0'
 if ($targetAbi -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw 'Missing or invalid centralized Jellyfin target' }
@@ -36,19 +38,20 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.dll') $stage
 Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay.Api/bin/Release/net10.0/Jellyfin.Plugin.PrivateSyncPlay.Api.dll') $stage
 Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/AccountHub.Api.dll') $stage
+Copy-Item (Join-Path $root 'src/Jellyfin.Plugin.PrivateSyncPlay/bin/Release/net10.0/Jellyfin.Diagnostics.dll') $stage
 Copy-Item (Join-Path $root 'src/PrivateSyncPlay.IntegrationStore/bin/Release/net10.0/PrivateSyncPlay.IntegrationStore.dll') $stage
 Copy-Item (Join-Path $root 'LICENSE') $stage
 Copy-Item (Join-Path $root 'README.md') $stage
 Copy-Item (Join-Path $root 'node_modules/hls.js/LICENSE') (Join-Path $stage 'hls.js.LICENSE')
 $file = 'PrivateSyncPlay-' + $Version + '.zip'
 $zip = Join-Path $output $file
-$pluginFiles = @('Jellyfin.Plugin.PrivateSyncPlay.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'AccountHub.Api.dll', 'PrivateSyncPlay.IntegrationStore.dll', 'LICENSE', 'README.md', 'hls.js.LICENSE')
+$pluginFiles = @('Jellyfin.Plugin.PrivateSyncPlay.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'AccountHub.Api.dll', 'Jellyfin.Diagnostics.dll', 'PrivateSyncPlay.IntegrationStore.dll', 'LICENSE', 'README.md', 'hls.js.LICENSE')
 Compress-Archive -Path @($pluginFiles | ForEach-Object { Join-Path $stage $_ }) -DestinationPath $zip -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($zip)
 try {
     $names = @($archive.Entries | ForEach-Object { $_.FullName })
-    foreach ($required in @('Jellyfin.Plugin.PrivateSyncPlay.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'AccountHub.Api.dll', 'PrivateSyncPlay.IntegrationStore.dll')) {
+    foreach ($required in @('Jellyfin.Plugin.PrivateSyncPlay.dll', 'Jellyfin.Plugin.PrivateSyncPlay.Api.dll', 'AccountHub.Api.dll', 'Jellyfin.Diagnostics.dll', 'PrivateSyncPlay.IntegrationStore.dll')) {
         if ($required -notin $names) { throw "Plugin DLL must be at ZIP root: $required" }
     }
     if (@($names | Where-Object { $_ -match '[/\\]|^(Jellyfin.Controller|Jellyfin.Model|MediaBrowser\.).*\.dll$' }).Count -gt 0) { throw 'Invalid plugin ZIP layout or bundled server assemblies' }

@@ -57,6 +57,20 @@ public static class HubIntegration
         if (!state.Hub.HubIntegrationEnabled) return;
         foreach (var p in state.Proposals.Where(p => !revisions.TryGetValue(p.Id, out var revision) || p.Revision != revision))
         {
+            if(!p.Terminal&&p.Claim is null&&state.Policy.RequireAdministratorApproval&&p.Reason=="AdministratorApprovalRequired"&&!QueueRules.AdministratorApprovalCurrent(state,p)&&state.Hub.NotificationMode is NotificationMode.Auto or NotificationMode.Hub){
+                var snapshot=QueueRules.AdministratorSnapshot(state,p);
+                if(p.LastApprovalNoticeSnapshot!=snapshot){
+                    var approval=new IntegrationEvent{Kind="notification",CreatedAt=now,NextAttemptAt=now};
+                    approval.PayloadJson=JsonSerializer.Serialize(new{schemaVersion=1,eventId=approval.EventId,source="deletion-queue",type="proposal.approval_required",severity="warning",title="Removal approval requested",body="A removal request has passed eligibility checks and needs administrator approval.",audience=Array.Empty<Guid>(),adminOnly=true,occurredAt=now,
+                        link="#/home?deletionQueueApprovals=1",actions=new[]{new{label="Review approvals",link="#/home?deletionQueueApprovals=1",size="normal"}},dedupeKey=$"deletionqueue:approval:{p.Id:D}",metadata=new{proposalId=p.Id}});
+                    Add(state,approval);p.LastApprovalNoticeSnapshot=snapshot;
+                }
+            }
+            else if(p.LastApprovalNoticeSnapshot is not null&&state.Hub.NotificationMode is NotificationMode.Auto or NotificationMode.Hub){
+                var resolved=new IntegrationEvent{Kind="notification",CreatedAt=now,NextAttemptAt=now};
+                resolved.PayloadJson=JsonSerializer.Serialize(new{schemaVersion=1,eventId=resolved.EventId,source="deletion-queue",type="proposal.approval_required",severity="info",title="Removal approval updated",body="This request is no longer awaiting administrator approval. Open the queue for its current state.",audience=Array.Empty<Guid>(),adminOnly=true,occurredAt=now,link=$"#/home?deletionQueueProposal={p.Id:D}",actions=new[]{new{label="Review approvals",link="#/home?deletionQueueApprovals=1",size="normal"}},dedupeKey=$"deletionqueue:approval:{p.Id:D}",metadata=new{proposalId=p.Id}});
+                Add(state,resolved);p.LastApprovalNoticeSnapshot=null;
+            }
             if (p.LastPlaybackResetAt is { } reset && p.LastPlaybackNoticeAt != reset && state.Hub.NotificationMode is NotificationMode.Auto or NotificationMode.Hub) {
                 var reminder = new IntegrationEvent { Kind = "notification", CreatedAt = now, NextAttemptAt = now };
                 var days = (p.DelayFloorHours / 24d).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -89,7 +103,7 @@ public static class HubIntegration
     }
 
     public static object ConfigurationSummary(QueueState s) => new { defaultAuthority = s.Policy.DefaultAuthority.ToString(),
-        activityDays = s.Policy.ActivityDays, delayHours = s.Policy.DelayHours, automaticDeletion = s.Policy.AutomaticDeletion,
+        activityDays = s.Policy.ActivityDays, delayHours = s.Policy.DelayHours,administratorApprovalDays=s.Policy.AdministratorApprovalDays,recentHistoryDays=s.Policy.RecentHistoryDays, automaticDeletion = s.Policy.AutomaticDeletion,
         activityWaitTimeoutEnabled = s.Policy.ActivityWaitTimeoutEnabled, activityWaitTimeoutDays = s.Policy.ActivityWaitTimeoutDays,
         requireAdministratorApproval = s.Policy.RequireAdministratorApproval,
         seerrManagedDeletionAcknowledged = s.Policy.SeerrManagedDeletionAcknowledged, suspended = s.Policy.Suspended, accountOverrideCount = s.Policy.Accounts.Count,

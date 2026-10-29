@@ -7,6 +7,7 @@ namespace AccountHub.Notifications;
 // No default implementation: installing a module must never introduce an auth bypass.
 public interface INotificationHost
 {
+    string? PublicServerUrl(HttpContext context) => null;
     IReadOnlyList<NotificationRegistration> NotificationRegistrations => [];
     bool NotificationAccessAvailable(string source) => true;
     Task<NotificationCommand[]> NotificationCommandsAsync(Guid user, NotificationEvent entry, NotificationCommandRequest? request, CancellationToken ct) => Task.FromResult<NotificationCommand[]>([]);
@@ -37,8 +38,14 @@ public sealed record SendResult(bool Delivered, bool Retryable = false, string? 
 public sealed record Route(string Id, string Source, string Type, string Channel, string Destination,
     bool AdminOnly = true, bool DirectMessage = false, bool AllowPrivate = false, bool AllowHttp = false,
     string? Secret = null);
-public sealed record Settings(long Revision, Route[] Routes, int NotificationDays = 90);
-public sealed record Preference(string Source, string Type, string Channel, bool Enabled);
+public sealed record Settings(long Revision, Route[] Routes, int NotificationDays = 90)
+{
+    public int BlockedNotificationLimit{get;init;}=500;
+}
+public sealed record Preference(string Source, string Type, string Channel, bool Enabled)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]public string? Importance{get;init;}
+}
 public sealed record InboxRow(Guid Id, NotificationEvent Event, bool Read, bool Dismissed);
 public sealed record Delivery(Guid Id, Guid UserId, bool AdminOnly, NotificationEvent Event, Route Route,
     int Attempts, string Lease, string Body, string? DiscordLink);

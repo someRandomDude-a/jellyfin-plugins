@@ -1,8 +1,12 @@
 <Project>
-  <!-- Reviewed upstream stable release. CI checks for newer stable versions. -->
+  <!-- Historical IDE baseline only. Test/package entry points automatically
+       import generated latest-release properties; never edit this to update tests. -->
   <PropertyGroup>
     <JellyfinVersion>12.3.0</JellyfinVersion>
     <JellyfinServerTag>12.3</JellyfinServerTag>
     <JellyfinTargetAbi>$(JellyfinVersion).0</JellyfinTargetAbi>
+    <JellyfinDatabasePackageVersion>10.0.11</JellyfinDatabasePackageVersion>
+    <JellyfinSkiaPackageVersion>3.119.1</JellyfinSkiaPackageVersion>
   </PropertyGroup>
+  <Import Project="$(SUITE_JELLYFIN_PROPS)" Condition="'$(SUITE_JELLYFIN_PROPS)' != ''" />
 </Project>

@@ -1,6 +1,17 @@
 # Automatic Deletion Requests — implementation preview
 
-Independent Jellyfin 12.3 plugin source, disabled by default. Rules evaluate a bounded Jellyfin library scope and submit ordinary requests to Deletion Queue. They do not manage media, collections, artwork, consent, administrator approval or deletion. Those responsibilities belong exclusively to Deletion Queue for both manual and automated requests.
+## Dependencies and installation
+
+Install Automatic Deletion Requests, Deletion Queue and Notifications through the
+[combined platform catalog](../../README.md#installation-and-upgrades), then restart
+Jellyfin. Configure **Dashboard → Plugins → Automatic Deletion Requests** with a
+native administrator session. New submissions require a ready Queue boundary,
+Notifications and an authorized automation account. Seerr evidence uses Queue's
+existing connection; optional Arr sources are GET-only and use their protected settings.
+
+## Overview
+
+Independent plugin, disabled by default. Rules evaluate a bounded Jellyfin library scope and submit ordinary requests to Deletion Queue. They do not manage media, collections, artwork, consent, administrator approval or deletion. Those responsibilities belong exclusively to Deletion Queue for both manual and automated requests.
 
 ## Implemented subset
 
@@ -12,7 +23,7 @@ Independent Jellyfin 12.3 plugin source, disabled by default. Rules evaluate a b
 - Seerr requester IDs/counts/dates/edition/availability are read through Deletion Queue's saved connection. The internal administrator authorizes automation; it is not requester metadata. Missing or mixed singular requesters stay unknown. The legacy `seerr.ownRequest` field keeps its old authorizer-relative meaning.
 - Sonarr/Radarr can be configured as **read-only metadata** sources or imported and verified from exactly one enabled Jellyfin Enhanced instance per source. Keys are protected in plugin-owned storage, never returned in settings responses, and never reused at a changed endpoint without a new key. HTTP reads are bounded and do not follow redirects; provider IDs must map to one exact item. No Arr deletion, unmonitoring or filesystem operations are implemented. File paths are metadata strings only.
 - Missing/unavailable evidence never matches, including OR groups and negative comparisons. Unsupported fields/operators are rejected. No executable expressions.
-- Live native administrator sessions only for settings/preview; explicit confirmation for enabling automation. The chosen request owner must remain an enabled native administrator and have proposal authority in Deletion Queue.
+- Live native administrator sessions only for settings/preview; explicit confirmation for enabling automation. The configured automation authorizer must remain an enabled native administrator with Queue authority. A singular verified requester remains the request owner and must satisfy their own current access/removal authority; unknown ownership is not invented or relabeled as the administrator.
 - Immediate submission; repeat matches do not renew existing requests or imply votes. Administrator automation never grants viewer consent or approval. Cancelled/denied requests are not automatically recreated.
 - Revisioned atomic configuration writes, persisted submission receipts, bounded runs (200 items/20 submissions), protected against concurrent runs and mid-run configuration changes. Oversized scopes fail before submission; they are not silently truncated. Storage corruption fails closed rather than resetting/enabling rules.
 - Live originating-rule verification before queue progression, claiming and deletion. The same rule must still be enabled, the configured administrator/library scope must still agree, and current Jellyfin/Seerr evidence must match. Missing/uninstalled automation blocks its requests; it does not block independent manual requests. Failing a rule check clears eligibility and requires a new safety delay once checks pass again.
@@ -32,7 +43,7 @@ Jobs are independent: changing their order never skips safety checks. A past del
 ## Verification
 
 ```powershell
-dotnet test plugins/automatic-deletion-requests/tests/AutomaticDeletionRequests.Tests/AutomaticDeletionRequests.Tests.csproj -c Release
+pwsh -File scripts/test-plugin.ps1 -Plugin automatic-deletion-requests
 ```
 
 The project and tests are in the root solution. Root packaging, release-set validation, independent test/release selection and installed integration support `automatic-deletion-requests` (`--plugins=automatic` for installed checks). Current Linux x64/ARM64 and Windows x64 packages passed archive/identity/checksum/SBOM validation. The final six-plugin Linux amd64 installation passed native daily-task discovery/manual execution, disabled-default/administrator authorization and 320/1280-pixel rule/artwork editor checks, including real PNG previews. Full root regressions passed, including six automation tests and 207 Deletion Queue tests. See the root `docs/review-status.md` for exact evidence and limits. No packages have been published.
@@ -44,3 +55,10 @@ Deletion Queue owns opt-in collection selection/creation, reversible native-imag
 ## Credits
 
 Inspired by [Maintainerr](https://github.com/Maintainerr/Maintainerr), copyright © 2026 Maintainerr, MIT-licensed. Upstream feature research was pinned to commit `3dbd5463a82beb4cd970a41c3afd042af4fccfd8`. This implementation is independent C# code; upstream application code/assets have not been copied or bundled.
+
+## References
+
+- [Deletion Queue and destructive opt-in](../deletion-queue/README.md)
+- [Metadata fields and provider contracts](../../docs/metadata-source-parity.md)
+- [Dependency matrix](../../docs/dependencies.md) · [Testing](../../docs/testing.md)
+- [Current verification and limits](../../docs/review-status.md)

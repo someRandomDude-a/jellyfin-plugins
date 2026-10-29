@@ -8,7 +8,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
     public static string PublicReason(string reason) => reason switch {
         "ActivityCoverageIncomplete" or "ConsentRequired" or "AdministratorApprovalRequired" or "PlaybackActive" or "Suspended" or "PolicyChanged" or
         "ClockUnverified" or "OwnerNotAuthorized" or "TargetVerificationRequired" or "AutomaticRuleVerificationRequired" or "VerificationRequired" or "LocalCheckpointRequired" or "SeerrDelegationRequired" or
-         "AdministratorApprovalExpired" or "ActivityWaitExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" => reason,
+         "AdministratorApprovalExpired" or "ActivityWaitExpired" or "VerificationUnavailable" or "DelayRequired" or "Ready" or "Claimed" or "OutcomeUncertain" or "FilesDeleted" or "Completed" or "Cancelled" or "AdministratorDenied" or "RequestExpired" or "RemovedOutsideQueue" or "RequestClosedOutsideQueue" or "UpstreamTargetMissing" => reason,
         _ => "VerificationRequired"
     };
     public static UserProgress For(QueueState state, Proposal p)
@@ -17,7 +17,7 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
         var automatic = state.Policy.AutomaticDeletion && state.Policy.SeerrManagedDeletionAcknowledged && !state.Policy.Suspended;
         var scheduled = queued && automatic ? p.NotBefore : null;
         var (label, help) = p.Status switch {
-            ProposalStatus.Blocked => ("Blocked", Reason(p.Reason)),
+            ProposalStatus.Blocked => (CheckLabel(p.Reason), Reason(p.Reason)),
             ProposalStatus.Waiting when !automatic => ("Removal paused", "Automatic removal is disabled or paused. The delay date is not a scheduled removal."),
             ProposalStatus.Waiting => ("Scheduled", "Removal can happen no earlier than the displayed date, after fresh safety checks. This is not a guaranteed execution time."),
             ProposalStatus.Ready when !automatic => ("Removal paused", "The delay has passed, but automatic removal is disabled or paused."),
@@ -26,6 +26,9 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
             ProposalStatus.Uncertain => ("Needs review", "The removal outcome could not be verified. No automatic repeat attempt will be made."),
             ProposalStatus.FilesDeleted => ("Removal confirmed", "Seerr confirmed the removal. The queue is recording completion; request history is retained."),
             ProposalStatus.Completed => ("Completed", "The removal was confirmed and recorded. Request history is retained."),
+            ProposalStatus.Cancelled when p.Reason=="RemovedOutsideQueue" => ("Removed outside the queue", "Seerr reports this media edition was deleted outside this queue. The pending removal was closed without sending another deletion. The queue did not perform the removal."),
+            ProposalStatus.Cancelled when p.Reason=="RequestClosedOutsideQueue" => ("Closed in Seerr", "The upstream request was declined outside this queue. The pending removal was closed without changing Seerr or its request history."),
+            ProposalStatus.Cancelled when p.Reason=="UpstreamTargetMissing" => ("Upstream record missing", "The verified Seerr association no longer returns this record. This queue request was closed without attempting removal; missing records are not proof that files were deleted."),
             ProposalStatus.Cancelled => ("Cancelled", "This removal request was withdrawn using Undo. It will not be executed."),
             ProposalStatus.Expired when p.Reason == "AdministratorDenied" => ("Denied", "This request was denied and closed. A new removal request can be submitted."),
             ProposalStatus.Expired when p.Reason == "AdministratorApprovalExpired" => ("Expired", "The administrator approval deadline passed. This request is closed."),
@@ -93,10 +96,25 @@ internal sealed record UserProgress(string Label, string Help, DateTimeOffset? S
         }
         return new(label, help, scheduled, steps);
     }
+    private static string CheckLabel(string reason) => reason switch {
+        "ConsentRequired" => "Awaiting consent",
+        "AdministratorApprovalRequired" => "Awaiting administrator approval",
+        "ActivityCoverageIncomplete" => "Waiting for verified history",
+        "VerificationUnavailable" => "Verification unavailable · retrying",
+        "PlaybackActive" => "Waiting for playback to stop",
+        "Suspended" => "Removal paused",
+        "ClockUnverified" => "Waiting for server timing checks",
+        "OwnerNotAuthorized" => "Access review needed",
+        "AutomaticRuleVerificationRequired" => "Waiting for automatic rule verification",
+        "TargetVerificationRequired" => "Waiting for media verification",
+        "LocalCheckpointRequired" => "Waiting for storage verification",
+        "SeerrDelegationRequired" => "Waiting for removal-service verification",
+        _ => "Awaiting safety verification"
+    };
     private static string Reason(string reason) => reason switch {
         "ActivityCoverageIncomplete" => "Jellyfin playback history could not be fully verified yet. Removal stays blocked until a complete media-history check and healthy activity collector are available.",
         "VerificationUnavailable" => "Fresh verification could not be completed. The queue will retry automatically; no removal is scheduled until checks succeed.",
-        "ConsentRequired" => "Required consent is missing or no longer current. Removal stays blocked until consent and safety checks are satisfied.",
+        "ConsentRequired" => "Required consent is missing or no longer current. Eligibility requires all relevant active/recent viewers to consent, or verified inactivity for all users. Retrying alone does not supply consent or skip the activity window.",
         "AdministratorApprovalRequired" => "Administrator approval is required before this request can proceed.",
         "PlaybackActive" => "The media is currently in use. Removal will wait until safety checks can pass.",
         "Suspended" or "PolicyChanged" => "Removal is paused while the current policy and safety requirements are checked.",

@@ -1,4 +1,6 @@
 /* Scoped native-theme surfaces. Skins retain control of palette and typography. */
+.accountHubInbox.dialog, .notificationToast.dialog { color: var(--theme-text-color, var(--jf-palette-text-primary, inherit)); background-color: var(--theme-background-color, var(--jf-palette-background-paper, Canvas)); font-family: inherit; }
+.accountHubInbox .notificationOptionsMenu { color: inherit; background-color: var(--theme-background-color, var(--jf-palette-background-paper, Canvas)); font-family: inherit; }
 .accountHubInbox { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent; }
 .accountHubInbox::-webkit-scrollbar { width: 5px; height: 5px; }
 .accountHubInbox::-webkit-scrollbar-thumb { background: color-mix(in srgb, currentColor 25%, transparent); border-radius: 1rem; }
@@ -12,14 +14,18 @@
 .accountHubInbox .notificationHeader { position: relative; z-index: 3; padding-block: .35rem; margin-block: 0 .25rem; background-color: inherit; border-block-end: 1px solid var(--notification-line); }
 .accountHubInbox .notificationHeader h2 { margin: 0 2.5rem 0 0; font-size: 1.2em; }
 .accountHubInbox .notificationHeader .notificationSettings { position: absolute; inset-inline-end: 0; inset-block-start: .25rem; padding: .4rem; }
-.accountHubInbox > section { position: relative; padding: .45rem .25rem; border-block-end: 1px solid var(--notification-line); overflow-wrap: anywhere; }
-.accountHubInbox > section[data-unread=true] { background: color-mix(in srgb, var(--theme-primary-color, currentColor) 7%, transparent); border-inline-start: 3px solid var(--theme-primary-color, currentColor); padding-inline: .6rem; }
-.accountHubInbox > section[data-density=standard] { padding-block: 1rem; }
+.accountHubInbox section[data-notification-id] { position: relative; padding: .45rem .25rem; border-block-end: 1px solid var(--notification-line); overflow-wrap: anywhere; }
+.accountHubInbox section[data-notification-id][data-unread=true] { background: color-mix(in srgb, var(--theme-primary-color, currentColor) 7%, transparent); border-inline-start: 3px solid var(--theme-primary-color, currentColor); padding-inline: .6rem; }
+.accountHubInbox section[data-notification-id][data-density=standard] { padding-block: 1rem; }
+.accountHubInbox .notificationRelatedGroup { border: 1px solid var(--notification-line); border-radius: .5rem; padding: .5rem; margin-block: .5rem; min-width: 0; }
+.accountHubInbox .notificationRelatedGroup > summary { overflow-wrap: anywhere; font-size: .9em; font-weight: 600; }
 .accountHubInbox h3 { margin: 0; font-size: .92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .accountHubInbox > .notificationGroupHeading { margin: .8rem 0 .25rem; font-size: .9em; padding-block: .35rem; border-block-end: 1px solid var(--notification-line); }
 .accountHubInbox .notificationMain { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .5rem; align-items: center; margin-inline-end: 2rem; color: inherit; text-decoration: none; }
 .accountHubInbox .notificationMain h3 { grid-column: 1; grid-row: 1; }
 .accountHubInbox .notificationMain time { grid-column: 2; grid-row: 1; white-space: nowrap; }
+.accountHubInbox .notificationMainCanvas .notificationCanvas { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+.accountHubInbox .notificationMain.notificationMainCanvas time { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
 .accountHubInbox .notificationMain .notificationExcerpt { grid-column: 1 / -1; }
 .accountHubInbox section[data-density=compact][data-expandable=true] .notificationExcerpt { display: none; }
 .accountHubInbox .notificationMain:hover h3 { text-decoration: underline; }
@@ -39,9 +45,18 @@
 .accountHubInbox .notificationExcerpt { display: block; opacity: .75; font-size: .82em; margin-block: .15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .accountHubInbox .notificationQuickActions { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .25rem; }
 .accountHubInbox .notificationCommand { border: 1px solid var(--notification-line); margin: 0; padding: .3em .65em; }
-.accountHubInbox .notificationCommand[data-action=allow][aria-pressed=true] { background: color-mix(in srgb, #3baf75 25%, transparent); border-color: #3baf75; }
-.accountHubInbox .notificationCommand[data-action=keep][aria-pressed=true] { background: color-mix(in srgb, #df6570 25%, transparent); border-color: #df6570; }
+.accountHubInbox .notificationCommand[data-action=allow][aria-pressed=true] { background: color-mix(in srgb, var(--notification-allow-color,var(--theme-primary-color,currentColor)) 25%, transparent); border-color: var(--notification-allow-color,var(--theme-primary-color,currentColor)); }
+.accountHubInbox .notificationCommand[data-action=keep][aria-pressed=true] { background: color-mix(in srgb, var(--notification-keep-color,var(--theme-error-color,currentColor)) 25%, transparent); border-color: var(--notification-keep-color,var(--theme-error-color,currentColor)); }
 .accountHubInbox .notificationActionStatus { font-size: .8em; }
+/* Low-specificity defaults let skin CSS win even though injection loads late. */
+:where(.accountHubInbox) .notificationSwipeable { touch-action: pan-y pinch-zoom; }
+:where(.accountHubInbox) .notificationSwipeActions { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; padding-block: .5rem; }
+:where(.accountHubInbox) .notificationSwipeActions[hidden], :where(.accountHubInbox) .notificationSwipeActions button[hidden] { display: none; }
+:where(.accountHubInbox) .notificationSwipeActions > span { flex: 1 0 100%; font-size: .85em; }
+:where(.accountHubInbox) .notificationSwipeActions button { min-height: 44px; }
+:where(.accountHubInbox) .notificationSwipeHint { font-size: .8em; opacity: .8; }
+:where(.accountHubInbox) .notificationSwipePreview { padding: .6rem; font-size: .85em; border: 1px solid var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)); border-radius: .4rem; background: color-mix(in srgb, var(--theme-primary-color, var(--jf-palette-primary-main, currentColor)) 12%, transparent); pointer-events: none; }
+:where(.accountHubInbox) .notificationSwipePreview[hidden] { display: none; }
 .notificationToast { position: fixed; inset-inline-end: .75rem; inset-block-start: 4.75rem; z-index: 2100; width: min(25rem, calc(100vw - 1.5rem)); box-sizing: border-box; padding: .75rem 1rem; border-radius: .8rem; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); box-shadow: 0 .4rem 1.5rem #0005; font-size: .86em; }
 .notificationToast p { margin: 0 0 .5rem; }
 .notificationToast .emby-button { padding: .35em .65em; margin: .1rem; font-size: .9em; border-radius: .4rem; }
@@ -49,16 +64,32 @@
 .accountHubInbox .notificationAction[data-size=compact] { padding: .3em .55em; font-size: .82em; }
 .accountHubInbox .notificationPreference { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; padding-block: .4rem; border-block-end: 1px solid var(--notification-line); }
 .accountHubInbox .notificationPreference > span { flex: 1 0 8rem; }
+.accountHubInbox .notificationCategory { align-items: flex-start; flex-wrap: nowrap; gap: .65rem; padding-block: .7rem; }
+.accountHubInbox .notificationCategoryDetails { flex: 1; min-width: 0; }
+.accountHubInbox .notificationCategoryDetails > summary { display: flex; flex-direction: column; gap: .2rem; min-height: 2.75rem; justify-content: center; overflow-wrap: anywhere; }
+.accountHubInbox .notificationCategoryDetails > summary small { font-size: .8em; opacity: .75; }
+.accountHubInbox .notificationCategoryDetails p { font-size: .85em; }
+.accountHubInbox .notificationCategory .notificationToggle { flex-shrink: 0; }
+.accountHubInbox .notificationImportance { border: 0; padding: .3rem 0; margin: 0; min-width: 0; }
+.accountHubInbox .notificationImportance legend { font-size: .85em; }
+.accountHubInbox .notificationImportance label { display: flex; align-items: center; gap: .65rem; padding-block: .55rem; min-height: 44px; box-sizing: border-box; cursor: pointer; }
+.accountHubInbox .notificationImportance input { flex-shrink: 0; accent-color: var(--theme-primary-color, var(--jf-palette-primary-main, auto)); }
+.accountHubInbox .notificationImportance input:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.accountHubInbox .notificationAppCategories { margin-block: .5rem; }
+.accountHubInbox .notificationCategorySettings > p { font-size: .85em; }
 .accountHubInbox .notificationViewTabs {display:flex;gap:.35rem;border-block-end:1px solid var(--notification-line);margin-block:.4rem;}
 .accountHubInbox .notificationViewTabs [aria-selected=true] {box-shadow:inset 0 -2px var(--theme-primary-color,currentColor);}
 .accountHubInbox button:focus-visible,.accountHubInbox summary:focus-visible {outline:2px solid var(--theme-primary-color,currentColor);outline-offset:2px;}
 .accountHubInbox .notificationSettingsStatus { font-size: .85em; }
 .accountHubInbox .notificationSettingsStatus:empty { display: none; }
-.accountHubInbox .notificationToggle {position:relative;width:2.6rem;height:1.5rem;min-width:2.6rem;border:1px solid var(--notification-line);border-radius:2rem;background:color-mix(in srgb,currentColor 15%,transparent);padding:0;cursor:pointer;}
-.accountHubInbox .notificationToggle::after {content:'';position:absolute;width:1.05rem;height:1.05rem;top:.15rem;left:.15rem;border-radius:50%;background:currentColor;transition:transform .15s;}
-.accountHubInbox .notificationToggle[aria-checked=true] {background:color-mix(in srgb,var(--theme-primary-color,#00a4dc) 65%,transparent);border-color:var(--theme-primary-color,#00a4dc);}
+.accountHubInbox .notificationToggle {position:relative;width:3rem;height:2.75rem;min-width:max(3rem,44px);min-height:44px;border:0;background:transparent;padding:0;cursor:pointer;}
+.accountHubInbox .notificationToggle::before {content:'';position:absolute;box-sizing:border-box;width:2.6rem;height:1.5rem;inset-block-start:calc(50% - .75rem);inset-inline-start:.2rem;border:1px solid var(--notification-line);border-radius:2rem;background:color-mix(in srgb,currentColor 15%,transparent);}
+.accountHubInbox .notificationToggle::after {content:'';position:absolute;width:1.05rem;height:1.05rem;inset-block-start:calc(50% - .525rem);inset-inline-start:.45rem;border-radius:50%;background:currentColor;transition:transform .15s;}
+.accountHubInbox .notificationToggle[aria-checked=true]::before {background:color-mix(in srgb,var(--theme-primary-color,Highlight) 65%,transparent);border-color:var(--theme-primary-color,Highlight);}
 .accountHubInbox .notificationToggle[aria-checked=true]::after {transform:translateX(1.05rem);}
-.accountHubInbox .notificationToggle:disabled {opacity:.45;cursor:wait;}
+.accountHubInbox .notificationToggle:dir(rtl)[aria-checked=true]::after {transform:translateX(-1.05rem);}
+.accountHubInbox .notificationToggle:disabled {opacity:.45;cursor:not-allowed;}
+.accountHubInbox [aria-busy=true] .notificationToggle:disabled {cursor:wait;}
 .accountHubInbox .notificationBack {background:transparent;border:0;box-shadow:none;padding:.35rem;}
 .accountHubInbox .notificationMediaImage{float:inline-start;width:2.8rem;height:4.2rem;object-fit:cover;border-radius:.35rem;margin-inline-end:.65rem;margin-block:.2rem;}
 .accountHubInbox .notificationMediaImage[data-kind=episode]{width:5.5rem;height:3.1rem;}

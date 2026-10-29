@@ -1,8 +1,14 @@
 # Host integration contract
 
-## Registration
+## Dependencies and registration
 
-Reference `src/AccountHub.Security/AccountHub.Security.csproj` from the single Account Hub plugin, then:
+The current Account Hub already registers this module and its host/receipt adapters.
+This contract documents those seams, not a standalone installation recipe. The shared
+native client/authorizer lives in `shared/Jellyfin.Security.Api`; producers use the
+separate framework-only `shared/AccountHub.Api`. Do not register a second receiver,
+worker, database or global Data Protection provider.
+
+For an equivalent Hub host, reference this module project and provide the adapters:
 
 ```csharp
 services.AddAccountHubSecurity();
@@ -17,19 +23,23 @@ Jellyfin supplies `IPluginManager`. Use the host's common model-validation/error
 
 ### Mandatory `ISecurityHubHost`
 
-- Resolve current caller through Jellyfin `IAuthorizationContext`; verify active administrator and elevation **every request**, including cached reads. Reject API/service keys and cookie-only mutations. Enforce same-origin management policy.
+- Resolve administrator callers through Jellyfin `IAuthorizationContext`; verify active administrator and elevation **every management request**, including cached reads. Reject API/service keys and cookie-only mutations. Enforce same-origin management policy. Recovery verdict checks separately use the target user's same-account native session, not administrator authority.
 - Construct request-scoped `CallerSession` using that user's token and a **trusted configured same-origin Jellyfin base URI ending in `/`**, including BaseUrl. Never use untrusted Host/Forwarded headers to choose an outbound target. Never persist or log the session. The typed client disables redirects/cookies/loggers; retain TLS validation and do not add retry middleware.
 - Provide current persisted settings/revision. Defaults: `Destructive`, `manual`, `native`, `auto`. Encrypt webhook/PII hash keys through Hub's existing secret store; no secret readback.
 - Implement `ExecuteAsync` with the **shared durable command gate and audit writer**. Scope command ID by actor + operation; canonical payload hash includes target IDs, new settings, confirmation decision, and revision but **never proof or session**. Completed identical retry returns stored result without invoking callback or asking for proof. Conflicting retry returns `command_conflict`.
 - Hold a revision/settings/command lease through authorization and execution. Pass the current **old** settings to callback. Check target existence, self/last-admin guards and idempotency before proof. Persist sanitized audit intent before mutation. Audit authorization method, fallback reason, verified time, actor/action/target/outcome; record failure/denial without serializing request objects.
 - Callback result is not cross-plugin atomicity. Persist uncertain/partial results as remediation pending; cancellation/crash after outbound send must not release an ambiguous command for blind retry. Settings changes occur in the host transaction after authorization; defaults and mirror changes are audited. No proof cache or reusable authorization ticket.
-- Apply the command authorizer immediately before core commands too. `Everything` audit reads/exports require POST-body proof; GET must reject before data access. Discord self-service reset is token-authorized and must **not** use this admin gate. This module does not implement reset/invite/policy/CSV logic.
+- Apply the shared command authorizer immediately before core commands too. Operational administration and audit query/export require a live administrator session but are classified non-security operations; even `Everything` does not add a fresh-code gate to them. Security-sensitive mutations retain confirmation and the applicable fresh-proof gate under the old policy. Native Security may still block an unverified session before Hub runs.
+- Self-service reset is **not token-only**: the reset claim and local-password policy additionally require the browser's same-account, exact-token native Security-verified/unblocked session (including native-approved bypasses). No new reset code, administrator mirror or factor-count test replaces that verdict. This module supplies the verdict seam; lifecycle owns reset/invite/password effects.
 
-`CommandDescriptor`, `AuthorizationEvidence` and receipt interfaces are same-Hub module integration seams, **not changes to `AccountHub.Api.1`** and not cross-ALC Security contracts. Core owner must adopt/reconcile these before freezing P0; no claim that the absent shared contracts already exist.
+`CommandDescriptor`, `AuthorizationEvidence` and receipt interfaces are implemented
+same-Hub module integration seams, **not changes to `AccountHub.Api.1`** and not
+cross-ALC Security contracts. A passing module fixture is not installed-package or
+production certification; see the current evidence register.
 
 ## HTTP mapping
 
-All routes below are beneath `/AccountHub/api/v1/security` and use the common `{apiVersion:"1",ok,data|error}` envelope. Controller outputs force camel-case independently of Jellyfin media-type profile. Admin elevation + host session validation protect all routes.
+Management routes below are beneath `/AccountHub/api/v1/security` and use the common `{apiVersion:"1",ok,data|error}` envelope. Controller outputs force camel-case independently of Jellyfin media-type profile. Admin elevation + host session validation protect these routes; the separate signed webhook is intentionally token-free.
 
 | Method | Route | Upstream / behavior |
 |---|---|---|
@@ -42,7 +52,9 @@ All routes below are beneath `/AccountHub/api/v1/security` and use the common `{
 | POST | `webhook-test` | Confirm + config-risk gate; invokes native test of **all channels** |
 | PUT | `settings` | Only Hub settings; authorize mirror lowering as destructive under **old level** |
 
-The POST revoke wrapper is the additive alternative allowed by handoff §7.2, **not** a silently repurposed upstream endpoint. The specified Hub DELETE route is intentionally not exposed until DELETE-body proxy support has been verified. Bind UI only to the documented POST shape. No proof in query strings or separate proof status endpoint.
+The POST revoke wrapper preserves the upstream endpoint rather than silently
+repurposing it. Bind UI to this documented POST shape; do not invent a DELETE-body
+route or put proof in query strings or a separate proof-status endpoint.
 
 Command example (values illustrative, not real credentials):
 
@@ -61,12 +73,15 @@ Display cache: 10 seconds, 8 MiB budget, actor/origin/route scoped; compatibilit
 
 ## Shared webhook receiver
 
-Notifications owns **one** anonymous HMAC route: `POST /AccountHub/api/v1/security/jellyfin-security`. It must:
+Hub's `SecurityReceiver` hosts **one** anonymous HMAC route:
+`POST /AccountHub/api/v1/security/jellyfin-security`. It uses the shared Notifications
+receipt/audit/fanout machinery through `SecurityReceiptAdapter`; standalone Notifications
+does not create a competing ingress or own native Security settings. It must:
 
 1. Enforce application/json, single timestamp/signature headers, no Jellyfin token/cookie authentication, request/connection limits, trusted source IP extraction and bounded per-IP/global rate limits. Don't bypass Security's blocker; sender must omit Jellyfin tokens.
 2. Load encrypted configured nonempty shared signing secret and a separate >=32-byte privacy hash key. Do not put secrets in URLs/logs. Call `SecurityWebhook.ReceiveAsync` with exact request body stream, header values, source IP and persisted alert mode.
 3. Translate accepted/duplicate receipt to 202, `SecurityFailure` to its status/envelope (401 auth; 400 invalid signed JSON; 408 read timeout; 413 size; 429 limit; 503 durable store unavailable; 409 unavailable quarantine). No raw body in logging/middleware capture. Rate-limit redacted rejection auditing.
-4. Implement `ISecurityReceiptStore.AcceptAsync` transactionally in shared Notifications storage. Unique source/body-hash dedupe persists **>=10 minutes across restart** (prefer existing longer ledger retention). Receipt, audit/fanout intent must be durable before acceptance. Capacity must be bounded; do not evict active dedupe records to accept new work. Valid duplicate is no-op. Quarantine must not upgrade into live fanout on duplicate or replay after restoration.
+4. Implement `ISecurityReceiptStore.AcceptAsync` transactionally through the registered Notifications receipt store, preserving its actual owner/path and original keys. Unique source/body-hash dedupe persists **>=10 minutes across restart** (prefer existing longer ledger retention). Receipt, audit/fanout intent must be durable before acceptance. Capacity must be bounded; do not evict active dedupe records to accept new work. Valid duplicate is no-op. Quarantine must not upgrade into live fanout on duplicate or replay after restoration.
 5. Normal receipt contains only sanitized event fields. Mismatch receipt contains only source/body hash/time/compatibility reason, no parsed event. Native mode/test events never alert; test updates receipt-health state. Noise summary events require worker rate/coalescing rules. Admin recipients are resolved and rechecked server-side; username snapshots never establish identity or user delivery. IP HMAC is private metadata, not an external-channel field.
 
 HMAC is timestamp header bytes + `.` + exact raw body; ±300 seconds, lowercase `sha256=` hex, constant-time comparison. Bounded 64 KiB stream, ten-second read deadline and eight concurrent reads. Replay/dedupe storage belongs to the host, not an unsafe second in-memory receiver cache. Managed strings cannot be reliably zeroed; proof object references, UI fields and owned webhook byte buffers are cleared, but do not claim guaranteed heap erasure.
@@ -78,3 +93,10 @@ Serve `web/security-client.mjs` and `web/security-panel.mjs` as Hub-owned same-o
 The panel uses text nodes, labeled confirmation/password inputs, pagination and no stored browser proof. It does not provide passkey/email proof-acquisition buttons: upstream user binding is source-reviewed, but acquisition has not been live-verified. TOTP/recovery input is the initial UI. The transport accepts a caller-supplied upstream `stepUpToken` for future host acquisition wiring; a deep-link return is never proof.
 
 Bind recent redacted events/receiver health to the **existing Notifications history**, and settings to the existing Hub Settings page. No competing event-history/settings UI or factor configuration is introduced. Browser Modern/Legacy/mobile styling/accessibility and live navigation are still release checks.
+
+## References
+
+- [Security setup, existing-session recovery and ingress acceptance](../../../docs/security-recovery-integration.md)
+- [Notification producer/host contract](../../../docs/notification-producer-api.md)
+- [Safety and permission boundaries](../../../docs/safety-and-permissions.md)
+- [Current status](../../../docs/review-status.md) · [Evidence register](../../../docs/verification.md)

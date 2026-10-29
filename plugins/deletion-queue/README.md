@@ -1,8 +1,24 @@
 # Seerr deletion requests for Jellyfin 12.x
 
+## Dependencies and installation
+
+Install Deletion Queue and standalone Notifications from the
+[combined platform catalog](../../README.md#installation-and-upgrades), restart
+Jellyfin and open **Dashboard → Plugins → Deletion Queue**. New intake requires
+Notifications with registered types, scoped access and commands. Existing consent,
+Undo and history remain available during provider failure. Hub/Bridge/Enhanced are
+optional; Seerr and explicit destructive opt-in are required for supported real
+media operations. Back up plugin state and original keys before upgrades.
+
+Use root test/package wrappers with the SDK in `global.json`, current stable
+Node.js and PowerShell 7+. Configure publication using **Release Deletion Queue**
+and the [current release policy](../../docs/independent-plugin-releases.md).
+
+## Overview
+
 A Jellyfin Server plugin with integrated media/request removal actions, inline Notifications controls and native administrator settings. New removal requests require standalone Notifications with registered types, scoped access and command support.
 
-> **Real deletion requires a new explicit administrator opt-in.** Stock Seerr is trusted to choose the Arr scope and remove its record/files, retaining requests. The plugin enforces current consent, complete activity coverage and delay, persists a claim before dispatch and never automatically resends uncertain attempts. Local authenticated seals do **not** prevent restoring the database, keys and seals together to an older valid state. See [implementation status and test boundaries](docs/implementation-status.md).
+> **Real deletion requires a new explicit administrator opt-in.** Stock Seerr is trusted to choose the Arr scope and remove its record/files, retaining requests. The plugin enforces current consent, complete activity coverage and delay, persists a claim before dispatch and never automatically resends uncertain attempts. Local authenticated seals do **not** prevent restoring the database, keys and seals together to an older valid state. See [current status and test boundaries](../../docs/review-status.md).
 
 ## Included
 
@@ -18,8 +34,9 @@ A Jellyfin Server plugin with integrated media/request removal actions, inline N
 - Encrypted, authenticated SQLite journal, retained history, tamper/replay detection and no silent state reset.
 - Live session/admin authorization, anonymous ordinary-user DTOs and a separate native admin page.
 - One-shot stock-Seerr execution with durable claims, uncertainty and a separate FilesDeleted checkpoint based on Seerr's deletion report.
+- Read-only detection of direct Seerr deletion, pending-request decline and verified missing records, closing unclaimed work without another destructive request or false queue completion.
 
-## Build and test
+## Presentation and scheduled maintenance
 
 ### Collections and reversible artwork (preview)
 
@@ -31,42 +48,34 @@ Original bytes are separately preserved under plugin-owned storage. Disabling or
 
 Before uninstalling, disable presentation and run collection maintenance plus the artwork restoration task (or Sync / restore now) until owned overlays/memberships are restored. Resolve reported conflicts first. Do not delete the plugin's artwork data while native image pointers still reference it; uninstalling is not an automatic restoration hook.
 
-Preview limits: 1000 artwork receipts, 1000 descendants per series, 20 image changes per interactive sync (up to 1000 in the cancellable daily artwork task), 8 MiB/16 million pixels per image and 512 MiB plugin artwork storage. JPEG/PNG/WebP/GIF/BMP are supported; rotated EXIF images are skipped, and animated inputs produce a static first-frame PNG. Backups/generated files are retained conservatively (no automatic purge yet); reaching capacity stops new artwork generation, not deletion authorization or restoration. The renderer uses Jellyfin 12.3's own SkiaSharp runtime; no competing Skia binaries are shipped. Native pointer persistence across arbitrary clients/restarts remains subject to installed acceptance evidence in the root review status.
+Preview limits: 1000 artwork receipts, 1000 descendants per series, 20 image changes per interactive sync (up to 1000 in the cancellable daily artwork task), 8 MiB/16 million pixels per image and 512 MiB plugin artwork storage. JPEG/PNG/WebP/GIF/BMP are supported; rotated EXIF images are skipped, and animated inputs produce a static first-frame PNG. Backups/generated files are retained conservatively (no automatic purge yet); reaching capacity stops new artwork generation, not deletion authorization or restoration. The renderer uses Jellyfin's reviewed SkiaSharp runtime; no competing Skia binaries are shipped. Native pointer persistence across arbitrary clients/restarts remains subject to installed acceptance evidence in the root review status.
 
 ### Daily maintenance jobs
 
-**Dashboard → Scheduled Tasks → Deletion Queue** exposes separate daily jobs: automatic rules/collection processing (02:00, supplied by Automatic Deletion Requests), verification/due removals/collection maintenance (03:00), and overlay generation/restoration (04:00). Defaults use Jellyfin's local scheduled-task clock; edit triggers or use Run now in the native Dashboard. Minute polling workers no longer perform these jobs. Continuous playback capture and immediate safety invalidation remain active. Artwork can lag the live request state until its next job or explicit Sync; the date is always conditional.
+**Dashboard → Scheduled Tasks → Deletion Queue** exposes separate daily jobs: automatic rules/collection processing (02:00, supplied by Automatic Deletion Requests), verification/due removals/collection maintenance (03:00), and overlay generation/restoration (04:00). Defaults use Jellyfin's local scheduled-task clock; edit triggers or use Run now in the native Dashboard. Coalesced safety rechecks also run between jobs, including read-only external Seerr observation, but never dispatch deletion. Continuous playback capture and immediate safety invalidation remain active. Artwork can lag the live request state until its next job or explicit Sync; the date is always conditional.
 
 Every advancement requires fresh target, native playback/session, permission, current consent, optional administrator approval and policy evidence. Automated requests additionally require their originating rule to remain enabled, in scope and matching current evidence. The execution coordinator obtains fresh evidence again before claiming and immediately before dispatch; rule conditions are also checked at dispatch. A past date never bypasses these checks, disabled deletion opt-in or durable uncertain-claim protections. Startup recovery never resends an attempt.
 
-Requires the **.NET 10 SDK**. The shared build target is **Jellyfin Server/Web 12.3**. Installed local checks use Linux amd64; this is not certification of every skin, Enhanced version or server platform.
+## Development and releases
+
+From the repository root:
 
 ```powershell
-dotnet build DeletionQueue.slnx -c Release
-dotnet test DeletionQueue.slnx -c Release
-./scripts/package.ps1 -Runtime linux-x64
+npm ci --ignore-scripts --prefix plugins/private-syncplay
+pwsh -File scripts/test-plugin.ps1 -Plugin deletion-queue
 ```
 
-The package script creates `artifacts/DeletionQueue-0.1.0.0-linux-x64.zip` with MD5/SHA-256 sidecars, a package descriptor and installed `meta.json`. Existing packages are not overwritten; choose a fresh `-OutputDirectory` when rebuilding. Extract into a new Jellyfin plugin directory and restart. Back up existing plugin state first; do not overwrite another plugin's directory.
-
-## Releases and repository installation
-
-Tagged releases are built and verified by GitHub Actions. The exact triggering tag supplies the release version: `v0.1.0.1` builds version `0.1.0.1` throughout the DLLs, installed manifest and repository catalogs, without editing a version file. `build/Plugin.props` keeps the untagged-build default, ABI, channel and immutable plugin identity. Tags must use four numeric components; see [release setup](docs/releases.md).
-
-After publication, register **one** platform/channel JSON URL in Jellyfin's plugin repositories. For stable releases on standard Linux x64 Docker:
-
-```text
-https://raw.githubusercontent.com/someRandomDude-a/seerr-deletion-requests/manifests/stable/manifest-linux-x64.json
-```
-
-Linux ARM64 and Windows x64 have separate catalogs because Jellyfin cannot choose an architecture from one manifest. Stable subscribers never receive preview versions. See [release setup, all catalog URLs and publishing/recovery instructions](docs/releases.md). These URLs are created by the first successful release workflow; adding the workflow does not publish or enable deletion.
+Use root packaging and the combined architecture catalogs. **Release Deletion Queue**
+accepts `vX.Y.Z`; the shared engine validates immutable packages and current targets
+before protected publication. See [release procedures](../../docs/independent-plugin-releases.md).
+Do not use the retired standalone four-component tag or channel feeds.
 
 ## Use
 
 1. Open **Dashboard → Plugins → Deletion queue**. Save the Seerr URL/key, or select **Use Jellyfin-Enhanced connection**. Only one enabled Enhanced Seerr URL is imported; ambiguous/multiple endpoints require manual configuration. Later Enhanced changes require a fresh import. The configured Jellyfin server ID must match this server.
 2. Set global/per-user proposal permission using the user dropdown. **Reset selected user** restores inherited permission and default personal preferences, preserving proposals, consent, history and existing deadline floors. Optionally enable **Require administrator approval for each proposal** and approve/revoke in the backlog. Approvals are bound to the target, activity and policy; the approver's current admin role and visibility are rechecked before dispatch.
 3. Use **Request removal** on a movie/whole-series detail page, media card, right-click menu or supported Enhanced request. Review the title/quality, then confirm. Duplicate submissions register consent on the existing active request, retaining its original owner and expiry; repeated current Yes consent is idempotent.
-4. Open the **notification bell in Jellyfin's top bar** to review proposals, explicitly allow/keep media, Undo your own unclaimed proposal, mark notices read or change preferences. Viewing/Help/notification polling never records activity or consent.
+4. Open the **notification bell in Jellyfin's top bar** to review proposals, explicitly allow/keep media, Undo your own unclaimed proposal, mark notices read or change preferences. Mobile swipes and desktop drags support eligible consent requests: a deliberate right gesture submits your live Allow response and dismisses only after success; left reveals Hide without consenting. Current revision/access checks, approvals and delays still apply. Viewing/Help/notification polling never records activity or consent.
 5. If desired, explicitly enable **automatic Seerr-managed deletion** and confirm the real-deletion warning. Old preview-only opt-ins cannot activate this transport. A complete bounded native Jellyfin last-played scan (including unfinished playback and related series items across all accounts) can verify the activity window immediately after collector startup; a new multi-day observation wait is not required when that scan succeeds. Current consent and the minimum two-day eligible delay still apply. Missing/incomplete inventory, an unhealthy collector or clock, and active playback fail closed. Fresh verification runs in the daily maintenance task, on explicit status inspection, and again before execution. Failed checks remain blocked until another successful verification; use Scheduled Tasks → Run now to retry earlier.
 
 An ASP.NET startup filter injects same-origin resources into Web without modifying Web files. File Transformation is not required. The full queue is embedded in Enhanced's Requests page, not a second standalone application. The popout's **Open full queue** action appears only when the enabled Enhanced plugin reports its Requests page enabled; users are not shown missing-dependency instructions. Administrator settings explain this integration. Native TV/mobile clients that do not load Jellyfin Web are not modified. Unsupported Web/Enhanced markup may omit controls rather than replacing native commands.
@@ -97,39 +106,57 @@ An administrator requesting removal also records administrator approval when tha
 
 When the owner starts playback, the earliest removal time is pushed back by at least the effective delay floor, fresh consent is required, and the intake clock restarts. A dedicated owner-only notification is emitted once per playback session, not on each progress event. It offers **View request** and owner-only **Cancel request**. Administrators can change its plain-text message (`{media}`, `{days}`) and toast duration (0–10 seconds) under **Notifications → Registered notification types → Playback resets removal**. The default toast lasts six seconds; the notice remains in the inbox.
 
+### Changes made directly in Seerr
+
+If someone deletes the selected media edition or declines an unmanaged pending
+request directly in Seerr, maintenance closes unclaimed queue work with **Removed
+outside the queue** or **Closed in Seerr**. A verified missing record instead says
+**Upstream record missing**; it does not establish that physical files were deleted.
+Current connection/server association and exact media/quality identity must match.
+Network/authentication failures remain blocked verification, not successful removal.
+Closed requests lose their live actions; old Allow/Keep/Undo controls cannot change
+them. Automatic rules do not silently repropose cancelled work.
+
+Claimed/uncertain attempts retain their durable claim and are never automatically
+cancelled, reopened or resent. Administrators must use the separate read-only
+outcome reconciliation. Native library visibility still follows Jellyfin's scan
+and current item access, not an independent filesystem check.
+
 ### Unfulfilled requests and incomplete downloads
 
 Request IDs/media identities come from supported Enhanced card metadata and Seerr HTTP reads, never titles or usernames. Seerr's native Jellyfin user mapping and server association must verify ownership. When no native media item exists, visibility is limited to the verified request owner. Unmanaged pending requests use Seerr's **decline** endpoint after normal queue safeguards, preserving request history; the plugin never deletes `/request/{id}`. Managed incomplete media uses Seerr's existing media-file removal endpoint only after verifying the managed edition and ownership of every live request in its scope. Unverified ownership, a changed target or unsupported state fails closed.
 
 Enhanced 12.13 Calendar integration adds dated removal events to its own renderer and a **Deletion Date** filter, preserving native OR/AND/NOT filtering and month/week/day/agenda and list/card/backdrop modes. There is no separate queue/sidebar list. Unscheduled requests have no calendar date; dated removals are explicitly earliest possible times. Click an event to focus its request in Enhanced Requests, or open the queue when Requests is unavailable. The adapter checks the reviewed Enhanced calendar-state/rendering contract and does not guess dates from DOM day numbers. Browser acceptance additionally exercises immutable upstream Enhanced 12.13 rendering/filter modules; the owner's complete custom-skin/navigation installation and real upstream download/removal behavior still require acceptance.
 
-Latest-stable Server/Web compatibility, hostile-input and browser/fault-isolation tests run in a separate scheduled/PR workflow and gate releases. An in-process plugin cannot promise immunity from all host crashes; see the [safety review and limits](docs/safety-review.md).
+Latest-stable Server/Web compatibility, hostile-input and browser/fault-isolation checks are release gates in the local workflow configuration. An in-process plugin cannot promise immunity from all host crashes; see [safety and operational limits](../../docs/safety-and-permissions.md).
 
-## Isolated Docker integration tests
+## Disposable installed acceptance
 
-Never mount a real media library or use production credentials. These tests configure a fresh synthetic server and refuse an already-configured instance.
+Never mount real media or use production credentials. Create fresh packages with
+the root wrappers, then from the repository root run:
 
 ```powershell
-dotnet publish src/Jellyfin.Plugin.DeletionQueue/Jellyfin.Plugin.DeletionQueue.csproj -c Release -r linux-x64 --self-contained false -o artifacts/plugin/linux-x64
-docker compose -f test-infrastructure/compose.yaml up -d jellyfin
-docker compose -f test-infrastructure/compose.yaml run --rm smoke
+node scripts/integration.mjs --packages=artifacts/current-candidate --plugins=deletion,notifications --security=latest --permissions-check
 ```
 
-The fixture uses `network_mode: none` and no media mounts. If Docker cannot start a shared network namespace, run `node test-infrastructure/browser-proxy.mjs` in one terminal and `node test-infrastructure/smoke.mjs` in another. The proxy exposes only the synthetic fixture at `127.0.0.1:18496`, supports HTTP but not WebSockets, and must not be used for production.
-
-See [repeatable browser and fault-isolation checks](test-infrastructure/README.md) for the themed bell, native admin page and corrupt-plugin-storage survival tests.
-
-After stopping the test proxy, remove **only this test project's disposable containers/volumes** with `docker compose -f test-infrastructure/compose.yaml down --volumes`. Do not reuse its volumes for another test run: the smoke driver intentionally refuses to reconfigure an existing server.
+The runner owns its fixture and cleanup. Component smoke/proxy/fault tools remain
+controlled developer fixtures; Compose requires an explicit current-run image, not
+an old default. See [testing](../../docs/testing.md) and [browser/fault checks](../../docs/theme-acceptance.md).
 
 ## Design and operations
 
-- [Implementation plan](docs/implementation-plan.md)
+- [Safety and permission boundaries](../../docs/safety-and-permissions.md)
 - [Optional Account Hub v1 integration, migration and handoff](docs/account-hub-v1.md)
-- [Implemented behavior and remaining gates](docs/implementation-status.md)
-- [Native-page verification](docs/jellyfin-12-native-pages.md)
-- [Recovery and stopped backups](docs/recovery.md)
-- [Host isolation, hostile input and themed notifications](docs/safety-review.md)
+- [Current behavior and remaining gates](../../docs/review-status.md)
+- [Native-page verification](../../docs/theme-acceptance.md)
+- [Recovery and stopped backups](../../docs/plugin-storage-recovery.md)
 
-## Credits
+## References and credits
+
+- [Current installation and dependencies](../../docs/dependencies.md)
+- [Consent gestures and notification controls](../../docs/notification-channels.md)
+- [Automation rules](../automatic-deletion-requests/README.md)
+- [Current testing](../../docs/testing.md) · [Release policy](../../docs/independent-plugin-releases.md)
+- [Current evidence and blockers](../../docs/review-status.md)
 
 Collection and overlay workflows were inspired by [Maintainerr](https://github.com/Maintainerr/Maintainerr) (MIT). This is an independent implementation; no upstream source or artwork is bundled.

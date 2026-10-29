@@ -102,7 +102,7 @@
             el('dqDelayDays').value = value(policy, 'delayHours') / 24;
             el('dqAuto').checked = value(policy, 'automaticDeletion') && value(policy, 'seerrManagedDeletionAcknowledged');
             const monitoringHealthy = value(current, 'clockHealthy') !== false && value(current, 'collectorHealthy') !== false && value(current, 'coverageHealthy') !== false;
-            badge('deletion-queue', { working: monitoringHealthy, state: !monitoringHealthy ? 'Needs attention' : value(policy, 'suspended') ? 'Paused' : el('dqAuto').checked ? 'Automatic · safety gated' : 'Monitoring', detail: value(current, 'mode') + ' ' + (value(current, 'coverageProblem') || '') });
+            badge('deletion-queue', { working: monitoringHealthy, state: !monitoringHealthy ? 'Needs attention' : value(policy, 'suspended') ? 'Paused' : el('dqAuto').checked ? 'Automatic · safety gated' : 'Monitoring', detail: value(current,'collectorRunning')===false?'Activity collector stopped. Restart Jellyfin and inspect the server log; requests remain safety-blocked.':value(current,'coverageProblem')==='CollectorFailure'?'Activity collection was interrupted. A new observation window is starting; fresh native history and live-playback checks are still required.':'Activity and request checks are safety-gated. Changes re-evaluate active requests without executing deletions.' });
             const seerrConfigured = !!value(seerr, 'baseUrl') && value(seerr, 'keyConfigured') === true;
             badge('seerr', { name: 'Seerr API', state: seerrConfigured ? 'Saved · not tested' : 'Not configured', working: null, detail: 'Use Test connection to verify the saved key and Jellyfin server identity without changing media. Draft edits are not sent by a test.', version: null });
             el('dqAuto').disabled = !seerrConfigured && !el('dqAuto').checked;
@@ -145,6 +145,12 @@
                 const progress=value(current,'proposalProgress');
                 const progressKey=progress&&Object.keys(progress).find(k=>normalizedId(k)===normalizedId(value(proposal,'id')));
                 if(progressKey)window.DeletionQueueTimeline?.render(progress[progressKey],details);
+                const checks=document.createElement('p');
+                const evidence=value(proposal,'lastCheckEvidence'),checked=value(proposal,'lastCheckedAt');
+                checks.textContent=(checked?'Last safety-check attempt: '+new Date(checked).toLocaleString()+'. ':'No safety-check attempt recorded. ')+(evidence?[
+                    ['ownerAuthorized','Access/ownership'],['targetVerified','Media target'],['completeActivityScan','Live activity scan'],['nativeHistoryVerified','Native history'],['localCheckpointVerified','Storage checkpoint'],['seerrDelegationVerified','Removal service'],['automaticRuleVerified','Automatic rule (if required)'],['administratorAuthorized','Administrator approval (if required)']
+                ].map(([key,label])=>label+': '+(value(evidence,key)?'verified':'not verified')).join(' · '):'No completed evidence set; inspect connection and collector health.');
+                details.append(checks);
                 details.append(pre);
                 if (!value(proposal, 'terminal') && !value(proposal, 'claim')) {
                     const snapshots = value(current, 'administratorApprovalSnapshots');

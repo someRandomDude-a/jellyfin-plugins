@@ -20,10 +20,12 @@ public static class NoticeRules
         {
             if (state.Preferences.GetValueOrDefault(user)?.Notifications == false) continue;
             // Coalesce unread notices per caller/proposal; never expose votes, identities or activity in notices.
-            if (!unread.Add((user, id))) continue;
+            var external=proposal.Reason is "RemovedOutsideQueue" or "RequestClosedOutsideQueue" or "UpstreamTargetMissing";
+            var text=external?UserProgress.For(state,proposal).Help:"Removal request updated.";
+            if (!unread.Add((user, id)) && (!external || state.Notices.Any(n=>n.UserId==user&&n.ProposalId==id&&n.ReadAt is null&&n.Text==text))) continue;
             if (state.Notices.Count >= 10000) { state.NoticeDeliveryIncomplete = true; return; }
             state.Notices.Add(new Notice(Guid.NewGuid(), user, id,
-                "Removal request updated."));
+                text));
         }
     }
 

@@ -12,6 +12,7 @@ public static class SecurityClientRegistration
     {
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ISecurityCompatibility, JellyfinSecurityCompatibility>();
+        services.TryAddSingleton<ISecuritySessionVerification, JellyfinSecuritySessionVerification>();
         services.TryAddSingleton<ReadModelCache>();
         services.AddHttpClient<SecurityClient>(ClientName, client => client.Timeout = TimeSpan.FromSeconds(30))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false, ConnectTimeout = TimeSpan.FromSeconds(5) }).RemoveAllLoggers();

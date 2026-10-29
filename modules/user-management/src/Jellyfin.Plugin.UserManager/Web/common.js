@@ -106,16 +106,16 @@
         }
 
         if (!response.ok) {
-            var message = 'Request failed (' + response.status + ').';
-            if (payload && typeof payload === 'object' && (payload.error || payload.title)) {
-                message = payload.error || payload.title;
-            } else if (typeof payload === 'string' && payload.length < 400) {
-                message = payload;
-            }
-
+            // Never render provider prose, native model-state values or HTML,
+            // including failures that occurred before plugin result filters ran.
+            var categories = {400:'Some details are invalid. Check your entries.',401:'Your session needs attention. Sign in through Jellyfin to continue.',403:'You do not have permission to perform this action.',404:'This item or link is unavailable or has expired.',409:'This item changed. Refresh and review it.',410:'This item or link is unavailable or has expired.',429:'Too many attempts. Please wait.'};
+            var message = categories[response.status] || 'We could not confirm the result. Check the current state or contact an administrator before trying again.';
+            var candidate = payload?.error?.errorId || payload?.errorId || response.headers?.get?.('X-Suite-Error-Id');
+            var id = typeof candidate === 'string' && /^[a-f0-9-]{36}$/i.test(candidate) ? candidate : null;
+            if (id) message += ' Error ID: ' + id;
             var error = new Error(message);
             error.status = response.status;
-            error.payload = payload;
+            error.errorId = id;
             throw error;
         }
 

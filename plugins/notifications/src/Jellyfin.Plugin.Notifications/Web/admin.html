@@ -12,15 +12,17 @@
         loading = true; const current = ++generation; controller = new AbortController(); const signal = controller.signal;
         page.querySelector('[data-status]').textContent = '';
         try {
+            if (!document.querySelector('[data-notification-studio-style]')) { const link = document.createElement('link'); link.rel = 'stylesheet'; link.dataset.notificationStudioStyle = ''; link.href = ApiClient.getUrl('Notifications/assets/notification-studio.css'); document.head.append(link); }
+            for (const [global, file] of [['NotificationCard', 'notification-card.js'], ['NotificationStudio', 'notification-studio.js']]) if (!window[global]) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = ApiClient.getUrl('Notifications/assets/' + file); script.onload = resolve; script.onerror = reject; document.head.append(script); });
             if (!window.AccountHubNotificationSettings) await new Promise((resolve, reject) => {
                 const script = document.createElement('script'); script.src = ApiClient.getUrl('Notifications/assets/settings.js'); script.onload = resolve; script.onerror = reject; document.head.append(script);
             });
             if (signal.aborted || current !== generation) return;
             const cleanup = await window.AccountHubNotificationSettings.mount(page.querySelector('[data-notification-settings]'), async (path, method = 'GET', body) => {
                 if (signal.aborted) throw new DOMException('View changed', 'AbortError');
-                const response = await ApiClient.ajax({ url: ApiClient.getUrl('Notifications/api/v1/' + path), type: method, contentType: 'application/json', dataType: 'json', data: body === undefined ? undefined : JSON.stringify(body) });
+                const response = await ApiClient.ajax({ url: ApiClient.getUrl('Notifications/api/v1/' + path), type: method, contentType: 'application/json', dataType: 'json', data: body === undefined ? undefined : JSON.stringify(body) }).catch(error=>{if(!signal.aborted)window.SuiteAdminUI?.reportError?.(page,error);throw error;});
                 if (signal.aborted) throw new DOMException('View changed', 'AbortError');
-                if (!response.ok) throw new Error('Notification settings unavailable. Check authorization and storage.');
+                if (!response.ok) throw new Error(window.SuiteAdminUI?.failure?.(response,null,'Notification settings unavailable. Check authorization and storage.')||'Notification settings unavailable.');
                 return response.data;
             }, { signal });
             if (signal.aborted || current !== generation) cleanup(); else dispose = cleanup;

@@ -48,6 +48,8 @@ public sealed partial class NotificationStore
                 CREATE TABLE IF NOT EXISTS nh_push_settings(id INTEGER PRIMARY KEY CHECK(id=1),json TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS nh_push_subscriptions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,json TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS nh_push_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,notification_id TEXT NOT NULL,event_id TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS nh_suppressed(id TEXT PRIMARY KEY,user_id TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS nh_suppressed_user ON nh_suppressed(user_id);
                 """);
                 transaction.Commit();
                 return 0;
@@ -120,19 +122,23 @@ public sealed partial class NotificationStore
             else
             {
                 var ids = new List<Guid>();
+                var configJson=Scalar(c,"SELECT json FROM nh_settings WHERE id=1");var presentation=configJson is null?new Settings(0,[]):Decrypt<Settings>(configJson);
                 foreach (var recipient in fanout)
                 {
-                    if (recipient.Inbox)
+                    if (recipient.Inbox||presentation.BlockedNotificationLimit>0)
                     {
                         var existing = upsert ? Scalar(c, "SELECT id FROM nh_inbox WHERE user_id=$0 AND json_extract(event,'$.source')=$1 AND json_extract(event,'$.dedupeKey')=$2 AND json_extract(event,'$.adminOnly')=$3 ORDER BY created DESC LIMIT 1", recipient.User, entry.Source, key, entry.AdminOnly) : null;
-                        var id = existing is null ? Guid.NewGuid() : Guid.Parse(existing); ids.Add(id);
+                        var id = existing is null ? Guid.NewGuid() : Guid.Parse(existing); if(recipient.Inbox)ids.Add(id);
+                        var update=true;
                         if (existing is null) Execute(c, "INSERT INTO nh_inbox(id,user_id,event,created) VALUES($0,$1,$2,$3)", id, recipient.User, Contract.Serialize(entry), Now);
                         else {
                             var previous = JsonSerializer.Deserialize<NotificationEvent>(Scalar(c, "SELECT event FROM nh_inbox WHERE id=$0", id)!, Contract.Json)!;
-                            if (entry.OccurredAt >= previous.OccurredAt) Execute(c, "UPDATE nh_inbox SET rowid=(SELECT COALESCE(MAX(rowid),0)+1 FROM nh_inbox),event=$1,created=$2,is_read=0,dismissed=0 WHERE id=$0", id, Contract.Serialize(entry), Now);
+                            update=entry.OccurredAt>=previous.OccurredAt;
+                            if (update) Execute(c, "UPDATE nh_inbox SET rowid=(SELECT COALESCE(MAX(rowid),0)+1 FROM nh_inbox),event=$1,created=$2,is_read=0,dismissed=0 WHERE id=$0", id, Contract.Serialize(entry), Now);
                         }
+                        if(update){if(recipient.Inbox)Execute(c,"DELETE FROM nh_suppressed WHERE id=$0",id);else{Execute(c,"INSERT OR IGNORE INTO nh_suppressed VALUES($0,$1)",id,recipient.User);TrimSuppressed(c,recipient.User,presentation);}}
                         var push=Scalar(c,"SELECT json FROM nh_push_settings WHERE id=1");
-                        if(push is not null&&Decrypt<PushConfiguration>(push).Enabled&&Scalar(c,"SELECT id FROM nh_push_subscriptions WHERE user_id=$0 LIMIT 1",recipient.User) is not null&&int.Parse(Scalar(c,"SELECT COUNT(*) FROM nh_push_jobs")!)<10000)
+                        if(recipient.Inbox&&update&&push is not null&&Decrypt<PushConfiguration>(push).Enabled&&Scalar(c,"SELECT id FROM nh_push_subscriptions WHERE user_id=$0 LIMIT 1",recipient.User) is not null&&int.Parse(Scalar(c,"SELECT COUNT(*) FROM nh_push_jobs")!)<10000)
                             Execute(c,"INSERT OR IGNORE INTO nh_push_jobs(id,user_id,notification_id,event_id,next_at) VALUES($0,$1,$2,$3,$4)",Validation.Hash(id+":"+entry.EventId),recipient.User,id,entry.EventId,Now);
                     }
                     foreach (var route in prior is not null && upsert ? Array.Empty<Route>() : recipient.Routes)
@@ -166,49 +172,69 @@ public sealed partial class NotificationStore
             return result;
         });
 
-    public IReadOnlyList<InboxRow> Inbox(Guid user, int skip, int limit, string? source, bool unread, bool includeAdmin = true, bool history = false) => Run(c =>
+    public IReadOnlyList<InboxRow> Inbox(Guid user, int skip, int limit, string? source, bool unread, bool includeAdmin = true, bool history = false,bool blocked=false) => Run(c =>
     {
+        TrimSuppressed(c,user);
         ArchiveViewed(c,user);
         using var cmd = Command(c, """
             SELECT id,event,is_read,dismissed FROM nh_inbox WHERE user_id=$0 AND dismissed=$6
             AND ($1=0 OR is_read=0) AND ($2 IS NULL OR json_extract(event,'$.source')=$2)
             AND ($5=1 OR json_extract(event,'$.adminOnly')=0)
+            AND EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id)=$7
             ORDER BY created DESC,rowid DESC LIMIT $3 OFFSET $4
-            """, user, unread, source, Math.Clamp(limit, 1, 100), Math.Clamp(skip, 0, 100000), includeAdmin, history);
+            """, user, unread, source, Math.Clamp(limit, 1,blocked?1000:100), Math.Clamp(skip, 0, 100000), includeAdmin, history,blocked);
         using var r = cmd.ExecuteReader(); var rows = new List<InboxRow>();
         while (r.Read()) rows.Add(new(Guid.Parse(r.GetString(0)), JsonSerializer.Deserialize<NotificationEvent>(r.GetString(1), Contract.Json)! with { Audience = [] }, r.GetBoolean(2), r.GetBoolean(3)));
         return rows;
     });
     public NotificationEvent? InboxEvent(Guid user, Guid id, bool includeAdmin) => Run(c => {
         ArchiveViewed(c,user);
-        var json = Scalar(c, "SELECT event FROM nh_inbox WHERE id=$0 AND user_id=$1 AND dismissed=0 AND ($2=1 OR json_extract(event,'$.adminOnly')=0)", id, user, includeAdmin);
+        var json = Scalar(c, "SELECT event FROM nh_inbox WHERE id=$0 AND user_id=$1 AND dismissed=0 AND NOT EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id) AND ($2=1 OR json_extract(event,'$.adminOnly')=0)", id, user, includeAdmin);
         return json is null ? null : JsonSerializer.Deserialize<NotificationEvent>(json, Contract.Json);
     });
     private void ArchiveViewed(SqliteConnection c,Guid user)=>Execute(c,"""
         UPDATE nh_inbox SET dismissed=1,is_read=1 WHERE user_id=$0 AND dismissed=0
+        AND NOT EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id)
         AND json_type(event,'$.layout.expireAfterViewHours')='integer'
         AND json_extract(event,'$.layout.expireAfterViewHours') BETWEEN 1 AND 8760
         AND strftime('%s',json_extract(event,'$.firstViewedAt'))+json_extract(event,'$.layout.expireAfterViewHours')*3600 <= $1
         """,user,Now);
-    public long Unread(Guid user, bool includeAdmin = true) => Run(c => {ArchiveViewed(c,user);return long.Parse(Scalar(c, "SELECT count(*) FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 AND ($1=1 OR json_extract(event,'$.adminOnly')=0)", user, includeAdmin)!);});
+    public long Unread(Guid user, bool includeAdmin = true) => Run(c => {ArchiveViewed(c,user);return long.Parse(Scalar(c, "SELECT count(*) FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 AND NOT EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id) AND ($1=1 OR json_extract(event,'$.adminOnly')=0)", user, includeAdmin)!);});
     public bool Mark(Guid user, Guid id, bool dismiss) => Run(c => Execute(c, dismiss
         ? "UPDATE nh_inbox SET dismissed=1,is_read=1 WHERE id=$0 AND user_id=$1"
         : "UPDATE nh_inbox SET is_read=1,event=json_set(event,'$.firstViewedAt',COALESCE(json_extract(event,'$.firstViewedAt'),$2)) WHERE id=$0 AND user_id=$1 AND dismissed=0", id, user,time.GetUtcNow().ToString("O")) > 0);
-    public void ReadAll(Guid user) => Run(c => Execute(c, "UPDATE nh_inbox SET is_read=1,event=json_set(event,'$.firstViewedAt',COALESCE(json_extract(event,'$.firstViewedAt'),$1)) WHERE id IN (SELECT id FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 LIMIT 1000)", user,time.GetUtcNow().ToString("O")));
-    public Preference[] Preferences(Guid user) => Run(c => JsonSerializer.Deserialize<Preference[]>(Scalar(c, "SELECT json FROM nh_preferences WHERE user_id=$0", user) ?? "[]", Contract.Json)!);
+    public void ReadAll(Guid user) => Run(c => Execute(c, "UPDATE nh_inbox SET is_read=1,event=json_set(event,'$.firstViewedAt',COALESCE(json_extract(event,'$.firstViewedAt'),$1)) WHERE id IN (SELECT id FROM nh_inbox WHERE user_id=$0 AND is_read=0 AND dismissed=0 AND NOT EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id) LIMIT 1000)", user,time.GetUtcNow().ToString("O")));
+    public void RestoreBlocked(Guid user,Guid id,Guid eventId)=>Run(c=>{using var tx=c.BeginTransaction();Execute(c,"UPDATE nh_inbox SET event=json_set(event,'$.retroactive',json('true')) WHERE id=$0 AND user_id=$1 AND json_extract(event,'$.eventId')=$2 AND EXISTS(SELECT 1 FROM nh_suppressed s WHERE s.id=nh_inbox.id)",id,user,eventId.ToString("D"));Execute(c,"DELETE FROM nh_suppressed WHERE id=$0 AND user_id=$1 AND EXISTS(SELECT 1 FROM nh_inbox i WHERE i.id=$0 AND json_extract(i.event,'$.eventId')=$2)",id,user,eventId.ToString("D"));tx.Commit();return 0;});
+    private void TrimSuppressed(SqliteConnection c,Guid user,Settings? settings=null){
+        if(Scalar(c,"SELECT id FROM nh_suppressed WHERE user_id=$0 LIMIT 1",user) is null)return;
+        if(settings is null){var json=Scalar(c,"SELECT json FROM nh_settings WHERE id=1");settings=json is null?new(0,[]):Decrypt<Settings>(json);}
+        Execute(c,"DELETE FROM nh_inbox WHERE user_id=$0 AND id IN(SELECT id FROM nh_suppressed WHERE user_id=$0) AND created<$1",user,Now-settings.NotificationDays*86400L);
+        Execute(c,"DELETE FROM nh_inbox WHERE id IN(SELECT i.id FROM nh_inbox i JOIN nh_suppressed s ON i.id=s.id WHERE i.user_id=$0 ORDER BY i.created DESC,i.rowid DESC LIMIT -1 OFFSET $1)",user,settings.BlockedNotificationLimit);
+        Execute(c,"DELETE FROM nh_suppressed WHERE user_id=$0 AND NOT EXISTS(SELECT 1 FROM nh_inbox i WHERE i.id=nh_suppressed.id)",user);
+    }
+    public Preference[] Preferences(Guid user) => Run(c => {
+        var saved=JsonSerializer.Deserialize<Preference[]>(Scalar(c,"SELECT json FROM nh_preferences WHERE user_id=$0",user)??"[]",Contract.Json)!;
+        // Retain old personal library choices after the observer moves owners.
+        // Explicit Notifications rules win; unrelated Hub preferences are not copied.
+        bool Library(Preference p) => p.Type.StartsWith("library.",StringComparison.Ordinal)||p.Type.StartsWith("category.library.",StringComparison.Ordinal);
+        var canonical=saved.Where(p=>p.Source!="account-hub"||!Library(p)||!saved.Any(n=>n.Source=="notifications"&&n.Type==p.Type&&n.Channel==p.Channel)).ToArray();
+        return canonical.Concat(canonical.Where(p=>p.Source is "account-hub" or "notifications"&&Library(p))
+            .Select(p=>p with{Source=p.Source=="account-hub"?"notifications":"account-hub"})).ToArray();
+    });
     public string LiveDigest(Guid user)=>Run(c=>{ArchiveViewed(c,user);using var cmd=Command(c,"SELECT id,json_extract(event,'$.eventId'),is_read,dismissed FROM nh_inbox WHERE user_id=$0 ORDER BY created DESC,rowid DESC LIMIT 1000",user);using var rows=cmd.ExecuteReader();var text=new System.Text.StringBuilder();while(rows.Read())text.Append(rows.GetString(0)).Append(':').Append(rows.IsDBNull(1)?"":rows.GetString(1)).Append(':').Append(rows.GetInt64(2)).Append(':').Append(rows.GetInt64(3)).Append(';');return Validation.Hash(text.ToString());});
     public void Preferences(Guid user, Preference[] preferences)
     {
-        Validation.Require(preferences.Length <= 100 && preferences.All(p => p is not null && p.Source?.Length is > 0 and <= 100 && p.Type?.Length is > 0 and <= 100 && p.Channel is "in-app" or "discord"), "Invalid preferences");
+        Validation.Require(preferences.Length <= 100 && preferences.All(p => p is not null && p.Source?.Length is > 0 and <= 100 && p.Type?.Length is > 0 and <= 100 && (p.Channel is "in-app" or "discord")&&(p.Importance is null or "silent" or "low" or "normal" or "high")), "Invalid preferences");
         Run(c => Execute(c, "INSERT INTO nh_preferences VALUES($0,$1) ON CONFLICT(user_id) DO UPDATE SET json=excluded.json", user, Contract.Serialize(preferences)));
     }
     public void SetPreference(Guid user, Preference rule)
     {
-        Validation.Require(rule is not null && rule.Source?.Length is > 0 and <= 100 && rule.Type?.Length is > 0 and <= 100 && rule.Channel is "in-app" or "discord", "Invalid preference");
+        Validation.Require(rule is not null && rule.Source?.Length is > 0 and <= 100 && rule.Type?.Length is > 0 and <= 100 && (rule.Channel is "in-app" or "discord")&&(rule.Importance is null or "silent" or "low" or "normal" or "high"), "Invalid preference");
         Run(db => {
             using var tx = db.BeginTransaction(deferred: false);
             var current = JsonSerializer.Deserialize<Preference[]>(Scalar(db, "SELECT json FROM nh_preferences WHERE user_id=$0", user) ?? "[]", Contract.Json)!;
-            var updated = current.Where(p => !(p.Source == rule.Source && p.Type == rule.Type && p.Channel == rule.Channel)).Append(rule).ToArray();
+            var libraryRule=rule.Source is "notifications" or "account-hub"&&(rule.Type.StartsWith("library.",StringComparison.Ordinal)||rule.Type.StartsWith("category.library.",StringComparison.Ordinal));
+            var updated = current.Where(p => !(p.Type == rule.Type && p.Channel == rule.Channel && (p.Source == rule.Source || libraryRule && p.Source is "account-hub" or "notifications"))).Append(libraryRule?rule with{Source="notifications"}:rule).ToArray();
             Validation.Require(updated.Length <= 100, "Too many preferences");
             Execute(db, "INSERT INTO nh_preferences VALUES($0,$1) ON CONFLICT(user_id) DO UPDATE SET json=excluded.json", user, Contract.Serialize(updated));
             tx.Commit(); return 0;
@@ -318,6 +344,7 @@ public sealed partial class NotificationStore
     {
         using var tx = c.BeginTransaction(deferred: false);
         Execute(c, "DELETE FROM nh_inbox WHERE created<$0", Now - days * 86400L);
+        Execute(c,"DELETE FROM nh_suppressed WHERE NOT EXISTS(SELECT 1 FROM nh_inbox i WHERE i.id=nh_suppressed.id)");
         Execute(c, "DELETE FROM nh_event_content WHERE created<$0", Now - days * 86400L);
         Execute(c, "DELETE FROM nh_deliveries WHERE terminal<$0", Now - 30 * 86400L);
         Execute(c, "DELETE FROM nh_receipts WHERE status!='pending' AND created<$0", Now - 90 * 86400L);

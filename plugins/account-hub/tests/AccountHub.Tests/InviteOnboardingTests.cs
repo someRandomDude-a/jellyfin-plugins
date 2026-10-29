@@ -54,6 +54,18 @@ public sealed class InviteOnboardingTests
         var approved = await service.ChangeAsync(actor, Guid.NewGuid(), revision + 1, id, "approve", Allow);
         return (id, approved.Token!);
     }
+    [Theory]
+    [InlineData("..")]
+    [InlineData("bad/name")]
+    [InlineData("<invalid>")]
+    [InlineData("bad\nname")]
+    public async Task InvalidUsernameIsRejectedBeforeReservationOrNativeEffectsAndSuccessfulSignupDefersAuthenticationToNativeLogin(string username)
+    {
+        await using var f=new StoreFixture();await f.InitializeAsync();var native=new Native();var service=Service(f.Store,native);var invite=await Issue(f.Store,service);var claim=Guid.NewGuid();
+        var error=await Assert.ThrowsAsync<HubException>(()=>service.RedeemAsync(invite.Raw,claim,username,"chosen-password"));Assert.Equal("invalid_username",error.Code);Assert.Equal(0,native.Creates);
+        Assert.Equal(0,await f.Store.ReadAsync((db,ct)=>db.OnboardingInvites.Select(value=>value.ReservedUses).SingleAsync(ct)));
+        var result=JsonSerializer.Serialize(await service.RedeemAsync(invite.Raw,claim,"valid-user","chosen-password"));Assert.Contains("Continue to Jellyfin sign-in",result);Assert.DoesNotContain("2FA",result);Assert.DoesNotContain("chosen-password",result);
+    }
     [Fact]
     public async Task MigrationAndConcurrentSingleSlotAreDurable()
     {

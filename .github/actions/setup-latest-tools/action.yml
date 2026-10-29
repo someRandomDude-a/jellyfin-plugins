@@ -1,0 +1,7 @@
+name: Install current stable verified tools
+description: Discover official stable Node, PowerShell and SDK releases, verify checksums and executable versions; no older fallback.
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      run: ./scripts/bootstrap-tools.ps1

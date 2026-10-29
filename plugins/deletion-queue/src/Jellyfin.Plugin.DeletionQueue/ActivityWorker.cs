@@ -47,14 +47,16 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
                 // Bounded batch prevents playback traffic starving coverage checks or shutdown.
                 for (var i = 0; i < 64 && events.Reader.TryRead(out var captured); i++)
                 {
-                    var key = resolver.ActivityKey(captured.Item);
-                    if (key is null) { runtime.MarkCollectorFailed(); continue; }
-                    runtime.Write(Guid.NewGuid(), "jellyfin-activity", captured.Notify ? "ActivityCaptured" : "PlaybackProgressCaptured", state =>
-                    {
-                        foreach (var user in captured.Users) QueueRules.RecordActivity(state, user, key, captured.Session, captured.Stopped, captured.At);
-                        return true;
-                    });
-                    fence.Captured();
+                    try{
+                        var key = resolver.ActivityKey(captured.Item);
+                        if (key is null) { runtime.MarkCollectorFailed(); continue; }
+                        runtime.Write(Guid.NewGuid(), "jellyfin-activity", captured.Notify ? "ActivityCaptured" : "PlaybackProgressCaptured", state =>
+                        {
+                            foreach (var user in captured.Users) QueueRules.RecordActivity(state, user, key, captured.Session, captured.Stopped, captured.At);
+                            return true;
+                        });
+                    }catch{runtime.MarkCollectorFailed();if(!runtime.Available)throw;logger.LogWarning("Activity observation was incomplete; a new verified coverage window is required.");}
+                    finally{fence.Captured();}
                 }
                 if (Stopwatch.GetTimestamp() >= nextTick)
                 { Tick(); nextTick = Stopwatch.GetTimestamp() + (30 * Stopwatch.Frequency); }
@@ -70,7 +72,7 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
         }
         finally
         {
-            runtime.MarkCollectorFailed();
+            runtime.MarkCollectorStopped();
             try { sessions.PlaybackStart -= Started; } catch (Exception) { }
             try { sessions.PlaybackProgress -= Playback; } catch (Exception) { }
             try { sessions.PlaybackStopped -= Stopped; } catch (Exception) { }
@@ -85,10 +87,12 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
         var elapsed = Stopwatch.GetElapsedTime(lastTimestamp);
         var clockHealthy = Math.Abs(((now - lastUtc) - elapsed).TotalSeconds) < 10;
         lastUtc = now; lastTimestamp = Stopwatch.GetTimestamp();
+        var gap=runtime.CollectorFailureGeneration;
+        var recovering=!runtime.CollectorHealthy;
         runtime.Write(Guid.NewGuid(), "collector", "CoverageHeartbeatAndEvaluation", state =>
         {
             if (!clockHealthy) { state.ClockHealthy = false; QueueRules.BreakCoverage(state, "ClockDiscontinuity", now); }
-            if (!runtime.CollectorHealthy) QueueRules.BreakCoverage(state, "CollectorFailure", now);
+            if (recovering) QueueRules.BreakCoverage(state, "CollectorFailure", now);
             state.CoverageHealthy = runtime.CollectorHealthy && state.ClockHealthy;
             state.LastHeartbeat = now;
             if (state.CoverageHealthy) state.CoverageProblem = "ContinuousObservationWarmup";
@@ -107,6 +111,9 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
             }
             return true;
         });
+        // A recorded gap starts a NEW observation epoch; never restore missed
+        // history. A newer concurrent fault is not acknowledged by this write.
+        if(recovering)runtime.AcknowledgeCollectorGap(gap);
     }
 
     private void Started(object? sender, PlaybackProgressEventArgs e) => Record(e, false, true);
@@ -117,11 +124,12 @@ public sealed class ActivityWorker(QueueRuntime runtime, TargetResolver resolver
         try
         {
             if (e.Item is not (Movie or Series or Episode or Season)) return;
-            var participants = e.Users.Take(33).ToArray();
-            if (participants.Length is 0 or > 32 || participants.Any(u => u.Id == Guid.Empty) ||
-                e.PlaySessionId is not { Length: > 0 and <= 128 }) { runtime.MarkCollectorFailed(); return; }
-            var users = participants.Select(u => u.Id).Distinct().ToArray();
-            var session = e.PlaySessionId; var now = clock.GetUtcNow(); var position = e.PlaybackPositionTicks ?? 0;
+            var participants = (e.Users??[]).Take(33).ToArray();
+            var users = participants.Select(u => u.Id).Concat(e.Session?.UserId is {} nativeUser&&nativeUser!=Guid.Empty?new[]{nativeUser}:[])
+                .Concat(e.Session?.AdditionalUsers?.Select(u=>u.UserId)??[]).Distinct().Take(33).ToArray();
+            var session=e.PlaySessionId is {Length:>0 and <=128}?e.PlaySessionId:e.Session?.Id is {Length:>0 and <=120} nativeSession?"native:"+nativeSession:null;
+            if (participants.Length>32||users.Length is 0 or >32||users.Contains(Guid.Empty)||session is null) { runtime.MarkCollectorFailed(); return; }
+            var now = clock.GetUtcNow(); var position = e.PlaybackPositionTicks ?? 0;
             lock (progressLock)
             {
                 if (!force && progress.TryGetValue(session, out var previous) && now - previous.At < TimeSpan.FromMinutes(1) &&

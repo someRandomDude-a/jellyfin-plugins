@@ -1,6 +1,13 @@
 namespace Jellyfin.Plugin.AutomaticDeletionRequests;
 
-public sealed record MetadataField(string Id,string Source,string Label,string Type,string[] Operators,string? Unit=null);
+public sealed record MetadataField(string Id,string Source,string Label,string Type,string[] Operators,string? Unit=null)
+{
+    public string[] Conversions => Type switch {
+        "date" => ["age-days","age-hours","difference-days","difference-hours","unix-seconds"],
+        "list" => ["count"], "text" => ["text-number"], "boolean" => ["boolean-number"], _ => []
+    };
+    public string? ElementType => Type!="list"?null:Id is "seerr.requesters" or "jellyfin.seenBy" or "jellyfin.favoritedBy" or "jellyfin.allEpisodesSeenBy" or "jellyfin.watchers" or "jellyfin.partiallyWatchedBy" or "jellyfin.collectionSiblingSeenBy" or "jellyfin.seenSinceAddedBy"?"user":"text";
+}
 public static class MetadataCatalog
 {
     public static readonly string[] Sources=["jellyfin","seerr","sonarr","radarr"];

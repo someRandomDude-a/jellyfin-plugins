@@ -1,7 +1,8 @@
 name: deletion-queue-tests
 services:
   jellyfin:
-    image: ${JELLYFIN_TEST_IMAGE:-jellyfin/jellyfin:12.2@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037}
+    image: ${JELLYFIN_TEST_IMAGE:?Resolve the current stable Jellyfin image for this run; no older-image fallback}
+    pull_policy: always
     network_mode: none
     environment:
       JELLYFIN_PublishedServerUrl: http://127.0.0.1:8096
@@ -12,7 +13,8 @@ services:
         source: ${PLUGIN_TEST_DIRECTORY:-../artifacts/plugin/linux-x64}
         target: /config/plugins/DeletionQueue_${PLUGIN_TEST_VERSION:-0.1.0.0}
   smoke:
-    image: python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+    image: python:alpine@sha256:20a82dbc2783112ddb91d1534603f802d222a3e63e593cd002eb2ac534e70211
+    pull_policy: always
     network_mode: service:jellyfin
     depends_on:
       - jellyfin

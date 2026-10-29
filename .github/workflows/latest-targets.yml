@@ -1,0 +1,74 @@
+name: Latest-only dependency and target gate
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+      targets_artifact:
+        type: string
+        default: ''
+      key:
+        type: string
+        default: checks
+    outputs:
+      artifact:
+        value: ${{ jobs.resolve.outputs.artifact }}
+      node_version:
+        value: ${{ jobs.resolve.outputs.node_version }}
+permissions:
+  contents: read
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      artifact: ${{ inputs.targets_artifact || steps.name.outputs.artifact }}
+      node_version: ${{ steps.tools.outputs.node_version }}
+    steps:
+      - name: Reuse the parent run's immutable target evidence
+        if: inputs.targets_artifact != ''
+        run: echo 'All child checks and packages must consume the parent target artifact.'
+      - uses: actions/download-artifact@v8.0.2
+        if: inputs.targets_artifact != ''
+        with:
+          name: ${{ inputs.targets_artifact }}
+          path: artifacts/workflow-targets
+      - uses: actions/checkout@v7.0.1
+        if: inputs.targets_artifact == ''
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        if: inputs.targets_artifact == ''
+        with:
+          node-version: node
+      - uses: ./.github/actions/setup-latest-tools
+        if: inputs.targets_artifact == ''
+      - name: Refuse stale dependencies, missing discovery policies or registry errors
+        if: inputs.targets_artifact == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-dependency-freshness.mjs
+      - name: Resolve and approve current stable software once for this workflow graph
+        if: inputs.targets_artifact == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-test-targets.mjs --pull --record-toolchain --output=artifacts/workflow-targets/targets.json
+      - id: tools
+        shell: pwsh
+        run: |
+          $target = Get-Content artifacts/workflow-targets/targets.json -Raw | ConvertFrom-Json
+          if ($target.tools.node -notmatch '^\d+\.\d+\.\d+$') { throw 'Missing concrete current-run Node target' }
+          "node_version=$($target.tools.node)" >> $env:GITHUB_OUTPUT
+      - id: name
+        if: inputs.targets_artifact == ''
+        env:
+          ARTIFACT: latest-targets-${{ inputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7.0.2
+        if: inputs.targets_artifact == ''
+        with:
+          name: ${{ steps.name.outputs.artifact }}
+          path: artifacts/workflow-targets/targets.json
+          if-no-files-found: error

@@ -89,12 +89,12 @@ public sealed class RegistryTests
         Fixture.Ok(await f.Dispatch("notifications.register", Registration()));
         Assert.Single(f.Service.Catalog());
     }
-    [Fact] public void RemovedDefinitionsDoNotLeaveOrphanLayoutOverrides()
+    [Fact] public void TemporarilyRemovedDefinitionsKeepInertAdministratorOverrides()
     {
         var f = new Fixture(); var registration = Registration(); f.Service.Register(registration);
         f.Service.SaveLayout(new("deletion-queue", "proposal.updated", 1, new("standard", 220)));
         f.Service.Register(registration with { Types = [registration.Types.Single() with { Type = "proposal.created" }] });
         f.Service.Register(registration);
-        Assert.Equal(100, f.Service.Catalog().Single().Types.Single().Layout.SummaryLength);
+        Assert.Equal(220, f.Service.Catalog().Single().Types.Single().Layout.SummaryLength);
     }
 }

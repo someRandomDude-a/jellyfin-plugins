@@ -2,7 +2,7 @@
 
 Never mount media or production configuration. `compose.yaml` isolates Jellyfin with `network_mode: none`; the host smoke driver refuses an already-configured server. Use a fresh set of this project's volumes per run.
 
-1. Publish the Linux x64 plugin as described in the root README and start the `jellyfin` service.
+1. Prefer the [root installed acceptance runner](../../../docs/testing.md). For these component fixtures, use the component directory, root-built Linux x64 package and this run's resolved `JELLYFIN_TEST_IMAGE` (immutable digest). Compose refuses a missing image; no pinned older-server fallback exists. Set `PLUGIN_TEST_DIRECTORY`/`PLUGIN_TEST_VERSION` as described below before starting `jellyfin`.
 2. In a separate terminal, run `node test-infrastructure/browser-proxy.mjs`. It binds **only** `127.0.0.1:18496`, proxies the named fixture with `docker exec`, and is not a production proxy.
 3. In PowerShell, create a synthetic browser-session file and run the checks:
 
@@ -13,7 +13,7 @@ Never mount media or production configuration. `compose.yaml` isolates Jellyfin 
    npm ci --ignore-scripts
    node node_modules/playwright/cli.js install chromium
    Pop-Location
-    node test-infrastructure/browser/integrated-check.mjs
+   node test-infrastructure/browser/integrated-check.mjs
    node test-infrastructure/browser/native-check.mjs
    node test-infrastructure/fault-check.mjs
    ```
@@ -30,6 +30,10 @@ Screenshots and ephemeral fixture sessions stay under ignored `.test-data/`; do 
 docker compose -f test-infrastructure/compose.yaml down --volumes --remove-orphans
 ```
 
-GitHub's compatibility workflow runs this sequence against the latest matching stable Server/Web release, recording its immutable image digest. It resolves the triggering plugin tag into `PluginVersion` and `PLUGIN_TEST_VERSION`; the mount directory and installed-plugin version check use that version. For a local tagged-build fixture, set both variables to the four-part version before publishing/starting/running the checks. The pinned Compose default remains a reproducible Jellyfin 12.2 baseline.
+The root workflow configuration owns current stable Server/Web acceptance and its
+immutable image record; these component scripts are retained developer fixtures,
+not an independently deployed compatibility workflow. Match the installed package's
+manifest version in `PLUGIN_TEST_VERSION`; a synthetic four-part fixture version is
+not the root release engine's tag format. Do not hand-edit native SDK/ABI targets.
 
-For an actual ZIP installation check, extract a package into a fresh directory and set `PLUGIN_TEST_DIRECTORY` to that directory (paths are relative to `test-infrastructure/compose.yaml`, or absolute), plus `PLUGIN_TEST_VERSION` to its manifest version. Compose mounts only that package at the versioned plugin destination; the default source remains `../artifacts/plugin/linux-x64`. Keep these values consistent when running smoke/fault checks. The API smoke driver also verifies the Account Hub v1 adapter with no Hub installed; browser checks use synthetic Hub/2FA contracts. See `docs/account-hub-v1.md` for migration and unverified combined-system gates.
+For an actual ZIP installation check, extract a package into a fresh directory and set `PLUGIN_TEST_DIRECTORY` to that directory (paths are relative to `test-infrastructure/compose.yaml`, or absolute), plus `PLUGIN_TEST_VERSION` to its manifest version. Compose mounts only that package at the versioned plugin destination; the default source remains `../artifacts/plugin/linux-x64`. Keep these values consistent when running smoke/fault checks. The API smoke driver also verifies the Account Hub v1 adapter with no Hub installed; browser checks use synthetic Hub/2FA contracts. See the [adapter contract](../docs/account-hub-v1.md) for migration and combined-system limits.

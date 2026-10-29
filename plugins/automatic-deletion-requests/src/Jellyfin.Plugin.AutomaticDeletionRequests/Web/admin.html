@@ -52,7 +52,10 @@
 #automaticDeletionAdmin .ar-circuit button:focus-visible,#automaticDeletionAdmin .ar-circuit select:focus-visible,#automaticDeletionAdmin .ar-circuit input:focus-visible{outline:2px solid var(--ar-accent);outline-offset:2px}
 #automaticDeletionAdmin .ar-circuit button{color:inherit;border:1px solid var(--ar-line);border-radius:5px;padding:.4rem .6rem;background:var(--ar-soft);cursor:pointer;font:inherit}
 #automaticDeletionAdmin .ar-circuit-layout{display:grid;grid-template-columns:minmax(0,1fr) 160px}
-#automaticDeletionAdmin .ar-viewport{height:clamp(24rem,calc(100dvh - 12rem),80rem);overflow:hidden;position:relative;background-color:var(--ar-canvas-surface);background-image:radial-gradient(color-mix(in srgb,currentColor 22%,transparent) 1px,transparent 1px);background-size:20px 20px;touch-action:none}
+#automaticDeletionAdmin .ar-viewport{height:clamp(16rem,58dvh,42rem);max-height:calc(100dvh - 9rem);overflow:hidden;position:relative;background-color:var(--ar-canvas-surface);background-image:radial-gradient(color-mix(in srgb,currentColor 22%,transparent) 1px,transparent 1px);background-size:20px 20px;touch-action:none}
+#automaticDeletionAdmin .ar-metadata-outputs{max-height:min(18rem,36dvh);overflow:auto;overscroll-behavior:contain}
+#automaticDeletionAdmin .ar-metadata-outputs [hidden]{display:none}
+#automaticDeletionAdmin #arNewCard{box-sizing:border-box;width:min(32rem,calc(100vw - 2rem));max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);overflow:auto;padding:clamp(1rem,3vw,2rem);border:1px solid var(--ar-line);border-radius:1rem;color:inherit}
 #automaticDeletionAdmin .ar-stage{position:absolute;width:4000px;height:4000px;transform-origin:0 0}
 #automaticDeletionAdmin .ar-palette{padding:.75rem;background:var(--ar-soft);border-inline-start:1px solid var(--ar-line)}
 #automaticDeletionAdmin .ar-palette button{display:block;width:100%;margin:.5rem 0;text-align:left}

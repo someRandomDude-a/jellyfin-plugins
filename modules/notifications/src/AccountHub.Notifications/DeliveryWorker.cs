@@ -72,13 +72,13 @@ public sealed class DeliveryWorker(NotificationStore store, NotificationService 
         {
             var link = await host.DiscordLinkAsync(delivery.UserId, ct);
             if (link is null || link != delivery.DiscordLink || link != delivery.Route.Destination) return new(false, false, "link_revoked");
-            if (!delivery.AdminOnly && delivery.Event.Severity != "critical" && !NotificationService.Enabled(store.Preferences(delivery.UserId), delivery.Event, "discord", false))
+            if (delivery.Event.Severity != "critical" && (!NotificationService.Enabled(store.Preferences(delivery.UserId), delivery.Event, "discord", NotificationService.DefaultsFor(delivery.Event,store.NotificationTypes())?.Discord??false)||!NotificationService.CategoryEnabled(store.Preferences(delivery.UserId),delivery.Event,"discord")))
                 return new(false, false, "opt_out");
         }
         // Recheck policy and use the latest secret; immutable ID/body remain unchanged.
         delivery = delivery with { Route = delivery.Route with { Secret = current.Secret, AllowHttp = current.AllowHttp, AllowPrivate = current.AllowPrivate } };
         if (delivery.Route.Channel == "webhook") return await webhook.SendAsync(delivery, ct);
-        var text = delivery.Route.DirectMessage ? delivery.Event.Title + "\n" + delivery.Event.Body : "Account Hub notification. Open Account Hub to review.";
+        var text = delivery.Route.DirectMessage ? delivery.Event.Title + "\n" + delivery.Event.Body : NotificationService.SharedSummary(delivery.Event,store.NotificationTypes());
         return await discord.SendAsync(delivery.Route.Destination, delivery.Route.DirectMessage, text, delivery.Id.ToString(), ct);
     }
 }

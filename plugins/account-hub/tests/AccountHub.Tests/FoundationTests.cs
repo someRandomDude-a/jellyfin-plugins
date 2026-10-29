@@ -30,6 +30,18 @@ public sealed class FoundationTests
         await reopened.InitializeAsync();
         Assert.True(reopened.Ready);
     }
+    [Fact]
+    public async Task CurrentSchemaWithInterruptedMigrationLockReopensWithoutDeletingTheLock()
+    {
+        await using var f=new StoreFixture();await f.InitializeAsync();
+        await f.ExecuteSqlAsync("INSERT INTO __EFMigrationsLock (Id,Timestamp) VALUES(1,'2026-10-26T00:00:00Z')");
+        using var reopened=f.Reopen();using var budget=new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await reopened.InitializeAsync(budget.Token);Assert.True(reopened.Ready);
+        await using var connection=new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={f.Paths.Database};Pooling=False");await connection.OpenAsync();
+        await using var command=connection.CreateCommand();command.CommandText="SELECT COUNT(*) FROM __EFMigrationsLock WHERE Id=1";
+        Assert.Equal(1L,await command.ExecuteScalarAsync());
+        Assert.True((await reopened.VerifyAuditAsync()).Valid);
+    }
 
     [Fact]
     public async Task AuditAcceptanceAndDuplicateAreDurableAndConflictsRejected()

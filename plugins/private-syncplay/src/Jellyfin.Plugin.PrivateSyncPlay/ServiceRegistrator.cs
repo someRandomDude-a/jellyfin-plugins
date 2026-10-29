@@ -20,16 +20,17 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"private-syncplay");
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("private-syncplay", "1", [
             new("party.*", "Watch parties", "An invitation or watch-party membership changes", "explicit-users", new(), [])
-        ]));
+        ]) { Grouping=new("partyId","Watch party") });
         var status = new PluginStatus();
         services.AddSingleton(status);
         services.Configure<MvcOptions>(o => o.Filters.Add<PartyErrors>());
         services.AddKeyedSingleton<Func<Guid, string, string, string, CancellationToken, Task<string>>>(WatchPartyClient.ServiceKey,
-            (sp, _) => (user, session, operation, json, token) => status.IsAvailable
-                ? sp.GetRequiredService<WatchPartyService>().InvokeAsync(user, session, operation, json, token)
-                 : Task.FromResult("{\"statusCode\":503,\"error\":\"Private SyncPlay is unavailable.\"}"));
+            (sp, _) => async (user, session, operation, json, token) => Jellyfin.PluginSupport.SuiteDiagnostics.WithErrorId(sp,"private-syncplay","Native watch-party command",status.IsAvailable
+                ? await sp.GetRequiredService<WatchPartyService>().InvokeAsync(user, session, operation, json, token)
+                 : "{\"statusCode\":503,\"error\":\"Private SyncPlay is unavailable.\"}"));
         if (!ServerCompatibility.Supports(applicationHost.ApplicationVersion))
         {
             status.Disable($"Private SyncPlay targets Jellyfin {ServerCompatibility.TargetAbi} only. The existing server engine was not replaced.");
@@ -54,7 +55,8 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton(sp => new HubPolicyService(sp.GetRequiredService<Func<Configuration>>(),
             c => (Plugin.Instance ?? throw new InvalidOperationException("Plugin unavailable.")).SaveHubConfiguration(c),
             () => sp.GetRequiredService<IUserManager>().GetUsers().Select(u => new HubUser(u.Id, u.Username,
-                u.Permissions.Any(p => p.Kind == PermissionKind.IsAdministrator && p.Value))).ToArray(), sp.GetRequiredService<PartyStore>()));
+                u.Permissions.Any(p => p.Kind == PermissionKind.IsAdministrator && p.Value),
+                !u.Permissions.Any(p => p.Kind == PermissionKind.IsDisabled && p.Value))).ToArray(), sp.GetRequiredService<PartyStore>()));
         services.AddSingleton<HubIntegration>();
         services.AddHostedService(sp => sp.GetRequiredService<HubIntegration>());
         services.AddSingleton<PrivateSyncPlayManager>();

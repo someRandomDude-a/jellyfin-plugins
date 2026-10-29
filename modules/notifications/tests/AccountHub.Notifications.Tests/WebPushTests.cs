@@ -8,11 +8,27 @@ namespace AccountHub.Notifications.Tests;
 
 public sealed class WebPushTests
 {
+    [Fact]public void DeviceDefaultIsConfigurableAndSurvivesOtherPushEdits(){
+        var f=new Fixture();Assert.False(f.Store.PushSettings().DefaultOn);
+        f.Store.ConfigurePush(0,true,"https://example.test/",true);Assert.True(f.Store.PushSettings().DefaultOn);
+        f.Store.ConfigurePush(1,true);Assert.True(f.Store.PushSettings().DefaultOn);
+        f.Store.ConfigurePush(2,true,defaultOn:false);Assert.False(f.Store.PushSettings().DefaultOn);
+    }
+    [Theory]
+    [InlineData("https://public.example/jellyfin?token=secret", "http", "internal:8096", "https://public.example/")]
+    [InlineData(null,"https","client.example:8443","https://client.example:8443/")]
+    [InlineData(null,"http","localhost:8096","https://localhost:8096/")]
+    [InlineData("http://internal:8096", "https", "client.example", "https://client.example/")]
+    [InlineData("https://user:secret@wrong.example/path", "https", "client.example", "https://client.example/")]
+    public void AutomaticSetupUsesNativePublicOriginThenClientHostWithoutSecrets(string? configured,string scheme,string host,string expected){
+        var context=new Microsoft.AspNetCore.Http.DefaultHttpContext();context.Request.Scheme=scheme;context.Request.Host=new(host);
+        Assert.Equal(expected,WebPush.AutomaticSubject(configured,context.Request));
+    }
     private sealed class Transport:IWebPushTransport
     {
         public System.Net.HttpStatusCode Status=System.Net.HttpStatusCode.Created;
-        public List<(string Endpoint,string Authorization)> Sent=[];
-        public Task<System.Net.HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct){Sent.Add((endpoint,authorization));return Task.FromResult(Status);}
+        public List<(string Endpoint,string Authorization,string Urgency)> Sent=[];
+        public Task<System.Net.HttpStatusCode> SendAsync(string endpoint,string authorization,CancellationToken ct,string urgency){Sent.Add((endpoint,authorization,urgency));return Task.FromResult(Status);}
     }
     private static byte[] Decode(string s)=>Convert.FromBase64String(s.Replace('-','+').Replace('_','/')+new string('=',(4-s.Length%4)%4));
     private static PushSubscription Subscription(string endpoint="https://fcm.googleapis.com/fcm/send/disposable"){
@@ -58,5 +74,29 @@ public sealed class WebPushTests
         sender.Status=System.Net.HttpStatusCode.ServiceUnavailable;await f.Publish(f.Event());
         for(var i=0;i<3;i++){await push.ProcessAsync(default);f.Clock.Now=f.Clock.Now.AddMinutes(5);}Assert.Empty(f.Store.PushJobs());Assert.Equal(4,sender.Sent.Count);
         sender.Status=System.Net.HttpStatusCode.Gone;await f.Publish(f.Event());await push.ProcessAsync(default);Assert.Empty(f.Store.PushTargets(f.Host.Alice));Assert.Empty(f.Store.PushJobs());
+    }
+    [Fact]public async Task SilentAdministratorCategoriesSkipPushWhileHighUsesHighUrgency(){
+        var f=new Fixture();f.Store.ConfigurePush(0,true,"mailto:test@example.test");f.Store.SavePush(f.Host.Bob,Subscription());var sender=new Transport();var push=new WebPush(f.Store,f.Host,f.Clock,sender);
+        f.Store.Preferences(f.Host.Bob,[new("deletion-queue","*","in-app",true){Importance="silent"}]);await f.Publish(f.Event(true));await push.ProcessAsync(default);Assert.Empty(sender.Sent);
+        f.Store.Preferences(f.Host.Bob,[new("deletion-queue","*","in-app",true){Importance="high"}]);await f.Publish(f.Event(true));await push.ProcessAsync(default);Assert.Equal("high",Assert.Single(sender.Sent).Urgency);
+    }
+    [Theory]
+    [InlineData("silent")]
+    [InlineData("low")]
+    public async Task OrdinaryUsersCanSilencePushAndOptForImportantDelivery(string quiet) {
+        var f = new Fixture(); f.Store.ConfigurePush(0, true, "https://example.test/"); f.Store.SavePush(f.Host.Alice, Subscription());
+        var sender = new Transport(); var push = new WebPush(f.Store, f.Host, f.Clock, sender);
+        f.Store.Preferences(f.Host.Alice, [new("deletion-queue", "*", "in-app", true) { Importance = quiet }]);
+        await f.Publish(f.Event()); await push.ProcessAsync(default); Assert.Empty(sender.Sent);
+        f.Store.Preferences(f.Host.Alice, [new("deletion-queue", "*", "in-app", true) { Importance = "high" }]);
+        await f.Publish(f.Event()); await push.ProcessAsync(default); Assert.Equal("high", Assert.Single(sender.Sent).Urgency);
+    }
+    [Fact] public async Task CriticalPushStillRequiresAccessAndDeviceOptInButIgnoresPersonalMute() {
+        var f = new Fixture(); f.Store.ConfigurePush(0, true, "https://example.test/"); f.Store.SavePush(f.Host.Alice, Subscription());
+        var sender = new Transport(); var push = new WebPush(f.Store, f.Host, f.Clock, sender);
+        f.Store.Preferences(f.Host.Alice, [new("*", "*", "in-app", false) { Importance = "silent" }]);
+        await f.Publish(f.Event() with { Severity = "critical" }); await push.ProcessAsync(default); Assert.Equal("high", Assert.Single(sender.Sent).Urgency);
+        f.Host.LibraryDenied.Add(f.Host.Alice); await f.Publish(f.Event() with { Type = "library.movie.added", Severity = "critical" });
+        await push.ProcessAsync(default); Assert.Single(sender.Sent);
     }
 }

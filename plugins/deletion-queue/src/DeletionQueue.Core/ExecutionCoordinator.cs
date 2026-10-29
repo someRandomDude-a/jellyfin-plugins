@@ -1,6 +1,9 @@
 namespace DeletionQueue.Core;
 
-public sealed record ExecutionPreflight(EvaluationEvidence Evidence, long ProposalRevision);
+public sealed record ExecutionPreflight(EvaluationEvidence Evidence, long ProposalRevision)
+{
+    public long? ActivityGeneration { get; init; }
+}
 public sealed record DeletionProof(string Fingerprint, string Evidence);
 
 public interface IExecutionGateway
@@ -21,8 +24,10 @@ public sealed class ExecutionCoordinator(IStateStore store, IExecutionGateway ga
         if (proposal.Claim is not null) throw new QueueException("ClaimAlreadyConsumed");
         var preflight = await gateway.PreflightAsync(proposal, cancellationToken);
         if (preflight.ProposalRevision != proposal.Revision) throw new QueueException("RevisionChanged");
-        var claim = store.Write(Guid.NewGuid(), "scheduler", "ExecutionClaimed", state =>
-            QueueRules.Claim(state, id, preflight.ProposalRevision, preflight.Evidence, clock.GetUtcNow()));
+        var claim = store.Write(Guid.NewGuid(), "scheduler", "ExecutionClaimed", state => {
+            var current=QueueRules.Claim(state,id,preflight.ProposalRevision,preflight.Evidence,clock.GetUtcNow()) with { ActivityGeneration=preflight.ActivityGeneration };
+            QueueRules.Find(state,id).Claim=current;return current;
+        });
         try
         {
             proposal = QueueRules.Find(store.Read(), id);

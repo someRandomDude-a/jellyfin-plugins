@@ -66,12 +66,16 @@ public static class Endpoints
             var stream = typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.settings.js")!;
             return Results.Stream(stream, "text/javascript");
         }).AllowAnonymous();
+        foreach (var file in new[] { "notification-card.js", "notification-studio.js", "notification-studio.css" }) {
+            var asset = file;
+            endpoints.MapGet(assets + "/" + asset, () => Results.Stream(typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web." + asset)!, asset.EndsWith(".css",StringComparison.Ordinal) ? "text/css" : "text/javascript")).AllowAnonymous();
+        }
         var user = endpoints.MapGroup(prefix + "/notifications").RequireAuthorization();
         endpoints.MapGet(prefix+"/notifications/push/sw.js",(HttpContext c)=>{
             c.Response.Headers.CacheControl="no-cache";
             return Results.Stream(typeof(Endpoints).Assembly.GetManifestResourceStream("AccountHub.Notifications.Web.push-worker.js")!,"text/javascript");
         }).AllowAnonymous();
-        user.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{var id=await User(c,h);var config=s.PushSettings();return Json(Contract.Success(new{config.Enabled,config.PublicKey,devices=s.PushTargets(id).Select(t=>t.Id)}));}));
+        user.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{var id=await User(c,h);var config=s.PushSettings();return Json(Contract.Success(new{config.Enabled,config.DefaultOn,config.PublicKey,devices=s.PushTargets(id).Select(t=>t.Id)}));}));
         user.MapPost("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{
             var id=await User(c,h);var subscription=JsonSerializer.Deserialize<PushSubscription>(await Body(c,4096),Contract.Json)??throw new NotificationException("invalid_request","Missing subscription");
             return Json(Contract.Success(new{id=s.SavePush(id,subscription)}));
@@ -84,16 +88,18 @@ public static class Endpoints
             var id = await User(c, h);
             var limit = Math.Clamp(Number(c, "limit", 25), 1, 100);
             var history=c.Request.Query["history"]=="true";
-            var stored = s.Inbox(id, Number(c, "skip", 0), limit, c.Request.Query["source"], c.Request.Query["unread"] == "true", await h.IsAdministratorAsync(id, c.RequestAborted),history);
+            var blocked=c.Request.Query["blocked"]=="true";Validation.Require(!history||!blocked,"Choose one notification view");
+            await service.RestoreBlockedAsync(id,c.RequestAborted);
+            var stored = s.Inbox(id, Number(c, "skip", 0), limit, c.Request.Query["source"], c.Request.Query["unread"] == "true", await h.IsAdministratorAsync(id, c.RequestAborted),history,blocked);
             var catalogs = service.Catalog();
             var rows = new List<InboxRow>();
             foreach (var row in stored) if (await h.CanAccessNotificationAsync(id, row.Event, c.RequestAborted)) {
                 var presented = await service.PresentAsync(id, row.Event, catalogs, c.RequestAborted);
-                if(history)presented=presented with{Commands=[]};
+                if(history||blocked)presented=presented with{Commands=[]};
                 // Fanout identities are server-owned, not notification content.
                 rows.Add(row with { Event = presented with { Audience = presented.AdminOnly ? [] : [id] } });
             }
-            var data = new { notifications = rows, hasMore = stored.Count == limit };
+            var retention=s.Settings();var data = new { notifications = rows, hasMore = stored.Count == limit,blockedLimit=retention.BlockedNotificationLimit,retentionDays=retention.NotificationDays };
             var tag = "\"" + Validation.Hash(Contract.Serialize(data)) + "\"";
             c.Response.Headers.ETag = tag;
             c.Response.Headers.CacheControl = "private, no-cache";
@@ -135,6 +141,24 @@ public static class Endpoints
         user.MapPost("/read-all", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
         { s.ReadAll(await User(c, h)); return Json(Contract.Success(new { status = "updated", batchLimit = 1000 })); }));
         user.MapGet("/preferences", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () => Json(Contract.Success(new { preferences = s.Preferences(await User(c, h)) }))));
+        user.MapPut("/grouping",(HttpContext c,NotificationStore s,INotificationHost h,NotificationService service)=>Guard(async()=>{
+            var id=await User(c,h);var preference=JsonSerializer.Deserialize<NotificationGroupingPreference>(await Body(c,4096),Contract.Json)??throw new NotificationException("invalid_request","Missing grouping preference");
+            var administrator=await h.IsAdministratorAsync(id,c.RequestAborted);
+            if(!service.Catalog().Any(catalog=>catalog.Source==preference.Source&&catalog.Grouping is not null&&catalog.Types.Any(type=>administrator||type.Recipients!="administrators")))throw new NotificationException("not_found","Grouping unavailable",404);
+            s.SetGroupingPreference(id,preference);return Json(Contract.Success(new{status="updated"}));
+        }));
+        user.MapGet("/categories", (HttpContext c, INotificationHost h, NotificationService service, NotificationStore s) => Guard(async () => {
+            var id = await User(c, h); var administrator = await h.IsAdministratorAsync(id, c.RequestAborted);
+            // Personal controls disclose category names, not server-wide layouts,
+            // action projections, message templates or administrator-only types.
+            var catalogs = service.Catalog().Select(catalog => new {
+                catalog.Source,
+                grouping = catalog.Grouping is {} grouping ? new { grouping.Name, grouping.DefaultEnabled, enabled=s.GroupingPreferences(id).FirstOrDefault(value=>value.Source==catalog.Source)?.Enabled } : null,
+                types = catalog.Types.Where(type => administrator || type.Recipients != "administrators")
+                    .Select(type => new { type.Type, type.Name, description = type.Trigger, defaults = type.Defaults ?? new NotificationDefaults(Importance:type.Recipients == "administrators" ? "high" : "normal") }).ToArray()
+            }).Where(catalog => catalog.types.Length > 0).ToArray();
+            return Json(Contract.Success(new { isAdministrator = administrator, catalogs }));
+        }));
         user.MapPut("/preferences", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
         {
             var id = await User(c, h);
@@ -143,11 +167,12 @@ public static class Endpoints
         }));
 
         var admin = endpoints.MapGroup(prefix + "/settings/notifications").RequireAuthorization();
-        admin.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{await Admin(c,h,false);var config=s.PushSettings();return Json(Contract.Success(new{config.Revision,config.Enabled,config.PublicKey,config.Subject}));}));
+        admin.MapGet("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{await Admin(c,h,false);var config=s.PushSettings();return Json(Contract.Success(new{config.Revision,config.Enabled,config.DefaultOn,config.PublicKey,automaticSetup=true}));}));
         admin.MapPut("/push",(HttpContext c,INotificationHost h,NotificationStore s)=>Guard(async()=>{
             await Admin(c,h,true);using var body=JsonDocument.Parse(await Body(c,4096));var revision=body.RootElement.GetProperty("revision").GetInt64();var enabled=body.RootElement.GetProperty("enabled").GetBoolean();
-            var subject=body.RootElement.TryGetProperty("subject",out var contact)?contact.GetString():null;
-            await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.push.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);s.ConfigurePush(revision,enabled,subject);return Json(Contract.Success(new{status="updated"}));
+            var subject=WebPush.AutomaticSubject(h.PublicServerUrl(c),c.Request);
+            bool? defaultOn=body.RootElement.TryGetProperty("defaultOn",out var initial)?initial.GetBoolean():null;
+            await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.push.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);s.ConfigurePush(revision,enabled,subject,defaultOn);return Json(Contract.Success(new{status="updated"}));
         }));
         admin.MapGet("", (HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
         { await Admin(c, h, false); return Json(Contract.Success(s.Settings())); }));
@@ -160,12 +185,33 @@ public static class Endpoints
         }));
         admin.MapGet("/types", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>
         { await Admin(c, h, false); return Json(Contract.Success(new { catalogs = s.Catalog() })); }));
+        admin.MapPut("/grouping",(HttpContext c,INotificationHost h,NotificationService service)=>Guard(async()=>{
+            await Admin(c,h,true);
+            var update=JsonSerializer.Deserialize<NotificationGroupingUpdate>(await Body(c,4096),Contract.Json)??throw new NotificationException("invalid_request","Missing grouping default");
+            await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.grouping.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);
+            service.SaveGrouping(update);return Json(Contract.Success(new{status="updated"}));
+        }));
+        admin.MapGet("/library",(HttpContext c,INotificationHost h,IServiceProvider services)=>Guard(async()=> {
+            await Admin(c,h,false); var provider=services.GetKeyedService<Func<string,CancellationToken,Task<string>>>("Notifications.LibrarySettings.1")??throw new NotificationException("unavailable","Library owner unavailable",503);
+            using var data=JsonDocument.Parse(await provider("read",c.RequestAborted)); return Json(Contract.Success(data.RootElement.Clone()));
+        }));
+        admin.MapPut("/library",(HttpContext c,INotificationHost h,IServiceProvider services)=>Guard(async()=> {
+            await Admin(c,h,true); var provider=services.GetKeyedService<Func<string,CancellationToken,Task<string>>>("Notifications.LibrarySettings.1")??throw new NotificationException("unavailable","Library owner unavailable",503);
+            var body=await Body(c,8192); await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.library.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);
+            try{using var data=JsonDocument.Parse(await provider(Encoding.UTF8.GetString(body),c.RequestAborted)); return Json(Contract.Success(data.RootElement.Clone()));}catch(InvalidOperationException){throw new NotificationException("revision_changed","Reload library settings",409);}
+        }));
         admin.MapPut("/types/layout", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>
         {
             await Admin(c, h, true);
-            var update = JsonSerializer.Deserialize<NotificationLayoutUpdate>(await Body(c, 8192), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing layout");
+            var update = JsonSerializer.Deserialize<NotificationLayoutUpdate>(await Body(c, 16384), Contract.Json) ?? throw new NotificationException("invalid_request", "Missing layout");
             await h.AppendAuditAsync(new(1, Guid.NewGuid(), "notifications", "notifications.layout.changing", "success", DateTimeOffset.UtcNow, await User(c, h)), c.RequestAborted);
             s.SaveLayout(update); return Json(Contract.Success(new { status = "updated" }));
+        }));
+        admin.MapPut("/types/defaults", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () => {
+            await Admin(c,h,true);
+            var update = JsonSerializer.Deserialize<NotificationDefaultsUpdate>(await Body(c,4096),Contract.Json) ?? throw new NotificationException("invalid_request","Missing defaults");
+            await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.defaults.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);
+            s.SaveDefaults(update); return Json(Contract.Success(new { status="updated" }));
         }));
         admin.MapGet("/deliveries", (HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
         { await Admin(c, h, false); return Json(Contract.Success(new { deliveries = s.Deliveries(Number(c, "skip", 0), Number(c, "limit", 25)) })); }));
@@ -252,7 +298,21 @@ public static class Endpoints
         await h.AuthorizeManagementAsync(c, write, c.RequestAborted);
     }
     private static int Number(HttpContext c, string key, int fallback) => int.TryParse(c.Request.Query[key], out var n) ? n : fallback;
-    private static IResult Json(object value, int status = 200) => Results.Text(Contract.Serialize(value), "application/json", statusCode: status);
+    private static IResult Json(object value, int status = 200) => status>=400?new SafeFailureResult(value,status):Results.Text(Contract.Serialize(value), "application/json", statusCode: status);
+    private sealed class SafeFailureResult(object value,int status):IResult
+    {
+        public async Task ExecuteAsync(HttpContext context)
+        {
+            var original=JsonSerializer.SerializeToElement(value,Contract.Json);var error=original.TryGetProperty("error",out var failure)?failure:default;
+            var code=error.ValueKind==JsonValueKind.Object&&error.TryGetProperty("code",out var kind)?kind.GetString()??"request_failed":"request_failed";
+            var retryable=error.ValueKind==JsonValueKind.Object&&error.TryGetProperty("retryable",out var retry)&&retry.ValueKind==JsonValueKind.True;
+            var id=Guid.NewGuid().ToString("D");context.Items["Suite.Diagnostics.1"]=id;
+            var source=context.Request.Path.StartsWithSegments("/AccountHub")?"account-hub":"notifications";
+            try{context.RequestServices.GetKeyedService<Func<string,string>>("Suite.Diagnostics.1")?.Invoke(Contract.Serialize(new{id,source,level=status>=500?"error":"warning",code,operation=context.GetEndpoint()?.DisplayName??"Notifications request",createdAt=DateTimeOffset.UtcNow,statusCode=status,isFailure=true,pluginVersion=context.RequestServices.GetKeyedService<Func<string>>("Suite.Diagnostics.1.Version."+source)?.Invoke()}));}catch{ /* No application effects are retried if diagnostics are unavailable. */ }
+            context.Response.Headers["X-Suite-Error-Id"]=id;
+            await Results.Text(Contract.Serialize(new{apiVersion="1",ok=false,error=new{code,nature=UserErrors.Nature(code,status),message=UserErrors.Message(code,status),errorId=id,retryable}}),"application/json",statusCode:status).ExecuteAsync(context);
+        }
+    }
     private static async Task<IResult> Guard(Func<Task<IResult>> action)
     {
         try { return await action(); }

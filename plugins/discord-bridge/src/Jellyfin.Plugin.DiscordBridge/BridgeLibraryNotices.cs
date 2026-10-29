@@ -8,7 +8,8 @@ public sealed class BridgeLibraryNotices(IServiceProvider services) : ILibraryNo
 {
     private Configuration Settings => services.GetRequiredService<BridgeStore>().Read().Settings;
     public bool Ready => true;
-    public bool CaptureLocally => Settings.LibraryAnnouncementsEnabled && services.GetKeyedService<Func<string, CancellationToken, Task<string>>>(DiscordBridgeClient.IdentityKey) is null;
+    public bool ObserveNative => false; // Transport worker only; never subscribe to ItemAdded.
+    public bool CaptureLocally => false; // Notifications alone observes native library events.
     public bool IncludeAudience => false;
     public bool DirectDiscord => true;
     public bool DiscordConnected => services.GetRequiredService<BridgeRuntime>().Connected;
@@ -16,7 +17,7 @@ public sealed class BridgeLibraryNotices(IServiceProvider services) : ILibraryNo
     public bool Accept(LibraryNotice notice)
     {
         LibraryNoticeFactory.Validate(notice);
-        if (notice.Audience.Length != 0) throw new ArgumentException("Shared announcements must not contain Jellyfin audience identities.");
+        if (notice.Audience.Length != 0 || notice.FavouriteAudience is {Length:>0} || notice.RequesterAudience is {Length:>0} || notice.WatchlistedAudience is {Length:>0}) throw new ArgumentException("Shared announcements must not contain Jellyfin audience identities.");
         var config = Settings;
         if (!InScope(config, notice)) return true; // Deliberately disabled/unapproved, no backfill on later enable.
         return services.GetRequiredService<LibraryNoticeStore>().Capture(notice.ItemId, notice.Kind, notice.OccurredAt, notice);

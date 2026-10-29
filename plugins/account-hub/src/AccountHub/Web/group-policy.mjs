@@ -26,7 +26,8 @@ function checkbox(label, checked) {
 }
 function editor(value = {}) {
     const root = node('fieldset'), controls = [];
-    root.append(node('legend', 'Managed access fields — Inherit leaves this layer unset'));
+    root.className = 'hubGrid'; const legend = node('legend', 'Access permissions'); root.append(legend);
+    legend.dataset.help = 'Inherit leaves this layer unset. User overrides take priority over the primary group. Only the supported access fields are managed.';
     for (const [name, type] of Object.entries(fields)) {
         const row = input(labelText(name), '', 'select');
         for (const [text, val] of [['Inherit', 'inherit'], ...(type === 'boolean' ? [['Allow', 'true'], ['Deny', 'false']] : [['Set', 'set']]), ...(type === 'nullable' ? [['No rating limit', 'null']] : [])]) { const o = node('option', text); o.value = val; row.control.append(o); }
@@ -34,7 +35,7 @@ function editor(value = {}) {
         if (extra && type !== 'array') { extra.control.type = 'number'; extra.control.min = '0'; extra.control.max = '1000'; }
         row.control.value = !(name in value) ? 'inherit' : type === 'boolean' ? String(value[name]) : value[name] === null ? 'null' : 'set';
         const refresh = () => { if (extra) { extra.wrap.hidden = row.control.value !== 'set'; extra.control.disabled = extra.wrap.hidden; } };
-        row.control.onchange = refresh; refresh(); root.append(row.wrap); if (extra) root.append(extra.wrap);
+        row.control.onchange = refresh; refresh(); const cell = node('div'); cell.className = 'hubField'; cell.append(row.wrap); if (extra) cell.append(extra.wrap); root.append(cell);
         controls.push(() => {
             const mode = row.control.value; if (mode === 'inherit') return [];
             if (type === 'boolean') return [[name, mode === 'true']]; if (mode === 'null') return [[name, null]];
@@ -61,7 +62,9 @@ export function mountGroupPolicy(root, { request, signal }) {
     const begin = () => { preview = null; return ++epoch; };
     const current = view => !disposed && !signal?.aborted && view === epoch;
     const selected = new Set(), message = node('p'), main = node('div'); message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
-    root.replaceChildren(node('h2', 'Groups and access policy'), node('p', 'Group edits and assignments save intent only. Review a dry run before explicitly reconciling. Administrators are always excluded. Reset restores values captured at first assignment and clears group/overrides; it does not invent server defaults.'), message, main);
+    const guidance = node('p', 'Save a template or assignment, then preview and apply it to users. Administrators are excluded.');
+    guidance.dataset.help = 'Saving a group or assignment does not change native access. Reset restores values captured at first assignment and clears the group and overrides; it does not invent server defaults.';
+    root.replaceChildren(node('h2', 'Groups and access'), guidance, message, main);
     const run = fn => async () => { if (disposed) return; try { message.textContent = ''; await fn(); } catch (e) { if (!disposed && e.name !== 'AbortError') message.textContent = e.message; } };
     const act = (text, fn) => {
         const control = button(text, run(async () => {
@@ -150,7 +153,9 @@ export function mountGroupPolicy(root, { request, signal }) {
     function outcomes(result) {
         main.replaceChildren(node('h3', 'Per-user outcomes'));
         for (const outcome of result.outcomes || []) main.append(node('p', outcome.userId + ': ' + outcome.status), act('Inspect current drift', () => person(outcome.userId)));
-        main.append(node('p', 'Uncertain outcomes require inspection; never blindly replay.'), act('Back to groups', groupList));
+        const help = node('p', 'Inspect any account that needs review.'); help.dataset.help = 'An uncertain operation may have reached Jellyfin. Inspect current access before another change; operations are not automatically repeated.';
+        if ((result.outcomes || []).some(outcome => !['applied', 'administrator_skipped'].includes(outcome.status))) main.append(help);
+        main.append(act('Back to groups', groupList));
     }
     const cleanup = () => { disposed = true; preview = null; selected.clear(); main.replaceChildren(); };
     signal?.addEventListener('abort', cleanup, { once: true }); run(groupList)(); return cleanup;

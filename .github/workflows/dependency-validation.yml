@@ -1,0 +1,124 @@
+name: Dependency update validation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: dependency-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  scope:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == vars.DEPENDENCY_BOT_LOGIN && startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.scope.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: node
+      - id: scope
+        name: Validate dependency-only diff using trusted base scripts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch origin "$HEAD_SHA"
+          node scripts/dependency-summary.mjs --base="$BASE_SHA" --head="$HEAD_SHA" --output=dependency-commit.txt
+          echo "base=$BASE_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dependency-commit-${{ github.event.pull_request.number }}
+          path: dependency-commit.txt
+  targets:
+    needs: scope
+    uses: ./.github/workflows/latest-targets.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      key: dependency
+  all-plugin-checks:
+    needs: [scope, targets]
+    uses: ./.github/workflows/tests.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      targets_artifact: ${{ needs.targets.outputs.artifact }}
+  installed-and-external:
+    needs: [scope, targets]
+    uses: ./.github/workflows/integration.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      targets_artifact: ${{ needs.targets.outputs.artifact }}
+  root-tests:
+    needs: [scope, targets]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
+      - run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - name: Full consolidated test and package/upgrade fixtures
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/test.ps1
+  accepted:
+    name: Dependency update acceptance
+    if: always() && needs.scope.result != 'skipped'
+    needs: [scope, targets, all-plugin-checks, installed-and-external, root-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every automated test gate
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e 'const jobs=JSON.parse(process.env.RESULTS); if(Object.values(jobs).some(job=>job.result!=="success"))process.exit(1)'
+  merge-and-release:
+    needs: [scope, accepted]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: dependency-promotion
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: node
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dependency-commit-${{ github.event.pull_request.number }}
+      - name: Merge only the tested head, preserve branch rules, dispatch immutable patch release
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ needs.scope.outputs.base }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node scripts/promote-dependency-update.mjs

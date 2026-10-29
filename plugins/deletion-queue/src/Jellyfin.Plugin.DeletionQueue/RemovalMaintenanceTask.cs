@@ -6,7 +6,9 @@ namespace Jellyfin.Plugin.DeletionQueue;
 public sealed class RemovalMaintenanceService(QueueRuntime runtime, SeerrExecutionGateway gateway, MediaPresentationService presentation, TimeProvider clock)
 {
     private readonly SemaphoreSlim gate = new(1);
-    public async Task RunAsync(IProgress<double> progress, CancellationToken ct) {
+    public Task RunAsync(IProgress<double> progress,CancellationToken ct)=>RunCoreAsync(progress,ct,true);
+    public Task ReevaluateAsync(CancellationToken ct)=>RunCoreAsync(new Progress<double>(),ct,false);
+    private async Task RunCoreAsync(IProgress<double> progress, CancellationToken ct,bool executeRemovals) {
         await gate.WaitAsync(ct);
         try {
             var coordinator = new ExecutionCoordinator(runtime, gateway, clock);
@@ -19,7 +21,16 @@ public sealed class RemovalMaintenanceService(QueueRuntime runtime, SeerrExecuti
                 try {
                     // Every stage uses a new native playback/session scan, target resolution,
                     // live rule check, current consent and administrator/policy evidence.
-                    var preflight = await gateway.PreflightAsync(proposal, ct);
+                    using var verificationBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    verificationBudget.CancelAfter(TimeSpan.FromSeconds(45));
+                    var external=await gateway.InspectExternalChangeAsync(proposal,verificationBudget.Token);
+                    if(external is not null){
+                        runtime.Write(Guid.NewGuid(),"upstream-observation","ExternalTargetChange",state=>{
+                            QueueRules.CloseExternalChange(state,proposal.Id,proposal.Revision,proposal.Target.Fingerprint,external,clock.GetUtcNow());return true;
+                        });
+                        continue;
+                    }
+                    var preflight = await gateway.PreflightAsync(proposal, verificationBudget.Token);
                     runtime.Write(Guid.NewGuid(), "scheduled-task", "EligibilityEvaluated", state => {
                         var current = QueueRules.Find(state, proposal.Id);
                         if (current.Revision != preflight.ProposalRevision || current.Claim is not null) throw new QueueException("RevisionChanged");
@@ -29,7 +40,7 @@ public sealed class RemovalMaintenanceService(QueueRuntime runtime, SeerrExecuti
                         return true;
                     });
                     var state = runtime.Read(); var current = QueueRules.Find(state, proposal.Id);
-                    if (state.Policy.AutomaticDeletion && state.Policy.SeerrManagedDeletionAcknowledged && current.Status == ProposalStatus.Ready)
+                     if (executeRemovals && state.Policy.AutomaticDeletion && state.Policy.SeerrManagedDeletionAcknowledged && current.Status == ProposalStatus.Ready)
                         // Coordinator obtains another preflight before claiming, then rechecks
                         // immediately before dispatch. The date alone never authorizes deletion.
                         await coordinator.ExecuteAsync(current.Id, ct);

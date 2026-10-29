@@ -5,8 +5,8 @@ namespace Jellyfin.Plugin.DiscordBridge;
 /// <summary>Bounded, process-local operational counters. No actor, channel, message, token or payload retention.</summary>
 public sealed class InteractionHealth
 {
-    private static readonly HashSet<string> Commands = ["help", "status", "link.prepare", "unlink", "reset", "watchparty.devices", "watchparty.invite"];
-    private static readonly HashSet<string> Outcomes = ["completed", "unavailable", "delivered_dm", "delivered_channel", "created_private"];
+    private static readonly HashSet<string> Commands = ["help", "status", "link.prepare", "unlink", "reset", "invite.create", "watchparty"];
+    private static readonly HashSet<string> Outcomes = ["completed", "unavailable", "delivered_dm", "delivered_channel", "rejected_limits"];
     private readonly ConcurrentDictionary<string, long> counts = new(StringComparer.Ordinal);
     public void Record(string command, string outcome)
     {

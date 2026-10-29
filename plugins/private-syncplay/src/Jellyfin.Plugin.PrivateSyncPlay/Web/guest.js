@@ -45,14 +45,23 @@
     }
     player.addEventListener('pointermove', showControls); player.addEventListener('pointerdown', showControls);
     player.addEventListener('focusin', showControls);
+    const safeErrors=new WeakSet();
     async function request(path, body) {
+        try{return await send(path,body);}catch(error){
+            if(error&&safeErrors.has(error))throw error;
+            throw new Error('This service is currently unavailable. Contact an administrator if the problem continues.');
+        }
+    }
+    async function send(path, body) {
         if (preview) throw new Error('Server requests are unavailable in the preview.');
         const r = await fetch(new URL('Guest/' + path, base), { credentials: 'same-origin', cache: 'no-store',
             method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' },
             body: body === undefined ? undefined : JSON.stringify(body) });
         if (!r.ok) {
             const error = normalize(await r.json().catch(() => ({})));
-            throw Object.assign(new Error(error.error || 'Party unavailable.'), { status: r.status });
+            const id=error.errorId||error.error?.errorId||r.headers?.get?.('X-Suite-Error-Id');const suffix=typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)?' Error ID: '+id:'';
+            const nature=[401,403,404,410].includes(r.status)?'This invitation or guest session is unavailable.':r.status===429?'Too many attempts. Please wait.':r.status===409?'The party changed. Refresh and review it.':r.status===400?'Some details are invalid. Check your entries.':'This service is currently unavailable. Contact an administrator if the problem continues.';
+            const failure=Object.assign(new Error(nature+suffix), { status: r.status,errorId:suffix?id:null });safeErrors.add(failure);throw failure;
         }
         return r.status === 204 ? null : normalize(await r.json());
     }
@@ -251,7 +260,7 @@
             if (state.ready && generation === state.generation) { updateSubtitles(); followPosition(); }
         } catch (error) {
             if (!active || mine !== epoch) return;
-            if ([401, 403, 404, 410].includes(error.status)) { end('This guest session has ended.'); return; }
+            if ([401, 403, 404, 410].includes(error.status)) { end('This guest session is unavailable or has ended.'+(error.errorId?' Error ID: '+error.errorId:'')); return; }
             desiredPlaying = false; clearStream(); message(error.message);
         }
         if (active && mine === epoch) timer = setTimeout(poll, 1000);

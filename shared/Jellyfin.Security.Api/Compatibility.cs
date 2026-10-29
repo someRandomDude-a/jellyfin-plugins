@@ -5,14 +5,17 @@ namespace AccountHub.Security;
 public static class SupportedSecurity
 {
     public static readonly Guid PluginId = new("94879a0c-da24-4eb1-aa06-f28b4b9333b1");
-    public const string Version = "2.6.4";
+    public static string Version => ReviewedVersion ?? "2.6.4";
+    private static string? ReviewedVersion => typeof(SupportedSecurity).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+        .Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "ReviewedSecurityVersion")?.Value;
     public const string SourceCommit = "2c02686fcec8b15ea56235de8d196460711befaa";
     public const string Asset = "Jellyfin.Plugin.TwoFactorAuthv2.6.4.0-jf12.zip";
     public const string AssetSha256 = "6c1ae5e41cc0bc7f168025d9b941578f13115cd73cac7a72496888c46f64a998";
 
     public static bool Matches(string? version) => System.Version.TryParse(version, out var v)
         // The SHA-256-pinned v2.6.4 jf12 archive actually reports assembly 2.6.4.1.
-        && v.Major == 2 && v.Minor == 6 && v.Build == 4 && v.Revision is -1 or 0 or 1;
+        && (v.Major == 2 && v.Minor == 6 && v.Build == 4 && v.Revision is -1 or 0 or 1
+            || ReviewedVersion is { } reviewed && System.Version.TryParse(reviewed, out var approved) && v == approved);
 }
 
 public sealed record Compatibility(string State, string? InstalledVersion, DateTimeOffset CheckedAt)

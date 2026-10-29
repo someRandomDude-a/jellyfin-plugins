@@ -1,5 +1,6 @@
 using System.Text;
 using Dapper;
+using Jellyfin.Plugin.UserManager.Services;
 using Microsoft.Data.Sqlite;
 
 namespace Jellyfin.Plugin.UserManager.Data;
@@ -426,6 +427,9 @@ public sealed class PluginStore
 
         // A Discord account can only be linked to one Jellyfin account.
         await connection.ExecuteAsync(
+            "DELETE FROM reset_tokens WHERE UsedAt IS NULL AND (JellyfinUserId = @JellyfinUserId OR JellyfinUserId IN (SELECT JellyfinUserId FROM linked_accounts WHERE DiscordUserId = @DiscordUserId));",
+            new { DiscordUserId = discordUserId, JellyfinUserId = code.JellyfinUserId }, transaction).ConfigureAwait(false);
+        await connection.ExecuteAsync(
             "DELETE FROM linked_accounts WHERE DiscordUserId = @DiscordUserId OR JellyfinUserId = @JellyfinUserId;",
             new { DiscordUserId = discordUserId, JellyfinUserId = code.JellyfinUserId },
             transaction).ConfigureAwait(false);
@@ -443,23 +447,44 @@ public sealed class PluginStore
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        // Revoke only unused credentials. Claimed password effects and pending
+        // session revocations must survive unlinking and restart.
+        await connection.ExecuteAsync(
+            "DELETE FROM reset_tokens WHERE JellyfinUserId = @JellyfinUserId AND UsedAt IS NULL;",
+            new { JellyfinUserId = jellyfinUserId }, transaction).ConfigureAwait(false);
         await connection.ExecuteAsync(
             "DELETE FROM linked_accounts WHERE JellyfinUserId = @JellyfinUserId;",
-            new { JellyfinUserId = jellyfinUserId }).ConfigureAwait(false);
+            new { JellyfinUserId = jellyfinUserId }, transaction).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ resets
 
-    public async Task CreateResetTokenAsync(ResetTokenRecord token, CancellationToken cancellationToken = default)
+    public async Task CreateResetTokenAsync(ResetTokenRecord token, CancellationToken cancellationToken = default, string? expectedDiscordUserId = null)
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        if (expectedDiscordUserId is not null && await connection.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM linked_accounts WHERE JellyfinUserId = @JellyfinUserId AND DiscordUserId = @DiscordUserId;",
+            new { token.JellyfinUserId, DiscordUserId = expectedDiscordUserId }, transaction).ConfigureAwait(false) != 1)
+            throw new UserManagerException(403, "A current verified Discord link is required.");
         await connection.ExecuteAsync(
             "DELETE FROM reset_tokens WHERE JellyfinUserId = @JellyfinUserId AND UsedAt IS NULL;",
-            new { token.JellyfinUserId }).ConfigureAwait(false);
+            new { token.JellyfinUserId }, transaction).ConfigureAwait(false);
         await connection.ExecuteAsync(
             "INSERT INTO reset_tokens (TokenHash, JellyfinUserId, CreatedByUserId, CreatedAt, ExpiresAt, UsedAt) VALUES (@TokenHash, @JellyfinUserId, @CreatedByUserId, @CreatedAt, @ExpiresAt, @UsedAt);",
-            token).ConfigureAwait(false);
+            token, transaction).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RevokeUnusedResetTokenAsync(string tokenHash, CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await connection.ExecuteAsync("DELETE FROM reset_tokens WHERE TokenHash = @TokenHash AND UsedAt IS NULL;",
+            new { TokenHash = tokenHash }).ConfigureAwait(false);
     }
 
     public async Task<ResetTokenRecord?> GetResetTokenAsync(string tokenHash, CancellationToken cancellationToken = default)

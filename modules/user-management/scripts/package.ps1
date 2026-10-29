@@ -47,7 +47,9 @@ $dist = Join-Path $repoRoot 'dist'
 $pluginDir = Join-Path $dist 'plugin'
 $pluginName = 'Jellyfin.Plugin.UserManager'
 $pluginGuid = 'ba6561b1-5df1-445a-9f8d-e6127f143c97'
-$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
+. (Join-Path $PSScriptRoot '../../../scripts/test-targets.ps1')
+Initialize-TestTargets
+$targetAbi = ([xml](Get-Content -LiteralPath $env:SUITE_JELLYFIN_PROPS -Raw)).Project.PropertyGroup.JellyfinTargetAbi
 $owner = 'someRandomDude-a'
 $name = 'User Manager'
 $description = 'Identity and permission manager for Jellyfin and Seerr with invite links, Discord password resets, audit logs and admin notifications.'

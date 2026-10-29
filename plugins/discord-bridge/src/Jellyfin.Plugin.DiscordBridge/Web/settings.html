@@ -1,38 +1,116 @@
 <div data-role="page" data-suite-plugin="discord" class="page type-interior discordBridgePage suiteAdmin">
   <div data-role="content"><div class="content-primary">
-    <h1>Discord Bridge</h1>
-    <p>Connect Discord notifications and watch parties.</p>
+    <h1>Discord</h1>
+    <p class="bridgeStatus" role="status" aria-live="polite"></p>
     <details class="suiteCard"><summary>Integrations</summary><section class="bridgeDependencyHealth" aria-label="Optional integration health"></section></details>
-    <details class="suiteCard"><summary data-help="Enable Activities in the Discord Developer Portal and map the Activity directory and native web styles. This companion opens Jellyfin outside Discord; in-Discord video playback is not supported.">Activity companion</summary><p><a class="bridgeActivityUrl" target="_blank" rel="noopener noreferrer">Open Activity endpoint</a></p></details>
     <form class="bridgeSettings">
+      <fieldset class="bridgeSection"><legend>Bot</legend>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeEnabled"/><span>Enable bot</span></label></div>
        <div class="checkboxContainer" data-help="Requires Account Hub for verified account links and recovery. Discord roles do not grant Jellyfin permissions."><label><input type="checkbox" is="emby-checkbox" class="bridgeSelfService" disabled/><span>Enable account self-service</span></label><p class="fieldDescription bridgeIdentityReason">Checking account integration…</p></div>
-       <div class="checkboxContainer" data-help="Requires Account Hub and Private SyncPlay. Users still need permission to access the media."><label><input type="checkbox" is="emby-checkbox" class="bridgeWatchParty" disabled/><span>Enable watch-party commands</span></label><p class="fieldDescription bridgePartyReason">Checking watch-party integration…</p></div>
-       <div class="inputContainer" data-help="Public HTTPS address used in watch-party links. Include your Jellyfin BaseUrl, if configured."><label class="inputLabel" for="bridgePublicUrl">Public Jellyfin URL</label><input is="emby-input" id="bridgePublicUrl" class="bridgeUrl" type="url" placeholder="https://jellyfin.example.com"/></div>
+        <div class="checkboxContainer" data-help="Requires Account Hub and Private SyncPlay. Users still need permission to access the media."><label><input type="checkbox" is="emby-checkbox" class="bridgeWatchParty" disabled/><span>Enable watch-party commands</span></label><p class="fieldDescription bridgePartyReason">Checking watch-party integration…</p></div>
+      </fieldset>
+      <fieldset class="bridgeSection"><legend>Discord permissions</legend>
+        <p class="fieldDescription">Choose defaults or edit a native Jellyfin user's overrides. Allow never bypasses native media access, guest policy, invitation delegation, recovery verification or channel disclosure consent. Discord roles do not grant permissions.</p>
+        <div class="inputContainer"><label class="inputLabel" for="bridgePermissionSearch">Find a Jellyfin user</label><input is="emby-input" id="bridgePermissionSearch" class="bridgePermissionSearch" type="search" autocomplete="off"/></div>
+        <div class="selectContainer"><label class="selectLabel" for="bridgePermissionUser">Edit permissions for</label><select is="emby-select" id="bridgePermissionUser" class="bridgePermissionUser"><option value="">Defaults for all users</option></select></div>
+        <p class="bridgePermissionStatus fieldDescription" role="status"></p>
+        <div class="bridgePermissionRows"></div>
+        <div class="bridgeActions"><button is="emby-button" class="emby-button raised bridgePermissionReset" type="button"><span class="emby-button-foreground">Use inherited permissions</span></button><button is="emby-button" class="emby-button raised bridgePermissionDiscard" type="button"><span class="emby-button-foreground">Discard permission edits</span></button></div>
+        <p class="fieldDescription">All edits are drafts until Save. Native confirmation, account invitation delegation and Private SyncPlay permissions still apply.</p>
+      </fieldset>
+      <fieldset class="bridgeSection"><legend>Connection</legend><div class="bridgeFieldGrid">
+        <div class="inputContainer bridgeWide" data-help="Optional override for watch-party links. Leave blank to reuse Account Hub's configured public HTTPS URL. Include Jellyfin's BaseUrl. Browser Host headers never choose secret-link destinations."><label class="inputLabel" for="bridgePublicUrl">Public URL override</label><input is="emby-input" id="bridgePublicUrl" class="bridgeUrl" type="url" placeholder="Use account settings"/></div>
       <div class="inputContainer"><label class="inputLabel" for="bridgeGuild">Discord guild ID</label><input is="emby-input" id="bridgeGuild" class="bridgeGuild" inputmode="numeric" required/></div>
        <div class="inputContainer" data-help="Comma-separated Discord channel IDs. Only these channels can receive notifications or confirmed watch-party links."><label class="inputLabel" for="bridgeChannels">Approved channels</label><input is="emby-input" id="bridgeChannels" class="bridgeChannels"/></div>
-      <h2>New library content</h2>
+      </div></fieldset>
+      <fieldset class="bridgeSection"><legend>Account signup invitations — /invite</legend><p>Users choose uses and expiry in the slash command, or use these defaults. Account Hub remains the signup owner and also enforces its template, creator delegation and quota. These Discord limits are editable here independently.</p><div class="bridgeFieldGrid">
+      <div class="inputContainer"><label class="inputLabel" for="bridgeInviteDefaultUses">Default uses</label><input is="emby-input" id="bridgeInviteDefaultUses" class="bridgeInviteDefaultUses" type="number" min="1" max="100" required/></div>
+      <div class="inputContainer"><label class="inputLabel" for="bridgeInviteMaxUses">Maximum uses</label><input is="emby-input" id="bridgeInviteMaxUses" class="bridgeInviteMaxUses" type="number" min="1" max="100" required/></div>
+      <div class="inputContainer"><label class="inputLabel" for="bridgeInviteDefaultExpiry">Default expiry (minutes)</label><input is="emby-input" id="bridgeInviteDefaultExpiry" class="bridgeInviteDefaultExpiry" type="number" min="15" max="43200" required/></div>
+      <div class="inputContainer"><label class="inputLabel" for="bridgeInviteMaxExpiry">Maximum expiry (minutes)</label><input is="emby-input" id="bridgeInviteMaxExpiry" class="bridgeInviteMaxExpiry" type="number" min="15" max="43200" required/></div></div></fieldset>
+      <fieldset class="bridgeSection"><legend>Private SyncPlay invitations — /watchparty</legend><p>Uses your most recently active native playback device. The generated native link is posted in the current approved channel by default. Specify @user to send a DM instead. No Activity, embedded player, device-selection command or extra sharing confirmation is needed.</p>
+      <div class="checkboxContainer"><label><input is="emby-checkbox" class="bridgePartyGuests" type="checkbox"/><span>Request guest-enabled invitations (also requires native guest permission)</span></label></div><div class="bridgeFieldGrid">
+      <div class="inputContainer"><label class="inputLabel" for="bridgePartyUses">Party invitation uses</label><input is="emby-input" id="bridgePartyUses" class="bridgePartyUses" type="number" min="1" max="100" required/></div>
+      <div class="inputContainer"><label class="inputLabel" for="bridgePartyExpiry">Party expiry (minutes)</label><input is="emby-input" id="bridgePartyExpiry" class="bridgePartyExpiry" type="number" min="1" max="1440" required/></div></div></fieldset>
+      <fieldset class="bridgeSection"><legend>Library announcements</legend>
       <p class="bridgeLibraryStatus fieldDescription" role="status"></p>
-      <p class="bridgeLibraryHealth fieldDescription" role="status"></p>
+      <div class="bridgeLibraryHealth fieldDescription"></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryEnabled"/><span>Announce future library additions on Discord</span></label></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryEpisodes"/><span>New episodes</span></label></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryMovies"/><span>New movies</span></label></div>
        <div class="selectContainer" data-help="Choose which libraries may be announced. Only future additions are included."><label class="selectLabel" for="bridgeLibraryFolders">Libraries to announce</label><select is="emby-select" id="bridgeLibraryFolders" class="bridgeLibraryFolders" multiple size="5"></select></div>
        <div class="inputContainer" data-help="Comma-separated IDs from the approved channels above."><label class="inputLabel" for="bridgeLibraryChannels">Announcement channels</label><input is="emby-input" id="bridgeLibraryChannels" class="bridgeLibraryChannels"/></div>
       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeLibraryDisclosure"/><span>I approve sharing selected library titles/episode metadata with members of these Discord channels, independently of their Jellyfin access.</span></label></div>
-       <h2>Credentials</h2>
+      </fieldset>
+      <fieldset class="bridgeSection"><legend>Credentials</legend>
        <div class="inputContainer" data-help="Leave blank to keep the saved token. Stored credentials are encrypted and never displayed."><label class="inputLabel" for="bridgeToken">Replace bot token</label><input is="emby-input" id="bridgeToken" class="bridgeToken" type="password" autocomplete="new-password"/></div>
-      <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeClear"/><span>Clear stored bot token</span></label></div>
+       <div class="checkboxContainer"><label><input type="checkbox" is="emby-checkbox" class="bridgeClear"/><span>Clear stored bot token</span></label></div>
       <input id="bridgeProof" class="bridgeProof" type="hidden" value=""/>
       <div class="inputContainer"><label class="inputLabel" for="bridgeConfirm">Type CONFIRM ACCOUNT HUB CHANGE</label><input is="emby-input" id="bridgeConfirm" class="bridgeConfirm" autocomplete="off" required/></div>
-      <button is="emby-button" class="raised button-submit" type="submit"><span>Save</span></button>
-     </form><div data-help="Save changes first. Checks the saved bot connection without sending messages. Channel and DM delivery are not tested."><button type="button" is="emby-button" class="emby-button raised bridgeTestConnection"><span class="emby-button-foreground">Test connection</span></button></div><p class="bridgeConnectionResult" role="status" aria-live="polite"></p><p class="bridgeStatus" role="status" aria-live="polite"></p>
+      </fieldset>
+      <div class="bridgeActions"><button is="emby-button" class="emby-button raised button-submit" type="submit"><span class="emby-button-foreground">Save</span></button></div>
+     </form><div data-help="Save changes first. Checks the saved bot connection without sending messages. Channel and DM delivery are not tested."><button type="button" is="emby-button" class="emby-button raised bridgeTestConnection"><span class="emby-button-foreground">Test connection</span></button></div><p class="bridgeConnectionResult" role="status" aria-live="polite"></p>
   </div></div>
+   <style>
+     /* Layout only: installed Jellyfin controls and theme supply presentation. */
+     .discordBridgePage .bridgeSection { border: 0; padding: 0; margin: 0; min-inline-size: 0; }
+     .discordBridgePage .bridgeSection + .bridgeSection { margin-block-start: 2rem; }
+     .discordBridgePage .bridgeSection legend { font-size: 1.2em; font-weight: 600; margin-block-end: .5rem; }
+     .discordBridgePage .bridgeFieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1.5rem; }
+     .discordBridgePage .bridgeWide { grid-column: 1 / -1; }
+     .discordBridgePage .bridgeFieldGrid > * { min-width: 0; }
+     .discordBridgePage input:not([type=checkbox]), .discordBridgePage select { width: 100%; box-sizing: border-box; }
+     .discordBridgePage select[multiple] { min-height: 8rem; padding: .65em; }
+     .discordBridgePage .bridgeActions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block-start: 1.5rem; }
+     .discordBridgePage .bridgeStatus { line-height: 1.6; }
+     @media (max-width: 600px) {
+       .discordBridgePage .bridgeFieldGrid { grid-template-columns: minmax(0, 1fr); }
+       .discordBridgePage .bridgeActions > button { width: 100%; margin-inline: 0; }
+     }
+   </style>
    <script>
   (() => {
     const root = document.querySelector('.discordBridgePage'); if (!root || root.dataset.initialized) return; root.dataset.initialized = 'true';
-    const get = name => root.querySelector('.bridge' + name), status = get('Status'); let revision = 0, active;
-    get('ActivityUrl').href = ApiClient.getUrl('DiscordBridge/activity/');
+     const get = name => root.querySelector('.bridge' + name), status = get('Status'); let revision = 0, active, loadEpoch = 0;
+     let permissions = { defaults: {}, users: {} }, savedPermissions = { defaults: {}, users: {} }, permissionActions = [], permissionUsers = [];
+     const copy = value => JSON.parse(JSON.stringify(value));
+     function renderPermissionRows() {
+       const user = get('PermissionUser').value, rows = get('PermissionRows'); rows.replaceChildren();
+       const rules = user ? permissions.users[user] || {} : permissions.defaults;
+       get('PermissionReset').disabled = !user;
+       permissionActions.forEach((action, index) => {
+         const box = document.createElement('div'); box.className = 'selectContainer';
+         const label = document.createElement('label'); label.className = 'selectLabel'; label.htmlFor = 'bridgePermissionAction' + index; label.textContent = action.name;
+         const select = document.createElement('select'); select.id = label.htmlFor; select.className = 'emby-select'; select.setAttribute('is', 'emby-select'); select.dataset.permission = action.id;
+         const fallback = permissions.defaults[action.id] ?? action.defaultAllowed;
+         const choices = user ? [['inherit', 'Inherit (' + (fallback ? 'Allow' : 'Deny') + ')'], ['allow', 'Allow'], ['deny', 'Deny']] : [['allow', 'Allow'], ['deny', 'Deny']];
+         for (const [value, text] of choices) { const option = document.createElement('option'); option.value = value; option.textContent = text; select.append(option); }
+         select.value = user && !(action.id in rules) ? 'inherit' : (rules[action.id] ?? action.defaultAllowed) ? 'allow' : 'deny';
+         select.onchange = () => {
+           const selected = select.value;
+           if (user) {
+             permissions.users[user] ||= {};
+             if (selected === 'inherit') delete permissions.users[user][action.id]; else permissions.users[user][action.id] = selected === 'allow';
+             if (!Object.keys(permissions.users[user]).length) delete permissions.users[user];
+           } else permissions.defaults[action.id] = selected === 'allow';
+           get('PermissionStatus').textContent = 'Unsaved permission changes. Save applies the full settings revision.';
+         };
+         const hint = document.createElement('p'); hint.className = 'fieldDescription'; hint.id = label.htmlFor + 'Hint'; hint.textContent = action.description; select.setAttribute('aria-describedby', hint.id);
+         box.append(label, select, hint); rows.append(box);
+       });
+     }
+     function renderPermissionUsers() {
+       const select = get('PermissionUser'), selected = select.value, search = get('PermissionSearch').value.toLocaleLowerCase(), users = new Map(permissionUsers.map(user => [user.id, user.name]));
+       for (const id of Object.keys(permissions.users)) if (!users.has(id)) users.set(id, 'Unavailable saved user · ' + id);
+       if (selected && !users.has(selected)) users.set(selected, 'Unavailable selected user · ' + selected);
+       select.replaceChildren(); const defaults = document.createElement('option'); defaults.value = ''; defaults.textContent = 'Defaults for all users'; select.append(defaults);
+       for (const [id, name] of users) if (id === selected || !search || name.toLocaleLowerCase().includes(search) || id.includes(search)) { const option = document.createElement('option'); option.value = id; option.textContent = name + (permissions.users[id] ? ' · overrides' : ''); select.append(option); }
+       select.value = [...select.options].some(option => option.value === selected) ? selected : ''; renderPermissionRows();
+     }
+     get('PermissionSearch').addEventListener('input', renderPermissionUsers);
+     get('PermissionUser').addEventListener('change', renderPermissionRows);
+     get('PermissionReset').onclick = () => { const id = get('PermissionUser').value; if (id) { delete permissions.users[id]; renderPermissionUsers(); get('PermissionStatus').textContent = 'Unsaved reset to inherited permissions. Other users and native safeguards are unchanged.'; } };
+     get('PermissionDiscard').onclick = () => { permissions = copy(savedPermissions); renderPermissionUsers(); get('PermissionStatus').textContent = 'Permission draft discarded.'; };
     let testing = false, testEpoch = 0, testController;
     get('TestConnection').onclick = async () => {
       if (testing) return; testing = true; const epoch = ++testEpoch, control = get('TestConnection'), result = get('ConnectionResult');
@@ -51,11 +129,15 @@
       active?.abort(); active = new AbortController();
       const response = await fetch(ApiClient.getUrl('DiscordBridge/admin/v1/settings'), { method, signal: active.signal, credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + ApiClient.accessToken() + '"', 'Content-Type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined });
       const body = await response.json(); if ((response.status === 401 || response.status === 403) && body.twoFactorRequired) throw Error('Complete Jellyfin Security 2FA, then return.');
-      if (!response.ok || !body.ok) throw Error(body.error?.message || body.error?.code || 'Discord settings unavailable'); return body.data;
+      if (!response.ok || !body.ok) throw Error(window.SuiteAdminUI?.failure?.(body,response,'Discord settings unavailable. Check authorization or contact an administrator.')||'Discord settings unavailable.'); return body.data;
     }
-    async function load() { try {
-      const data = await request('GET'); revision = data.revision; get('Enabled').checked = data.settings.enabled; get('Guild').required = !!data.settings.enabled; get('Url').value = data.settings.publicServerUrl; get('Guild').value = data.settings.guildId; get('Channels').value = data.settings.allowedChannelIds.join(', ');
+     async function load() { const epoch = ++loadEpoch; try {
+       const data = await request('GET'); if (epoch !== loadEpoch) return; revision = data.revision; get('Enabled').checked = data.settings.enabled; get('Guild').required = !!data.settings.enabled; get('Url').value = data.settings.publicServerUrl; get('Guild').value = data.settings.guildId; get('Channels').value = data.settings.allowedChannelIds.join(', ');
+       permissions = copy(data.settings.permissions || { defaults: {}, users: {} }); savedPermissions = copy(permissions); permissionActions = data.permissionActions || []; permissionUsers = data.permissionUsers || []; renderPermissionUsers();
+       get('PermissionStatus').textContent = data.permissionUsersStatus === 'unavailable' ? 'Native users unavailable; saved overrides are retained. Defaults remain editable.' : data.permissionUsersStatus === 'bounded' ? 'Showing the first 500 native users plus all saved overrides. At most 100 explicit user policies can be saved.' : 'Defaults apply unless this native user has an explicit override. At most 100 users may have overrides.';
       get('SelfService').checked = data.settings.enableSelfServiceCommands; get('WatchParty').checked = data.settings.enableWatchPartyCommands;
+      for(const [field,key,fallback] of [['InviteDefaultUses','inviteDefaultUses',1],['InviteMaxUses','inviteMaxUses',10],['InviteDefaultExpiry','inviteDefaultExpiryMinutes',60],['InviteMaxExpiry','inviteMaxExpiryMinutes',1440],['PartyUses','watchPartyUses',1],['PartyExpiry','watchPartyExpiryMinutes',30]])get(field).value=data.settings[key]??fallback;
+      get('PartyGuests').checked=!!data.settings.watchPartyGuests;
       get('LibraryEnabled').checked = !!data.settings.libraryAnnouncementsEnabled; get('LibraryEpisodes').checked = data.settings.libraryEpisodes !== false; get('LibraryMovies').checked = data.settings.libraryMovies !== false; get('LibraryDisclosure').checked = !!data.settings.libraryDisclosureAcknowledged; get('LibraryChannels').value = (data.settings.libraryChannelIds || []).join(', ');
       const folders = get('LibraryFolders'), selected = new Set(data.settings.libraryIds || []); folders.replaceChildren();
       for (const item of data.libraryFolders || []) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; option.selected = selected.has(item.id); folders.append(option); selected.delete(item.id); }
@@ -69,14 +151,20 @@
       for (const feature of data.features) { const row = document.createElement('p'); row.textContent = feature.name + ': ' + (feature.available ? 'Available. ' : 'Unavailable. ') + feature.reason + (!feature.available ? ' ' + feature.fix : ''); health.append(row);
          if (feature.id === 'identity' || feature.id === 'watchparty') { const input = get(feature.id === 'identity' ? 'SelfService' : 'WatchParty'), reason = get(feature.id === 'identity' ? 'IdentityReason' : 'PartyReason'); input.disabled = !feature.available; input.title = feature.reason + ' ' + feature.fix; reason.textContent = feature.available ? '' : feature.reason + ' ' + feature.fix; }
       }
-      status.textContent = data.state + (data.tokenConfigured ? ' — token configured' : ' — no token') + '. Authorization: ' + data.authorization;
-    } catch (e) { if (e.name !== 'AbortError') status.textContent = e.message; } }
+      const states={starting:'Starting',disabled:'Bot off',token_required:'Bot token missing',connecting:'Connecting',connected:'Connected',command_registration_failed:'Slash commands unavailable',unavailable:'Connection unavailable',stopped:'Stopped'};
+      const hints={token_required:'Save a valid bot token.',command_registration_failed:'Check the bot application and configured guild permissions.',unavailable:'Check bot credentials, storage health and outbound HTTPS access.'};
+      status.textContent=(states[data.state]||'Status unavailable')+(hints[data.state]?' — '+hints[data.state]:'')+(data.botUsername?' · Bot: '+data.botUsername+' (ID: '+data.botId+')':'')+(data.instanceCode?' · Server: '+data.instanceCode:'');
+      if(data.authorization){const row=document.createElement('p');row.textContent='Authorization: '+data.authorization;health.append(row);}
+      const guidance=document.createElement('p');guidance.textContent='Compare the server reference in /help, /status or an error with this server. Replies from another reference can indicate another bot process using the same token. Never share bot tokens, recovery links or proof codes.';health.append(guidance);
+     } catch (e) { if (epoch === loadEpoch && e.name !== 'AbortError') status.textContent = e.message; } }
     root.querySelector('form').onsubmit = async event => {
-       event.preventDefault(); const button = root.querySelector('button[type="submit"]'); button.disabled = true;
-      try { await request('PUT', { revision, settings: { enabled: get('Enabled').checked, enableSelfServiceCommands: get('SelfService').checked, enableWatchPartyCommands: get('WatchParty').checked, publicServerUrl: get('Url').value, guildId: get('Guild').value, allowedChannelIds: get('Channels').value.split(',').map(v => v.trim()).filter(Boolean), libraryAnnouncementsEnabled: get('LibraryEnabled').checked, libraryEpisodes: get('LibraryEpisodes').checked, libraryMovies: get('LibraryMovies').checked, libraryChannelIds: get('LibraryChannels').value.split(',').map(v => v.trim()).filter(Boolean), libraryIds: [...get('LibraryFolders').selectedOptions].map(option => option.value), libraryDisclosureAcknowledged: get('LibraryDisclosure').checked }, token: get('Token').value || null, clearToken: get('Clear').checked, stepUp: { code: get('Proof').value }, confirmation: get('Confirm').value }); status.textContent = 'Settings saved; bot reconnects automatically.'; revision++; } catch (e) { status.textContent = e.message; } finally { get('Token').value = get('Proof').value = get('Confirm').value = ''; button.disabled = false; }
+        event.preventDefault(); const epoch = loadEpoch, button = root.querySelector('button[type="submit"]'); button.disabled = true;
+       try { const limits={};for(const [field,key]of [['InviteDefaultUses','inviteDefaultUses'],['InviteMaxUses','inviteMaxUses'],['InviteDefaultExpiry','inviteDefaultExpiryMinutes'],['InviteMaxExpiry','inviteMaxExpiryMinutes'],['PartyUses','watchPartyUses'],['PartyExpiry','watchPartyExpiryMinutes']])limits[key]=Number(get(field).value);
+       await request('PUT', { revision, settings: { enabled: get('Enabled').checked, enableSelfServiceCommands: get('SelfService').checked, enableWatchPartyCommands: get('WatchParty').checked, ...limits, watchPartyGuests:get('PartyGuests').checked, permissions, publicServerUrl: get('Url').value, guildId: get('Guild').value, allowedChannelIds: get('Channels').value.split(',').map(v => v.trim()).filter(Boolean), libraryAnnouncementsEnabled: get('LibraryEnabled').checked, libraryEpisodes: get('LibraryEpisodes').checked, libraryMovies: get('LibraryMovies').checked, libraryChannelIds: get('LibraryChannels').value.split(',').map(v => v.trim()).filter(Boolean), libraryIds: [...get('LibraryFolders').selectedOptions].map(option => option.value), libraryDisclosureAcknowledged: get('LibraryDisclosure').checked }, token: get('Token').value || null, clearToken: get('Clear').checked, stepUp: { code: get('Proof').value }, confirmation: get('Confirm').value }); if (epoch !== loadEpoch) return; status.textContent = 'Settings saved; bot reconnects automatically.'; savedPermissions = copy(permissions); revision++; } catch (e) { if (epoch === loadEpoch) status.textContent = e.message; } finally { if (epoch === loadEpoch) { get('Token').value = get('Proof').value = get('Confirm').value = ''; button.disabled = false; } }
     };
     get('Enabled').addEventListener('change', () => { get('Guild').required = get('Enabled').checked; });
-    root.addEventListener('viewshow', load); root.addEventListener('viewhide', () => { active?.abort(); get('Token').value = get('Proof').value = get('Confirm').value = ''; }); root.addEventListener('viewdestroy', () => active?.abort()); load();
+     const leave = () => { ++loadEpoch; active?.abort(); get('Token').value = get('Proof').value = get('Confirm').value = ''; root.querySelector('button[type="submit"]').disabled = false; permissionUsers = []; permissionActions = []; permissions = { defaults: {}, users: {} }; savedPermissions = copy(permissions); get('PermissionRows').replaceChildren(); get('PermissionUser').replaceChildren(); };
+     root.addEventListener('viewshow', load); root.addEventListener('viewhide', leave); root.addEventListener('viewdestroy', leave); load();
   })();
    </script>
    <script src="configurationpage?name=DiscordBridgeAdminUI.js"></script>

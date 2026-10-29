@@ -11,6 +11,8 @@ namespace Jellyfin.Plugin.DiscordBridge;
 
 public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRuntime> logger) : BackgroundService
 {
+    public string InstanceCode { get; }=Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(3));
+    public string Failure(string code,string message,string? errorId=null)=>AccountHub.Api.UserErrors.Message(code)+"\nError ID: "+(Guid.TryParseExact(errorId,"D",out _)?errorId:Jellyfin.PluginSupport.SuiteDiagnostics.Record(services,"discord-bridge",code,"Discord command"));
     private DiscordSocketClient? client;
     private DateTimeOffset nextAlert;
     private async Task ReportAlertAsync(string type, long revision, CancellationToken ct)
@@ -25,6 +27,7 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
         } catch { /* Optional reporting must not disrupt transport recovery. */ }
     }
     public string? ApplicationId => client?.CurrentUser?.Id.ToString();
+    public string? BotUsername => client?.CurrentUser?.Username;
     public async Task TestConnectionAsync(CancellationToken ct)
     {
         var socket = client;
@@ -67,13 +70,13 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
                 {
                     try
                     {
-                        var current = Store.Read();
-                        if (!current.Settings.Enabled || interaction.GuildId?.ToString() != current.Settings.GuildId || !Store.Claim(interaction.Id.ToString()))
-                        { await interaction.RespondAsync("This interaction is unavailable or was already handled. No action was retried.", ephemeral: true, allowedMentions: AllowedMentions.None); return; }
-                        var result = await interactions.ExecuteCommandAsync(new SocketInteractionContext(socket, interaction), services);
-                        if (!result.IsSuccess && !interaction.HasResponded) await interaction.RespondAsync("The command could not be completed. No automatic retry was made.", ephemeral: true, allowedMentions: AllowedMentions.None);
+                        await new InteractionGate(Store).HandleAsync(interaction.Id.ToString(),interaction.GuildId?.ToString(),async()=>{
+                            var result = await interactions.ExecuteCommandAsync(new SocketInteractionContext(socket, interaction), services);
+                            if(!result.IsSuccess){logger.LogWarning("Discord command dispatch was rejected ({Failure}); no interaction payload is logged.",result.Error);
+                                if(!interaction.HasResponded)await interaction.RespondAsync(Failure("command_unavailable","Unable to complete this command."),ephemeral:true,allowedMentions:AllowedMentions.None);}
+                        },denial=>interaction.RespondAsync(Failure(denial.Code,denial.Message),ephemeral:true,allowedMentions:AllowedMentions.None));
                     }
-                    catch { if (!interaction.HasResponded) { try { await interaction.RespondAsync("Discord integration is unavailable.", ephemeral: true, allowedMentions: AllowedMentions.None); } catch { } } }
+                    catch { if (!interaction.HasResponded) { try { await interaction.RespondAsync(Failure("gateway_unavailable","Discord is unavailable. Contact an administrator."), ephemeral: true, allowedMentions: AllowedMentions.None); } catch { } } }
                 };
                 await socket.LoginAsync(TokenType.Bot, snapshot.Token).WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
                 await socket.StartAsync().WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
@@ -88,15 +91,38 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
         State = "stopped";
     }
 
-    public async Task<JsonElement> IdentityAsync(string operation, ulong discordId, CancellationToken ct)
+    public async Task<JsonElement> IdentityAsync(string operation, ulong discordId, CancellationToken ct,string? discordUsername=null, object? options=null)
     {
-        if (!Store.Read().Settings.EnableSelfServiceCommands && operation != "identity") throw new InvalidOperationException("Enable account self-service commands in Discord Bridge settings.");
+        if (!Store.Read().Settings.EnableSelfServiceCommands && operation != "identity") throw new AccountCommandException("Account commands are disabled. Ask your administrator to enable account self-service in Discord settings.","account_commands_disabled");
+        if (operation != "identity")
+        {
+            Guid? user = null;
+            if (operation != "link.prepare") user = (await InvokeIdentityAsync("identity", discordId, ct)).GetProperty("userId").GetGuid();
+            try {
+                var config = Store.Read().Settings;
+                // Unlinked Discord users have no native ID yet. A challenge is not
+                // a grant: confirmation must check the actual signed-in account.
+                if (operation == "link.prepare") {
+                    if (!BridgePermissions.Allowed(config, "link") && !config.Permissions.Users.Keys.Any(id => BridgePermissions.Allowed(config, "link", id))) throw new UnauthorizedAccessException();
+                } else BridgePermissions.Require(config, operation, user);
+            }
+            catch (UnauthorizedAccessException) { throw new AccountCommandException("This command is disabled for your account. Ask the Jellyfin administrator to review Discord permissions.", "permission_denied"); }
+        }
+        return await InvokeIdentityAsync(operation, discordId, ct, discordUsername, options);
+    }
+    private async Task<JsonElement> InvokeIdentityAsync(string operation, ulong discordId, CancellationToken ct, string? discordUsername = null, object? options = null)
+    {
         var handler = services.GetKeyedService<Func<string, CancellationToken, Task<string>>>(DiscordBridgeClient.IdentityKey)
-            ?? throw new InvalidOperationException("Install and enable Account Hub, restart Jellyfin, and use /link to verify your account. Bot transport remains available without it.");
-        var reply = await handler(JsonSerializer.Serialize(new { apiVersion = "1", operation, discordId = discordId.ToString() }), ct).WaitAsync(TimeSpan.FromSeconds(15), ct);
+            ?? throw new AccountCommandException("Account commands need Account Hub. Ask your administrator to install/enable it and restart Jellyfin, then use /link.","account_provider_missing");
+        using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        var reply = await handler(JsonSerializer.Serialize(new { apiVersion = "1", operation, discordId = discordId.ToString(),discordUsername=DiscordIdentityLabel.Username(discordUsername),options }), deadline.Token).WaitAsync(deadline.Token);
         if (reply.Length > 65536) throw new InvalidDataException();
         using var doc = JsonDocument.Parse(reply);
-        if (doc.RootElement.GetProperty("apiVersion").GetString() != "1" || !doc.RootElement.GetProperty("ok").GetBoolean()) throw new InvalidOperationException("Account Hub denied this operation.");
+        if (doc.RootElement.GetProperty("apiVersion").GetString() != "1") throw new InvalidOperationException("Unsupported account response.");
+        if (!doc.RootElement.GetProperty("ok").GetBoolean()) {
+            var error=doc.RootElement.TryGetProperty("error",out var failure)&&failure.ValueKind==JsonValueKind.Object?failure:default;
+            throw AccountCommandException.FromCode(error.ValueKind==JsonValueKind.Object&&error.TryGetProperty("code",out var code)?code.GetString():null,error.ValueKind==JsonValueKind.Object&&error.TryGetProperty("errorId",out var id)?id.GetString():null);
+        }
         return doc.RootElement.GetProperty("data").Clone();
     }
 
@@ -140,12 +166,34 @@ public sealed class BridgeRuntime(IServiceProvider services, ILogger<BridgeRunti
                 var accepted = services.GetRequiredService<BridgeLibraryNotices>().Accept(notice);
                 response = new { apiVersion = "1", ok = accepted, data = new { status = accepted ? "accepted_or_skipped" : "capacity_reached" } };
             }
+            else if(operation=="identity.profile"){
+                var id=root.GetProperty("payload").GetProperty("discordId").GetString();if(!BridgeStore.Snowflake(id))throw new ArgumentException();
+                var socket=client;if(!Store.Read().Settings.Enabled||socket?.ConnectionState!=ConnectionState.Connected)throw new InvalidOperationException();
+                using var deadline=CancellationTokenSource.CreateLinkedTokenSource(ct);deadline.CancelAfter(TimeSpan.FromSeconds(5));
+                var user=await socket.Rest.GetUserAsync(ulong.Parse(id!),new RequestOptions{CancelToken=deadline.Token}).WaitAsync(deadline.Token);
+                response=new{apiVersion="1",ok=true,data=new{discordId=user.Id.ToString(),username=DiscordIdentityLabel.Username(user.Username)}};
+            }
             else if (operation is "send" or "send.secret")
             {
                 var payload = root.GetProperty("payload");
                 var direct = payload.GetProperty("directMessage").GetBoolean();
                 if (operation == "send.secret" && (!direct || payload.GetProperty("expiresAt").GetDateTimeOffset() <= DateTimeOffset.UtcNow || payload.GetProperty("expiresAt").GetDateTimeOffset() > DateTimeOffset.UtcNow.AddHours(6))) throw new ArgumentException();
-                await SendAsync(payload.GetProperty("destination").GetString()!, direct, payload.GetProperty("text").GetString()!, ct);
+                var destination=payload.GetProperty("destination").GetString()!;var text=payload.GetProperty("text").GetString()!;
+                if(!BridgeStore.Snowflake(destination)||text is not {Length:>0 and <=2000})throw new ArgumentException();
+                var current=Store.Read();if(!direct&&!current.Settings.AllowedChannelIds.Contains(destination))throw new UnauthorizedAccessException();
+                Guid? deliveryId=null;
+                if(payload.TryGetProperty("deliveryId",out var delivery)){
+                    if(!Guid.TryParse(delivery.GetString(),out var parsed)||parsed==Guid.Empty)throw new ArgumentException();deliveryId=parsed;
+                    var fingerprint=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new{operation,destination,direct,text}))));
+                    // Read an existing receipt even when offline; a delivered message
+                    // may be acknowledged, but claimed/uncertain work is never resent.
+                    ct.ThrowIfCancellationRequested();var status=Store.BeginDelivery(parsed,fingerprint,current.Settings.Enabled&&Connected);
+                    if(status=="unavailable")return JsonSerializer.Serialize(new{apiVersion="1",ok=false,error=new{code="unavailable",retryable=true}});
+                    if(status=="delivered")return JsonSerializer.Serialize(new{apiVersion="1",ok=true,data=new{delivered=true,deduplicated=true}});
+                    if(status!="new")return JsonSerializer.Serialize(new{apiVersion="1",ok=false,error=new{code="outcome_uncertain",retryable=false}});
+                }
+                try{await SendAsync(destination,direct,text,ct);if(deliveryId is {} sent)Store.CompleteDelivery(sent,true);}
+                catch{if(deliveryId is {} failed){Store.CompleteDelivery(failed,false);ct.ThrowIfCancellationRequested();return JsonSerializer.Serialize(new{apiVersion="1",ok=false,error=new{code="outcome_uncertain",retryable=false}});}throw;}
                 response = new { apiVersion = "1", ok = true, data = new { delivered = true } };
             }
             else throw new ArgumentException();

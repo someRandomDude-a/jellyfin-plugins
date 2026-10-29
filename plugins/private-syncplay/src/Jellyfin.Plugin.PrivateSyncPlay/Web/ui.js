@@ -6,6 +6,7 @@
     let sequence = 0;
     let navigationEpoch = 0;
     const dialogs = new Set();
+    const safeErrors = new WeakSet();
     const disposeDialogs = () => { navigationEpoch++; for (const d of dialogs) { for (const input of d.querySelectorAll('input')) input.value = ''; if (d.open) d.close(); d.remove(); } dialogs.clear(); };
     for (const event of ['hashchange', 'popstate', 'pagehide']) window.addEventListener(event, disposeDialogs);
     for (const event of ['viewhide', 'viewdestroy']) document.addEventListener(event, disposeDialogs, true);
@@ -36,7 +37,7 @@
         b.type = 'button'; element('span', label, b, 'emby-button-foreground');
         if (run) b.onclick = async () => {
             b.disabled = true;
-            try { await run(); } catch (error) { message(parent.closest('dialog')?.querySelector('[data-psp-status]') || parent.querySelector('[data-psp-status]'), error.message || 'Request failed. Check your permissions and limits.', true); }
+            try { await run(); } catch (error) { if(error?.name!=='AbortError')message(parent.closest('dialog')?.querySelector('[data-psp-status]') || parent.querySelector('[data-psp-status]'), authError(error).message, true); }
             finally { b.disabled = false; }
         };
         return b;
@@ -80,18 +81,28 @@
         const p = element('p', '', parent, 'fieldDescription'); p.dataset.pspStatus = ''; if (id) p.id = id;
         p.setAttribute('role', 'status'); p.setAttribute('aria-live', 'polite'); return p;
     }
-    function message(target, text, error = false) {
+    function message(target, text, error = false,detail) {
         if (!target) return;
         target.textContent = text;
+        if(detail){const help=element('details',null,target,'pspMessageHelp'),summary=element('summary','?',help);summary.setAttribute('aria-label','More information');element('span',detail,help);help.title=detail;help.onmouseenter=()=>{help.open=true;};help.onmouseleave=()=>{if(!help.contains(document.activeElement))help.open=false;};help.onkeydown=event=>{if(event.key==='Escape'){help.open=false;event.stopPropagation();}};}
         target.classList.toggle('infoBanner', error);
         target.setAttribute('role', error ? 'alert' : 'status');
     }
     function authError(error) {
+        if(error&&safeErrors.has(error))return error;
         let body = error?.responseJSON;
         if (!body && typeof error?.responseText === 'string') { try { body = JSON.parse(error.responseText); } catch { } }
-        if ([401,403].includes(error?.status) && body?.twoFactorRequired === true)
-            return Object.assign(new Error('Complete Jellyfin two-factor verification, then retry this action.'), {status:error.status,code:'two_factor_required'});
-        return error;
+        const candidate=body?.error?.errorId||body?.errorId||error?.headers?.get?.('X-Suite-Error-Id')||error?.getResponseHeader?.('X-Suite-Error-Id');
+        const id=typeof candidate==='string'&&/^[a-f0-9-]{36}$/i.test(candidate)?candidate:null;
+        const messages={authentication:'Your session needs attention. Sign in through Jellyfin to continue.',authorization:'You do not have permission to perform this action.',validation:'Some details are invalid. Check your entries.',expired:'This item or link is unavailable or has expired.',changed:'This item changed. Refresh and review it.',rate_limited:'Too many attempts. Please wait.',unavailable:'This service is currently unavailable.',uncertain:'We could not confirm the result. Check the current state before trying again.'};
+        const nature=body?.error?.nature||body?.nature, fallback={400:'validation',401:'authentication',403:'authorization',404:'expired',410:'expired',409:'changed',429:'rate_limited'}[error?.status]||'uncertain';
+        const factor=[401,403].includes(error?.status)&&body?.twoFactorRequired===true;
+        const mapped=Object.assign(new Error((factor?'Complete Jellyfin two-factor verification, then retry this action.':Object.hasOwn(messages,nature)?messages[nature]:messages[fallback])+(id?' Error ID: '+id:'')),{status:error?.status,errorId:id,...(factor?{code:'two_factor_required'}:{})});
+        safeErrors.add(mapped);return mapped;
+    }
+    function localError(code){
+        const messages={authentication:'Sign in to Jellyfin first.',device_connecting:'Your device is still connecting. Try again shortly.'};
+        const error=new Error(Object.hasOwn(messages,code)?messages[code]:'Unable to complete this request.');safeErrors.add(error);return error;
     }
     function dialog(title) {
         const focus = document.activeElement;
@@ -108,6 +119,6 @@
         d.addEventListener('close', () => { dialogs.delete(d); for (const input of d.querySelectorAll('input')) input.value = ''; d.remove(); if (focus?.isConnected) focus.focus(); });
         return { dialog: d, content, feedback };
     }
-    window.PrivateSyncPlayUI = { element, button, field, select, status, message, dialog, styles, authError, disposeDialogs, get navigationEpoch() { return navigationEpoch; } };
+    window.PrivateSyncPlayUI = { element, button, field, select, status, message, dialog, styles, authError, localError, disposeDialogs, get navigationEpoch() { return navigationEpoch; } };
     styles();
 })();

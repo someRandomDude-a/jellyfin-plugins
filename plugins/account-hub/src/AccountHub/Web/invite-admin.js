@@ -37,17 +37,39 @@
             group.addEventListener('focus', () => groupLabel.classList.add('selectLabelFocused')); group.addEventListener('blur', () => groupLabel.classList.remove('selectLabelFocused'));
             const control = (label, fn) => { const b = element('button', label, 'emby-button raised'); b.type = 'button'; b.setAttribute('is', 'emby-button'); b.onclick = async () => { if (!alive()) return; b.disabled = true; try { await fn(); } catch (e) { if (alive()) status.textContent = e.message; } finally { if (alive()) b.disabled = false; } }; return b; };
             const groupPages = element('div'); form.append(groupPages);
-            let groupEpoch = 0;
+            let defaults={defaultGroupId:null,discordCreationEnabled:false,allowedCreators:[],discordExpiryMinutes:60,dailyLimit:5,discordDefaultUses:1,discordMaxUses:100,discordMaxExpiryMinutes:43200};
+            const defaultsPanel=element('details'),defaultGroup=element('select','', 'emby-select'),creators=element('select','', 'emby-select'),allowDiscord=element('input');
+            defaultsPanel.append(element('summary','Invitation defaults and Discord permissions'));
+            function labelControl(text,input,help){const wrap=element('div','',input.tagName==='SELECT'?'selectContainer':'inputContainer'),label=element('label',text,input.tagName==='SELECT'?'selectLabel':'inputLabel');input.id='invite-default-'+crypto.randomUUID();label.htmlFor=input.id;if(help)wrap.dataset.help=help;wrap.append(label,input);defaultsPanel.append(wrap);}
+            labelControl('Default template',defaultGroup,'Access template preselected for new invitations. Discord invitations can only use this template. Administrator privileges, credentials and 2FA are never copied.');creators.multiple=true;creators.size=5;labelControl('Discord invite creators',creators,'Only selected users with a verified, enabled Discord link may use /invite. Other Discord roles and users gain no invitation permission.');
+            allowDiscord.type='checkbox';allowDiscord.className='emby-checkbox';allowDiscord.setAttribute('is','emby-checkbox');const allowLabel=element('label','', 'emby-checkbox-label'),outline=element('span','', 'checkboxOutline');outline.append(element('span','', 'material-icons checkboxIcon checkboxIcon-checked check'));allowLabel.append(allowDiscord,element('span','Allow selected linked users to create signup invitations in Discord','checkboxLabel'),outline);defaultsPanel.append(allowLabel);
+            const expiry=element('input','', 'emby-input'),daily=element('input','', 'emby-input'),defaultUses=element('input','', 'emby-input'),maxUses=element('input','', 'emby-input'),maxExpiry=element('input','', 'emby-input');
+            for(const input of [expiry,daily,defaultUses,maxUses,maxExpiry]){input.type='number';input.required=true;input.setAttribute('is','emby-input');}
+            expiry.min=maxExpiry.min='15';expiry.max=maxExpiry.max='43200';daily.min=defaultUses.min=maxUses.min='1';daily.max='20';defaultUses.max=maxUses.max='100';
+            labelControl('Default link lifetime (minutes)',expiry,'Used when the owner receives no explicit expiry. Discord Bridge also provides slash-command defaults and can enforce tighter limits.');
+            labelControl('Maximum link lifetime (minutes)',maxExpiry,'Owner-side ceiling for /invite: 15–43200 minutes. Discord Bridge cannot grant a longer lifetime.');
+            labelControl('Default signup uses',defaultUses,'Owner default when no explicit use count is supplied.');labelControl('Maximum signup uses',maxUses,'Owner-side ceiling for /invite: 1–100 account signups. Each signup reserves a use.');
+            labelControl('Daily invitation limit',daily,'Maximum invitations per creator in a rolling 24-hour window (1–20), not a limit on individual signups. Revocation and expiry do not refund this quota.');
+            const defaultsSave=control('Save invitation defaults',async()=>{if(![expiry,daily,defaultUses,maxUses,maxExpiry].every(input=>input.reportValidity()))return;if(Number(defaultUses.value)>Number(maxUses.value)||Number(expiry.value)>Number(maxExpiry.value))throw Error('Defaults must not exceed the corresponding maximum.');await api.write('invite-defaults',{settings:{defaultGroupId:defaultGroup.value||null,discordCreationEnabled:allowDiscord.checked,allowedCreators:[...creators.selectedOptions].map(o=>o.value),discordExpiryMinutes:Number(expiry.value),dailyLimit:Number(daily.value),discordDefaultUses:Number(defaultUses.value),discordMaxUses:Number(maxUses.value),discordMaxExpiryMinutes:Number(maxExpiry.value)}});status.textContent='Invitation defaults saved.';await loadDefaults();});defaultsSave.disabled=true;defaultsPanel.append(defaultsSave);
+            let creatorSkip=0,creatorTotal=0;
+            function renderCreators(people,selected){creators.replaceChildren();for(const user of people.items||[]){const option=new Option(user.username,user.id);option.selected=selected.includes(user.id);creators.append(option);}for(const id of selected)if(![...creators.options].some(o=>o.value===id)){const option=new Option('Selected user (another page)',id);option.selected=true;creators.append(option);}creatorTotal=people.total??creatorSkip+(people.items||[]).length;creatorPrevious.disabled=creatorSkip===0;creatorNext.disabled=creatorSkip+100>=creatorTotal;}
+            async function creatorPage(start){const chosen=[...creators.selectedOptions].map(o=>o.value),people=await api.read('users?skip='+start+'&limit=100');if(!alive())return;creatorSkip=start;renderCreators(people,chosen);}
+            const creatorPrevious=control('Previous users',()=>creatorPage(Math.max(0,creatorSkip-100))),creatorNext=control('Next users',()=>creatorPage(creatorSkip+100));defaultsPanel.append(creatorPrevious,creatorNext);
+            async function loadDefaults(){try{const [value,people]=await Promise.all([api.read('invite-defaults'),api.read('users?skip=0&limit=100')]);if(!alive())return;defaults={...defaults,...value};allowDiscord.checked=!!defaults.discordCreationEnabled;expiry.value=defaults.discordExpiryMinutes;daily.value=defaults.dailyLimit;defaultUses.value=defaults.discordDefaultUses;maxUses.value=defaults.discordMaxUses;maxExpiry.value=defaults.discordMaxExpiryMinutes;creatorSkip=0;renderCreators(people,defaults.allowedCreators||[]);if(defaults.defaultGroupId&&![...defaultGroup.options].some(o=>o.value===defaults.defaultGroupId))defaultGroup.append(new Option('Saved template (another page)',defaults.defaultGroupId));defaultGroup.value=defaults.defaultGroupId||'';defaultsSave.disabled=false;}catch{if(alive()){defaultsSave.disabled=true;status.textContent='Invitation defaults unavailable. Refresh and check account storage health.';}}}
+            let groupEpoch = 0, groupInitialized = false;
             async function loadGroups() {
-                const view = ++groupEpoch, start = groupSkip, selected = group.value, label = group.selectedOptions[0]?.textContent;
+                const view = ++groupEpoch, start = groupSkip, selected = groupInitialized?group.value:defaults.defaultGroupId||'', label = groupInitialized?group.selectedOptions[0]?.textContent:'Saved template (another page)';
                 const groups = await api.read('group-policy/groups?skip=' + start + '&limit=100'); if (!alive() || view !== groupEpoch) return;
                 group.replaceChildren(new Option('Native defaults', ''));
                 if (selected && !(groups.items || []).some(g => g.id === selected)) group.append(new Option(label, selected));
                 for (const item of groups.items || []) group.append(new Option(item.name, item.id)); group.value = selected;
+                groupInitialized=true;
+                const chosen=defaultGroup.value,chosenLabel=defaultGroup.selectedOptions[0]?.textContent;defaultGroup.replaceChildren(new Option('Native defaults',''));for(const option of group.options)if(option.value)defaultGroup.append(new Option(option.textContent,option.value));if(chosen&&![...defaultGroup.options].some(o=>o.value===chosen))defaultGroup.append(new Option(chosenLabel||'Selected template (another page)',chosen));defaultGroup.value=chosen;
                 const previous = control('Previous templates', async () => { groupSkip = Math.max(0, start - 100); await loadGroups(); }), next = control('Next templates', async () => { groupSkip = start + 100; await loadGroups(); });
                 previous.disabled = start === 0; next.disabled = start + 100 >= groups.total; groupPages.replaceChildren(previous, next);
             }
             const submit = element('button', 'Request invitation', 'raised button-submit emby-button'); submit.type = 'submit'; form.append(submit); root.append(form);
+            root.append(defaultsPanel);
             const issuance = element('div'); root.append(issuance);
             const list = element('div'); root.append(list);
             const eraseLink = () => { for (const input of issuance.querySelectorAll('input')) input.value = ''; issuance.replaceChildren(); };
@@ -109,7 +131,7 @@
                 } catch (error) { if (alive()) status.textContent = error.message; }
                 finally { if (alive()) submit.disabled = false; }
             });
-            await Promise.all([loadGroups(), refresh()]);
+            await loadDefaults();await Promise.all([loadGroups(), refresh()]);
             // Parent must call dispose on navigation so the one-time link is erased.
             return { dispose };
         }

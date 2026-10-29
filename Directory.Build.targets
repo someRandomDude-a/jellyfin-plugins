@@ -1,12 +1,22 @@
 <Project>
+  <Target Name="RequireLatestTargetsInCI" BeforeTargets="CollectPackageReferences;PrepareForBuild" Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <Error Condition="'$(SUITE_JELLYFIN_PROPS)' == '' Or !Exists('$(SUITE_JELLYFIN_PROPS)')" Text="LATEST-ONLY CI BLOCKED: missing current-run Jellyfin properties. Bind the workflow target artifact before restore/build/test; the historical IDE baseline is not a CI fallback." />
+  </Target>
   <Import Project="$(MSBuildThisFileDirectory)Jellyfin.Target.props" Condition="'$(JellyfinVersion)' == ''" />
   <!-- One SDK target and SQLitePCL family in combined test hosts. -->
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'AccountHub' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.Notifications' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DiscordBridge' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.PrivateSyncPlay' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.DeletionQueue' Or '$(MSBuildProjectName)' == 'Jellyfin.Plugin.AutomaticDeletionRequests'">
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)shared/Web/admin-ui.js" LogicalName="Suite.Web.admin-ui.js" />
+    <Compile Remove="$(MSBuildThisFileDirectory)shared/Jellyfin.NativeUi/NativeAuthorization.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)shared/Jellyfin.NativeUi/SuiteDiagnostics.cs" Link="SuiteDiagnostics.cs" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)shared/Jellyfin.Diagnostics/Jellyfin.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <AssemblyMetadata Include="ReviewedNativeDatabaseAbi" Value="$(ReviewedNativeDatabaseAbi)" Condition="'$(ReviewedNativeDatabaseAbi)' != ''" />
+    <AssemblyMetadata Include="ReviewedSecurityVersion" Value="$(ReviewedSecurityVersion)" Condition="'$(ReviewedSecurityVersion)' != ''" />
     <PackageReference Update="Jellyfin.Controller;Jellyfin.Model;Jellyfin.Common" Version="$(JellyfinVersion)" />
-    <PackageReference Update="Microsoft.Data.Sqlite;Microsoft.Data.Sqlite.Core;Microsoft.EntityFrameworkCore.Sqlite;Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageReference Update="Microsoft.Data.Sqlite;Microsoft.Data.Sqlite.Core;Microsoft.EntityFrameworkCore.Sqlite;Microsoft.EntityFrameworkCore.Design" Version="$(JellyfinDatabasePackageVersion)" />
+    <PackageReference Update="SkiaSharp;SkiaSharp.NativeAssets.Linux.NoDependencies" Version="$(JellyfinSkiaPackageVersion)" />
     <PackageReference Update="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 </Project>

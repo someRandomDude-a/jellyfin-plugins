@@ -10,7 +10,7 @@ public sealed class HostedWebBootstrap(RequestDelegate next, IServerApplicationH
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        if (services?.GetKeyedService<Func<bool>>("Notifications.Owner.1")?.Invoke() == true) { await next(context); return; }
+        var notificationsOwner=services?.GetKeyedService<Func<bool>>("Notifications.Owner.1")?.Invoke()==true;
         var path = context.Request.Path.Value;
         var prefix = new Uri(app.GetLocalApiUrl("127.0.0.1", "http", app.HttpPort)).AbsolutePath.TrimEnd('/');
         if (!HttpMethods.IsGet(context.Request.Method) || path is null || !(path.Equals(prefix + "/web/index.html", StringComparison.OrdinalIgnoreCase) || path.Equals(prefix + "/web/", StringComparison.OrdinalIgnoreCase) || path.Equals(prefix + "/web", StringComparison.OrdinalIgnoreCase))) { await next(context); return; }
@@ -25,13 +25,21 @@ public sealed class HostedWebBootstrap(RequestDelegate next, IServerApplicationH
         {
             var html = Encoding.UTF8.GetString(bytes);
             var anchor = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
-            if (anchor >= 0 && !html.Contains("data-account-hub-bootstrap", StringComparison.Ordinal))
+            if (anchor >= 0)
             {
-                var src = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.js");
-                var css = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.css");
-                html = html.Insert(anchor, $"<link rel=\"stylesheet\" href=\"{css}\"><script defer data-account-hub-bootstrap src=\"{src}\"></script>");
-                bytes = Encoding.UTF8.GetBytes(html);
-                context.Response.ContentLength = bytes.Length; context.Response.Headers.Remove("ETag"); context.Response.Headers.Remove("Last-Modified"); context.Response.Headers.Remove("Accept-Ranges"); context.Response.Headers.CacheControl = "no-store";
+                var tags="";
+                if(!html.Contains("data-account-hub-link-return",StringComparison.Ordinal)){
+                    var resume=System.Net.WebUtility.HtmlEncode(context.Request.PathBase+prefix+"/AccountHub/assets/link-return.js");
+                    tags+=$"<script defer data-account-hub-link-return src=\"{resume}\"></script>";
+                }
+                if(!notificationsOwner&&!html.Contains("data-account-hub-bootstrap",StringComparison.Ordinal)){
+                    var src = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.js");
+                    var css = System.Net.WebUtility.HtmlEncode(context.Request.PathBase + prefix + "/AccountHub/assets/notifications/bell.css");
+                    tags+=$"<link rel=\"stylesheet\" href=\"{css}\"><script defer data-account-hub-bootstrap src=\"{src}\"></script>";
+                }
+                if(tags.Length>0){html=html.Insert(anchor,tags);bytes=Encoding.UTF8.GetBytes(html);
+                    context.Response.ContentLength=bytes.Length;context.Response.Headers.Remove("ETag");context.Response.Headers.Remove("Last-Modified");context.Response.Headers.Remove("Accept-Ranges");context.Response.Headers.CacheControl="no-store";
+                }
             }
         }
         await original.WriteAsync(bytes, context.RequestAborted);

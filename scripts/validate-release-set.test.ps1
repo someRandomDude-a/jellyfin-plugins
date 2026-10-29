@@ -3,7 +3,9 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('opencode/release-set-' + [Guid]::
 $release = Join-Path $root 'release'
 $stage = Join-Path $root 'stage'
 $validator = Join-Path $PSScriptRoot 'validate-release-set.ps1'
-$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
+. (Join-Path $PSScriptRoot 'test-targets.ps1')
+Initialize-TestTargets
+$targetAbi = ([xml](Get-Content -LiteralPath $env:SUITE_JELLYFIN_PROPS -Raw)).Project.PropertyGroup.JellyfinTargetAbi
 $plugins = @{
     AutomaticDeletionRequests = 'a6429fb2-c67c-459d-b6a7-579c4a05dace'
     Notifications = 'c18d78ec-4b70-47cf-a0d2-936d987c37ba'
@@ -26,10 +28,7 @@ try {
             @{ guid=$plugins[$asset]; version='1.2.3.0'; targetAbi=$targetAbi } | ConvertTo-Json | Set-Content (Join-Path $item 'meta.json')
             'synthetic fixture, not a real assembly' | Set-Content (Join-Path $item "Jellyfin.Plugin.$asset.dll")
             'MIT fixture' | Set-Content (Join-Path $item 'LICENSE')
-            if ($asset -eq 'DiscordBridge') {
-                'fixture notices' | Set-Content (Join-Path $item 'Activity-THIRD-PARTY-NOTICES.txt')
-                '{}' | Set-Content (Join-Path $item 'activity-inventory.json')
-            }
+            if ($asset -eq 'Notifications') { 'shared library fixture' | Set-Content (Join-Path $item 'Jellyfin.LibraryNotifications.dll') }
             if ($asset -in @('DeletionQueue','Notifications')) { 'native fixture' | Set-Content (Join-Path $item $(if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' })) }
             $name = "$asset-1.2.3.0-$runtime.zip"; $zip = Join-Path $release $name
             [IO.Compression.ZipFile]::CreateFromDirectory($item, $zip)

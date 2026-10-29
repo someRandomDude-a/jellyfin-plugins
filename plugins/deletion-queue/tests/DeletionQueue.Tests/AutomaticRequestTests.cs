@@ -40,4 +40,18 @@ public sealed class AutomaticRequestTests
         Evaluate(state, request, Now.AddHours(49), Good with { AutomaticRuleVerified = true });
         Assert.Equal("ConsentRequired", request.Reason); Assert.Equal(ProposalStatus.Blocked, request.Status);
     }
+    [Fact] public void DeniedProposalPermissionDoesNotRemoveAViewersConsentProtectionOrGrantApproval()
+    {
+        var state = State(); state.Policy.RequireAdministratorApproval = true;
+        state.Policy.Accounts[Viewer.Id] = ProposalAuthority.Denied;
+        var request = QueueRules.ProposeAutomatically(state, Owner, Target, Now);
+        QueueRules.RecordActivity(state, Viewer.Id, request.Target.ActivityKey, null, false, Now);
+        QueueRules.Consent(state, request.Id, Viewer, request.Revision, QueueRules.Snapshot(state, request.Target, Viewer.Id), Answer.No, true, Now);
+        Assert.Throws<QueueException>(() => QueueRules.AdministratorDecision(state, request.Id, Viewer, request.Revision, QueueRules.AdministratorSnapshot(state, request), true, true, Now));
+        QueueRules.AdministratorDecision(state, request.Id, Owner with { Administrator = true }, request.Revision, QueueRules.AdministratorSnapshot(state, request), true, true, Now);
+        var evidence = Good with { AutomaticRuleVerified = true, AdministratorAuthorized = true };
+        Evaluate(state, request, evidence: evidence); Assert.Equal("ConsentRequired", request.Reason);
+        QueueRules.Consent(state, request.Id, Viewer, request.Revision, QueueRules.Snapshot(state, request.Target, Viewer.Id), Answer.Yes, true, Now);
+        Evaluate(state, request, evidence: evidence); Assert.Equal(ProposalStatus.Waiting, request.Status); Assert.Null(request.Claim);
+    }
 }

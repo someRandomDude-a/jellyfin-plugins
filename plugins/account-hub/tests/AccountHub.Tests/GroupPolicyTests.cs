@@ -11,6 +11,15 @@ namespace AccountHub.Tests;
 
 public sealed class GroupPolicyTests
 {
+    [Fact]public async Task CurrentPolicySchemaReopensWithAStaleMigrationLockWithoutDeletingIt(){
+        await using var f=new StoreFixture();await f.InitializeAsync();var native=new Native();
+        var original=new GroupPolicyService(f.Paths,native,f.Store,f.Clock);await original.GroupsAsync(0,50);
+        await f.ExecuteSqlAsync("INSERT INTO __EFMigrationsLock (Id,Timestamp) VALUES(1,'2026-10-26T00:00:00Z')");
+        using var budget=new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var reopened=new GroupPolicyService(f.Paths,native,f.Store,f.Clock);await reopened.GroupsAsync(0,50,budget.Token);
+        await using var db=reopened.Open();Assert.Equal(1,await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS Value FROM __EFMigrationsLock WHERE Id=1").SingleAsync());
+        Assert.Equal(0,native.Writes);
+    }
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
     private sealed class Native : IGroupPolicyNative
     {

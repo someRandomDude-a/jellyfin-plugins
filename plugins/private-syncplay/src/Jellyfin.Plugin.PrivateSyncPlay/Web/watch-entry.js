@@ -15,7 +15,7 @@
         const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 8000);
         try {
             const response = await fetch(url, { credentials:'omit', cache:'no-store', redirect:'error', referrerPolicy:'no-referrer', ...options, signal:controller.signal });
-            if (!response.ok) throw Object.assign(new Error('Request unavailable.'), { status:response.status });
+            if (!response.ok){const candidate=response.headers?.get?.('X-Suite-Error-Id'),id=typeof candidate==='string'&&/^[a-f0-9-]{36}$/i.test(candidate)?candidate:null;throw Object.assign(new Error('This action is unavailable.'+(id?' Error ID: '+id:'')), { status:response.status,errorId:id });}
             return response.status === 204 ? null : normalize(await response.json());
         } finally { clearTimeout(timeout); }
     }
@@ -70,8 +70,8 @@
             if (disposed || navigating) return;
             join.hidden = result?.allowGuests !== true; join.disabled = join.hidden;
             status.textContent = join.hidden ? 'Sign in to join this party.' : 'Sign in to join, or watch as a guest.';
-        } catch {
-            if (!disposed && !navigating) status.textContent = 'This invitation is unavailable or could not be checked. Sign in to continue.';
+        } catch (error) {
+            if (!disposed && !navigating) status.textContent = 'This invitation is unavailable or could not be checked. Sign in to continue.'+(error.errorId?' Error ID: '+error.errorId:'');
         }
     }
     join.onclick = async () => {
@@ -84,7 +84,7 @@
                 headers:{'Content-Type':'application/json'}, body:JSON.stringify({Token:token}) });
             if (disposed || navigating) return;
             navigating = true; location.replace(new URL('Player', root).href);
-        } catch { await options(); }
+        } catch (error) { await options();if(!disposed&&!navigating&&error.errorId)status.textContent='We could not confirm joining. Check the current state before trying again. Error ID: '+error.errorId; }
     };
     async function initialize() {
         if (!token) { navigating = true; location.replace(new URL('Player', root).href); return; }

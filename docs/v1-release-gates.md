@@ -1,43 +1,55 @@
 # v1 release completion gates
 
-> **Architecture migration gate:** implement and validate the new [five-plugin requirements](product-requirements.md), including standalone Notifications, shared connection configuration, explicit dependencies and native login/Security handoff. Historical four-plugin passes below do not close this gate. Rebuild the target plugin/platform/dependency matrix and test the [owner plugin profile](../test-profiles/owner-server.json) after exact external packages are verified.
+> **Architecture gate:** validate the current [six-plugin ownership requirements](product-requirements.md), including integrated Hub invitations, independent connection ownership, standalone Notifications and rule/Queue separation. No separate Invitations plugin or mandatory common connection registry is required. Historical passes do not close latest-source gates. Test the [owner plugin profile](../test-profiles/owner-server.json) only with exact verified external packages and disposable data.
 
-Status: **NOT RELEASE READY**. This is the full planned suite, not a reduced-scope rename of the integration preview. Existing architecture decisions in `docs/dependencies.md` supersede older single-bot-in-Hub plans.
+Status: **NOT RELEASE READY**. These are final acceptance gates, not a claim that
+every unchecked feature is unimplemented. Use [current dependencies](dependencies.md),
+not older single-bot-in-Hub plans or historical package counts.
 
-Current database/failure/theme audit: [release-safety-review.md](release-safety-review.md). Native creation allocation and full-policy concurrent-update risks remain open; do not equate happy-path installed tests or SQLite integrity checks with a guarantee against all races.
+Current evidence: [review status](review-status.md), [testing](testing.md) and the [scoped evidence register](verification.md). [Safety and permission limits](safety-and-permissions.md) retain unresolved risks consolidated from earlier reviews. Native creation/concurrent-policy safety still needs scoped fault evidence; SQLite integrity alone is not a guarantee against all races.
 
 ## Implementation tracks
 
-- [ ] Durable invite provisioning: approval, hashed single-use/multi-use reservations, atomic redemption, interrupted-operation recovery, native account creation, self-chosen password only, complete administrator/public UI.
-- [ ] Group intent: one primary group, per-user overrides, managed-field precedence, administrator exclusion, revisioned assignment and reset, bulk preview/apply, desired-vs-actual drift and explicit reconciliation.
-- [ ] Seerr: verified capability discovery, explicit native-account links (no fuzzy identity guessing), provisioning, permission/quotas, bounded durable reconciliation and safe deletion follow-up jobs.
-- [ ] Domain editors: complete paginated/bulk policy editing for Deletion Queue and Private SyncPlay, using their authoritative versioned boundaries; standalone behavior must remain intact.
+- [ ] Final-package invite provisioning/fault acceptance: approval, hashed single-use/multi-use reservations, atomic redemption, interrupted-operation recovery, native account creation, self-chosen password only, complete administrator/public UI.
+- [ ] Final-package group intent acceptance: primary group, per-user overrides, managed-field precedence, administrator exclusion, revisioned assignment/reset, bulk preview/apply, drift and explicit reconciliation.
+- [ ] Final-package Seerr acceptance: verified capability discovery, explicit native-account links (no fuzzy guessing), provisioning, permission/quotas, bounded durable reconciliation and safe deletion follow-up.
+- [ ] Final-package domain editor acceptance for Deletion Queue and Private SyncPlay through authoritative versioned boundaries; standalone behavior remains intact.
+- [ ] Final-source native `/watchparty [user]` and bounded `/invite` options, independent Bridge/Hub defaults/limits UI and current native-user permissions.
+- [ ] Notifications-only library ownership, legacy intake/preferences migration, administrator defaults/examples and safe notification studio, including standalone and installed browser acceptance.
 
 ## Privacy and security
 
 - [ ] Full identity/ownership and API-key denial regression matrix for new endpoints.
-- [ ] Native Security recovery-code proof, pending-factor sessions, trusted-device actions and deletion cleanup; never inspect or replace factor records.
+- [ ] Native same-browser/same-account verified-session recovery (including native-approved bypasses), pending-factor rejection, trusted-device actions and deletion cleanup. Fresh proof remains separate for applicable administrative Security actions; never add a new reset-code step or inspect/replace factor records.
 - [ ] Invite/recovery/Seerr job restart and failure injection: no duplicate accounts, lost reservation slots, guessed upstream matches, plaintext passwords, or blind replay of uncertain effects.
 - [ ] Audit/outbox retention and deletion consistency across embedded modules and optional plugins.
 - [ ] Shared Discord/inbox surfaces never expose requester/voter/participant identity or recipient lists; titles require explicit disclosure scope and current native access where applicable.
-- [ ] Local live Discord interactive-command, DM and watch-party delivery checks; investigate earlier intermittent history-verification failures without retrying sends.
+- [ ] Explicitly authorized final-package live Discord human-command/DM/watch-party acceptance; earlier scoped passes are recorded separately. Investigate history-verification uncertainty without replaying sends.
 - [ ] No secrets in source, ZIPs, CLI arguments, logs or uploaded artifacts. `.env` remains ignored. Live Discord checks remain local, not required Actions jobs.
 
 ## Installed acceptance
 
-- [ ] Full root tests on final source. r10 passed 778 .NET / 142 JavaScript; reopened for connectivity-test implementation and subsequent UI regression changes.
-- [ ] Final-source installed plugin matrix. Earlier r10 Linux x64 passed 32/32 (`artifacts/runtime-review/r10-combinations/results.json`); reopened for connectivity endpoint/UI changes. Broader feature/fault/platform gates remain separate.
+- [ ] Fresh Linux root/package acceptance after Activity removal and Notifications/invitation changes. All earlier 0.0.14.0 passes are historical only. GitHub platform jobs remain separate.
+- [ ] Final-source installed plugin matrix including native Security; its with-Security half stays late-stage. Historical matrix passes do not close it.
 - [ ] Clean install and upgrade with backup/key recovery and schema forward-compatibility failure behavior.
-- [ ] Real installed Linux x64, Linux ARM64 and Windows x64 loading. Cross-publishing is not execution evidence; unavailable runners remain blockers.
+- [ ] Fresh installed Linux x64 authorization, invitation/group/library, standalone Notifications studio/defaults, restart/storage, browser and native SyncPlay checks. Windows/ARM jobs run on GitHub; native Security and human Discord checks remain separate.
 - [ ] Reverse proxy, trusted TLS, BaseUrl, mobile, native Modern/Legacy and custom-theme coverage, including keyboard/focus behavior and secret erasure on navigation.
 - [ ] Native outbound Security webhook transport and fault recovery.
 
 ## Distribution
 
 - [x] License review complete per owner confirmation. Inventory/SBOM tooling remains required for each final staged package; reopen review for dependency/distribution changes.
-- [ ] Supplemental review of the newly bundled Embedded App SDK JavaScript and runtime dependency notices/inventory. The previous owner-confirmed review remains recorded; this new distribution was introduced afterward.
-- [x] Current r10 package identity/version/ABI/catalog/runtime checks passed for all four plugins across Linux x64/ARM64 and Windows x64. All 12 ZIPs, three catalogs, checksums and inventories passed merged-release validation (`artifacts/runtime-review/activity-r10/merged-release-check`). Cross-packaging is not installed Windows/physical ARM execution evidence.
+- [ ] Final-source six-plugin/18-package identity/version/ABI/catalog/runtime, checksum and inventory validation across Linux x64/ARM64 and Windows x64. Earlier four-plugin r10/12-package results are historical only; cross-packaging is not installed Windows/physical ARM execution evidence.
 - [ ] Immutable local v1 packages, checksums, preserved catalog history, install/upgrade/backup/recovery documentation and honest release notes.
 - [ ] User approval before commits, tags, pushes or publication. Asking to prepare v1 does not discard the existing no-publication constraint.
 
-Use `docs/review-status.md` for dated evidence and unresolved failures. Do not tick a gate based only on implementation claims, mocked behavior, or an earlier package revision.
+Do not tick a gate based only on implementation claims, mocked behavior or an earlier
+package revision. Keep our direct dependencies current; upstream transitive
+advisories are informational, not project blockers. See current status for the
+latest bump and Linux acceptance results.
+
+## References
+
+- [Current evidence and failures](review-status.md) · [Historical evidence register](verification.md)
+- [Latest-only maintenance](dependency-maintenance.md) · [Testing](testing.md)
+- [Safety and permissions](safety-and-permissions.md) · [Release checklist](github-release-checklist.md)

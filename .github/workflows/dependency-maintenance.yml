@@ -1,0 +1,38 @@
+name: Discover dependency updates
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [dependency-update]
+permissions:
+  contents: read
+concurrency:
+  group: dependency-discovery
+  cancel-in-progress: false
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check dependency-bot installation
+        env:
+          BOT_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
+          BOT_LOGIN: ${{ vars.DEPENDENCY_BOT_LOGIN }}
+        run: |
+          test -n "$BOT_TOKEN" || { echo 'Configure DEPENDENCY_BOT_TOKEN with repository contents, pull-request and Actions write access.'; exit 1; }
+          test -n "$BOT_LOGIN" || { echo 'Configure DEPENDENCY_BOT_LOGIN to the token owner/app bot login.'; exit 1; }
+      - uses: actions/checkout@v7.0.1
+      - name: Discover stable NuGet, npm, SDK, Actions and embedded container updates
+        uses: renovatebot/github-action@v46.3.10
+        with:
+          token: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
+          renovate-version: latest
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_USERNAME: ${{ vars.DEPENDENCY_BOT_LOGIN }}
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_ALLOWED_COMMANDS: '[]'
+          RENOVATE_IGNORE_SCRIPTS: 'true'
+          RENOVATE_AUTOMERGE: 'false'

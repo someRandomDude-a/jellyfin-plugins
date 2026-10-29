@@ -35,4 +35,4 @@ Initial **safety-preview** release for Jellyfin 12.2 / .NET 10.
 - Installed Jellyfin theme/control CSS and a private notification bell with explicit subscriptions/read acknowledgements.
 - Latest-stable Server/Web compatibility, browser and corrupt-storage survival checks, also gating releases.
 
-**Automatic deletion is unavailable**, even after opt-in, until atomic Seerr target-pinning and independent rollback protection are integrated. This release must not be described as a production automatic-deletion system. See `docs/implementation-status.md`.
+**Automatic deletion is unavailable**, even after opt-in, until atomic Seerr target-pinning and independent rollback protection are integrated. This release must not be described as a production automatic-deletion system. This is a historical entry; see [current accepted safety boundaries](../../docs/safety-and-permissions.md) for later trust decisions.

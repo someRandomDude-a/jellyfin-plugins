@@ -24,7 +24,7 @@ public sealed class LibraryNoticeWorker(IServiceProvider services, ILibraryNotic
             store = services.GetRequiredService<LibraryNoticeStore>(); library = services.GetRequiredService<ILibraryManager>();
             // Keep the handler attached, but gate capture at event time. Opting in must not
             // lose the first additions while waiting for the worker's next polling cycle.
-            library.ItemAdded += Added; subscribed = true;
+            if(host.ObserveNative) { library.ItemAdded += Added; subscribed = true; }
             while (!ct.IsCancellationRequested)
             {
                 try
@@ -41,13 +41,17 @@ public sealed class LibraryNoticeWorker(IServiceProvider services, ILibraryNotic
                                 if (item is null || LibraryNoticeFactory.Kind(item) is null) { store.InboxDone(job.Id); store.DiscordDone(job.Id); continue; }
                                 var audience = host.IncludeAudience ? services.GetRequiredService<IUserManager>().GetUsers().Where(user => !user.HasPermission(PermissionKind.IsDisabled) && item.IsVisibleStandalone(user)).Take(10000).Select(user => user.Id).ToArray() : [];
                                 notice = LibraryNoticeFactory.Create(job.Id, item, library.GetCollectionFolders(item).Select(folder => folder.Id).ToArray(), audience, job.Created);
+                                if (job.LegacyInbox) notice = notice with { LegacySource = "account-hub" };
                                 if(host.IncludeAudience){
-                                    var favourites=new List<Guid>();var manager=services.GetRequiredService<IUserManager>();var data=services.GetRequiredService<IUserDataManager>();
+                                    var favourites=new List<Guid>();var watchlisted=new List<Guid>();var manager=services.GetRequiredService<IUserManager>();var data=services.GetRequiredService<IUserDataManager>();
                                     var parent=item is MediaBrowser.Controller.Entities.TV.Episode episode?library.GetItemById(episode.SeriesId):null;
-                                    foreach(var id in audience){try{var user=manager.GetUserById(id);if(user is not null&&(data.GetUserData(user,item)?.IsFavorite==true||parent is not null&&parent.IsVisibleStandalone(user)&&data.GetUserData(user,parent)?.IsFavorite==true))favourites.Add(id);}catch{/* Missing favourite evidence does not affect other categories. */}}
+                                    foreach(var id in audience){try{var user=manager.GetUserById(id);if(user is null)continue;
+                                        var interests=LibraryNoticeFactory.Interests(data.GetUserData(user,item),parent is not null&&parent.IsVisibleStandalone(user)?data.GetUserData(user,parent):null);
+                                        if(interests.Favourite)favourites.Add(id);if(interests.Watchlisted)watchlisted.Add(id);
+                                    }catch{/* Missing personal interest evidence does not affect other categories. */}}
                                     Guid[]? requesters=null;var provider=services.GetKeyedService<Func<Guid,CancellationToken,Task<Guid[]?>>>("Notifications.LibraryRequesters.1");
                                     if(provider is not null)try{requesters=await provider(parent?.Id??item.Id,ct);}catch(OperationCanceledException)when(ct.IsCancellationRequested){throw;}catch{/* Requested category stays unknown. */}
-                                    notice=notice with{FavouriteAudience=favourites.ToArray(),RequesterAudience=requesters};
+                                    notice=notice with{EnrichmentVersion=2,FavouriteAudience=favourites.ToArray(),RequesterAudience=requesters,WatchlistedAudience=watchlisted.ToArray()};
                                 }
                                 store.Prepare(job.Id, notice);
                             }

@@ -6,7 +6,9 @@ $version = $Matches[1] + '.0'
 if (!$ReleaseTag) { $ReleaseTag = $Tag }
 if ($ReleaseTag -cne $Tag -and ($Plugin -eq 'all' -or $ReleaseTag -cne "$Plugin/$Tag")) { throw 'Release tag must match the selected plugin and version' }
 $downloadTag = [Uri]::EscapeDataString($ReleaseTag)
-$targetAbi = ([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Jellyfin.Target.props') -Raw)).Project.PropertyGroup.JellyfinVersion + '.0'
+. (Join-Path $PSScriptRoot 'test-targets.ps1')
+Initialize-TestTargets
+$targetAbi = ([xml](Get-Content -LiteralPath $env:SUITE_JELLYFIN_PROPS -Raw)).Project.PropertyGroup.JellyfinTargetAbi
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'Invalid repository' }
 $plugins = @{
     AutomaticDeletionRequests = 'a6429fb2-c67c-459d-b6a7-579c4a05dace'
@@ -53,11 +55,11 @@ foreach ($runtime in @('linux-x64','linux-arm64','win-x64')) {
             $reader = [IO.StreamReader]::new($archive.GetEntry('meta.json').Open())
             try { $meta = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
             if ($meta.guid -ne $plugins[$asset] -or $meta.version -ne $version -or $meta.targetAbi -ne $targetAbi) { throw "Installed/catalog identity mismatch: $name" }
-            if ($asset -eq 'DiscordBridge' -and ('Activity-THIRD-PARTY-NOTICES.txt' -notin $names -or 'activity-inventory.json' -notin $names)) { throw "Missing Activity distribution inventory: $name" }
             if ($asset -in @('DeletionQueue','Notifications')) {
                 $native = if ($runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' }
                 if ($native -notin $names) { throw "Missing native SQLite runtime: $name" }
             }
+            if ($asset -eq 'Notifications' -and 'Jellyfin.LibraryNotifications.dll' -notin $names) { throw "Missing Notifications library observer dependency: $name" }
         } finally { $archive.Dispose() }
     }
 }

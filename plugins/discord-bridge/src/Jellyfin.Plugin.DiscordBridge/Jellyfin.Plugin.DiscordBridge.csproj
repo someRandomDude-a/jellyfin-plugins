@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><Version>0.2.0</Version></PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeWebStyles.cs" Link="NativeWebStyles.cs" />
     <Compile Include="../../../../shared/Jellyfin.StorageSafety/InstallationIdentity.cs" Link="InstallationIdentity.cs" />
     <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeAuthorization.cs" Link="NativeAuthorization.cs" />
     <Compile Include="../../../../shared/Jellyfin.NativeUi/NativeJsonBodyFilter.cs" Link="NativeJsonBodyFilter.cs" />
@@ -17,12 +16,5 @@
     <ProjectReference Include="../../../../shared/AccountHub.Api/AccountHub.Api.csproj" />
     <ProjectReference Include="../../../private-syncplay/src/Jellyfin.Plugin.PrivateSyncPlay.Api/Jellyfin.Plugin.PrivateSyncPlay.Api.csproj" GlobalPropertiesToRemove="Version" />
     <EmbeddedResource Include="Web/*" />
-    <EmbeddedResource Include="../../activity/dist/activity.js" LogicalName="Jellyfin.Plugin.DiscordBridge.Web.activity.bundle.js" />
-    <EmbeddedResource Include="../../activity/dist/embedded-app-sdk.LICENSE" LogicalName="Jellyfin.Plugin.DiscordBridge.Web.embedded-app-sdk.LICENSE" />
-    <ActivitySource Include="../../activity/src/*.mjs;../../activity/build.mjs;../../activity/package.json;../../activity/package-lock.json" />
   </ItemGroup>
-  <Target Name="BuildActivity" BeforeTargets="PrepareForBuild" Inputs="@(ActivitySource)" Outputs="$(MSBuildProjectDirectory)/../../activity/dist/activity.js;$(MSBuildProjectDirectory)/../../activity/dist/embedded-app-sdk.LICENSE;$(MSBuildProjectDirectory)/../../activity/dist/activity-inventory.json">
-    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../activity" Command="npm ci --ignore-scripts" />
-    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../activity" Command="npm run build" />
-  </Target>
 </Project>

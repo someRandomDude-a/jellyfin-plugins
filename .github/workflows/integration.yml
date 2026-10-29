@@ -8,6 +8,12 @@ on:
       package_tag:
         type: string
         default: v0.2.0
+      targets_artifact:
+        type: string
+        default: ''
+      external_only:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       cloudflare_tunnel:
@@ -18,18 +24,31 @@ on:
     - cron: '23 5 * * 1'
 permissions:
   contents: read
+env:
+  GH_TOKEN: ${{ github.token }}
 jobs:
+  targets:
+    uses: ./.github/workflows/latest-targets.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      targets_artifact: ${{ inputs.targets_artifact || '' }}
+      key: integration
   cloudflare-tunnel:
+    needs: targets
     if: github.event_name == 'workflow_dispatch' && inputs.cloudflare_tunnel
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
+          verify_sdk: 'false'
       - name: Secret-free tunnel predicates and cleanup contracts
         run: node --test scripts/discord-tunnel.test.mjs scripts/discord-acceptance.test.mjs
       - name: Real temporary Cloudflare HTTPS with normal TLS validation
@@ -40,18 +59,23 @@ jobs:
         run: |
           docker ps -aq --filter 'label=jellyfin.suite.tunnel-test=true' | xargs -r docker rm -f
   suite:
+    needs: targets
+    if: ${{ !inputs.external_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
       - run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
       - shell: pwsh
@@ -59,38 +83,74 @@ jobs:
           PACKAGE_TAG: ${{ inputs.package_tag || 'v0.2.0' }}
         run: ./scripts/package.ps1 -Tag $env:PACKAGE_TAG -Runtime linux-x64 -OutputDirectory artifacts/suite-packages
       - name: Verify every independent/plugin combination with and without native Security
+        run: node scripts/test-combinations.mjs --packages=artifacts/suite-packages --security=latest --wiring-check --output=artifacts/suite-combinations --jobs=2
+      - name: Verify suite wiring, native verified-session recovery, and independent library capture
         run: |
-          curl --fail --location --output "${{ runner.temp }}/security-jf12.zip" https://github.com/ZL154/JellyfinSecurity/releases/download/v2.6.4/Jellyfin.Plugin.TwoFactorAuthv2.6.4.0-jf12.zip
-          node scripts/test-combinations.mjs --packages=artifacts/suite-packages --security="${{ runner.temp }}/security-jf12.zip" --output=artifacts/suite-combinations --jobs=2
-      - name: Verify library additions and fresh real TOTP for combined Hub and standalone Discord
-        run: |
-          node scripts/integration.mjs --packages=artifacts/suite-packages --security="${{ runner.temp }}/security-jf12.zip" --proof --library
-          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord --security="${{ runner.temp }}/security-jf12.zip" --proof --library
+          node scripts/integration.mjs --packages=artifacts/suite-packages --security=latest --proof --reset-session --extended-security --permissions-check --wiring-check --library --v1-flows --database-safety --storage-recovery
+          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord --security=latest --proof --library
           node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=hub --library
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: plugin-combination-results
           path: artifacts/suite-combinations
-  syncplay:
+  external:
+    needs: targets
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: plugins/private-syncplay
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           global-json-file: global.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.1.0
         with:
-          node-version: '22'
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
+      - name: Resolve current stable external services and matching Jellyfin SDK
+        run: node scripts/prepare-test-targets.mjs --services=jellyfin,seerr,sonarr,radarr --output=artifacts/external-targets/targets.json
+      - name: Latest Seerr public API acceptance on owned disposable servers
+        run: node scripts/seerr-api-integration.mjs
+      - name: Latest Sonarr/Radarr provider reads on owned disposable servers
+        run: node scripts/metadata-arr-acceptance.mjs
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: external-target-evidence
+          path: artifacts/external-targets
+  syncplay:
+    needs: targets
+    if: ${{ !inputs.external_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ needs.targets.outputs.node_version }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
       - run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - name: Automatically resolve current Jellyfin build target
+        working-directory: plugins/private-syncplay
+        run: node ../../scripts/prepare-test-targets.mjs --services=jellyfin --output=../../artifacts/syncplay-targets/targets.json
       - run: dotnet build examples/WatchPartyConsumer -c Release
+        working-directory: plugins/private-syncplay
       - shell: pwsh
+        working-directory: plugins/private-syncplay
         run: ./scripts/package.ps1
       - run: node scripts/validate-package.mjs
+        working-directory: plugins/private-syncplay
       - run: node scripts/integration.mjs "${{ runner.temp }}/private-syncplay-integration" --with-consumer --install-from-catalog
+        working-directory: plugins/private-syncplay

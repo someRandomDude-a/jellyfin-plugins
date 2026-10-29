@@ -32,7 +32,7 @@ public sealed class AutomaticRequests(QueueRuntime runtime, TargetResolver targe
         }
         var id = runtime.Write(request.CommandId, "automatic-rule:" + request.RuleId, "AutomaticRemovalRequested", state => {
             actor = identity.Account(request.ActorId);
-            if (!actor.Enabled || !actor.Administrator || !notifications.Ready) throw new QueueException("AccessDenied");
+            if (!actor.Enabled || !actor.Administrator || QueueRules.Authority(state, actor.Id) == ProposalAuthority.Denied || !notifications.Ready) throw new QueueException("AccessDenied");
             if (state.Seerr.Revision != target.ConfigurationRevision) throw new QueueException("RevisionChanged");
             if(!targets.Accessible(actor.Id,target))throw new QueueException("AccessDenied");
             owner=identity.Account(requesterId??request.ActorId);

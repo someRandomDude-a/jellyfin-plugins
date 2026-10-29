@@ -36,7 +36,7 @@ public static class QueueRules
         if (proposal is null)
         {
             if (state.Proposals.Count >= 1000) throw new QueueException("ProposalCapacityReached");
-            proposal = new Proposal { OwnerId = caller.Id, Target = target, CreatedAt = now };
+            proposal = new Proposal { OwnerId = caller.Id, Target = target, CreatedAt = now,AdministratorRequestedBy=caller.Administrator?caller.Id:null };
             state.Proposals.Add(proposal);
         }
         if (proposal.Consents.Count >= 1000 && !proposal.Consents.ContainsKey(caller.Id)) throw new QueueException("ConsentCapacityReached");
@@ -121,6 +121,7 @@ public static class QueueRules
         RequireMutable(p, revision);
         if (snapshot != AdministratorSnapshot(state, p)) throw new QueueException("SnapshotChanged");
         p.AdministratorApproval = approved ? new(caller.Id, snapshot, now) : null;
+        if(!approved)p.CreatorAutoApprovalDisabled=true;
         Block(p, approved ? "VerificationRequired" : "AdministratorApprovalRequired");
         p.Revision++;
     }
@@ -178,6 +179,8 @@ public static class QueueRules
     {
         Expire(state, proposal, now);
         if (proposal.Terminal || proposal.Claim is not null) return;
+        proposal.LastCheckedAt = now;
+        proposal.LastCheckEvidence = evidence;
         var reason = !state.ClockHealthy ? "ClockUnverified"
             : state.Policy.Suspended ? "Suspended"
             : !evidence.OwnerAuthorized ? "OwnerNotAuthorized"
@@ -196,6 +199,8 @@ public static class QueueRules
         reason ??= viewers.Any(v => !proposal.Consents.TryGetValue(v.UserId, out var consent) ||
             consent.Answer != Answer.Yes || consent.Snapshot != Snapshot(state, proposal.Target, v.UserId))
              ? "ConsentRequired" : null;
+        if(reason is null&&state.Policy.RequireAdministratorApproval&&!proposal.CreatorAutoApprovalDisabled&&proposal.AdministratorRequestedBy==proposal.OwnerId&&!proposal.RequiresAutomaticRuleValidation&&evidence.AdministratorCreatorAuthorized&&!AdministratorApprovalCurrent(state,proposal))
+            proposal.AdministratorApproval=new(proposal.OwnerId,AdministratorSnapshot(state,proposal),now);
         reason ??= state.Policy.RequireAdministratorApproval &&
             (!AdministratorApprovalCurrent(state, proposal) || !evidence.AdministratorAuthorized)
             ? "AdministratorApprovalRequired" : null;
@@ -236,7 +241,11 @@ public static class QueueRules
     public static void VerificationUnavailable(QueueState state, Proposal proposal, DateTimeOffset now)
     {
         Expire(state, proposal, now);
-        if (!proposal.Terminal && proposal.Claim is null) Block(proposal, "VerificationUnavailable");
+        if (!proposal.Terminal && proposal.Claim is null) {
+            proposal.LastCheckedAt = now;
+            proposal.LastCheckEvidence = null;
+            Block(proposal, "VerificationUnavailable");
+        }
     }
 
     public static ExecutionClaim Claim(QueueState state, Guid id, long revision, EvaluationEvidence evidence, DateTimeOffset now)
@@ -288,6 +297,17 @@ public static class QueueRules
         p.Revision++;
     }
 
+    public static void CloseExternalChange(QueueState state, Guid id, long revision, string fingerprint, ExternalTargetChange change, DateTimeOffset now)
+    {
+        var p=Find(state,id);
+        if(p.Revision!=revision||p.Target.ConfigurationRevision!=state.Seerr.Revision)throw new QueueException("RevisionChanged");
+        if(p.Terminal||p.Claim is not null||p.FilesDeletedAt is not null||p.Target.Fingerprint!=fingerprint||
+            change.Reason is not ("RemovedOutsideQueue" or "RequestClosedOutsideQueue" or "UpstreamTargetMissing"))throw new QueueException("InvalidCheckpoint");
+        p.ClosedCheckpoint=UserProgress.Checkpoint(p);p.ClosedChecksAt=p.EligibleSince;
+        p.Status=ProposalStatus.Cancelled;p.Reason=change.Reason;p.EligibleSince=null;p.ClosedAt=now;p.LastCheckedAt=now;p.Revision++;
+        // No claim/FilesDeleted checkpoint: the queue did not perform removal.
+    }
+
     public static void UpdatePolicy(QueueState state, Policy policy, long expectedRevision)
     {
         if (state.Policy.Revision != expectedRevision) throw new QueueException("RevisionChanged");
@@ -296,6 +316,8 @@ public static class QueueRules
             !Enum.IsDefined(policy.DefaultAuthority) || policy.Accounts.Values.Any(v => !Enum.IsDefined(v)))
             throw new QueueException("InvalidPolicy");
         var oldPolicy = state.Policy;
+        var historyOnly=oldPolicy.RecentHistoryDays!=policy.RecentHistoryDays&&oldPolicy.DefaultAuthority==policy.DefaultAuthority&&oldPolicy.ActivityDays==policy.ActivityDays&&oldPolicy.DelayHours==policy.DelayHours&&oldPolicy.AdministratorApprovalDays==policy.AdministratorApprovalDays&&oldPolicy.ActivityWaitTimeoutEnabled==policy.ActivityWaitTimeoutEnabled&&oldPolicy.ActivityWaitTimeoutDays==policy.ActivityWaitTimeoutDays&&oldPolicy.AutomaticDeletion==policy.AutomaticDeletion&&oldPolicy.RequireAdministratorApproval==policy.RequireAdministratorApproval&&oldPolicy.SeerrManagedDeletionAcknowledged==policy.SeerrManagedDeletionAcknowledged&&oldPolicy.Suspended==policy.Suspended&&oldPolicy.Accounts.Count==policy.Accounts.Count&&oldPolicy.Accounts.All(pair=>policy.Accounts.TryGetValue(pair.Key,out var value)&&value==pair.Value);
+        Dictionary<Guid,AdministratorApproval> preserved=historyOnly?state.Proposals.Where(p=>!p.Terminal&&p.Claim is null&&AdministratorApprovalCurrent(state,p)).ToDictionary(p=>p.Id,p=>p.AdministratorApproval!):[];
         var windowChanged = oldPolicy.ActivityDays != policy.ActivityDays;
         policy.Revision = expectedRevision + 1;
         state.Policy = policy;
@@ -304,7 +326,8 @@ public static class QueueRules
             ExtendApprovalDeadline(state, p);
             p.DelayFloorHours = Math.Max(p.DelayFloorHours, policy.DelayHours);
             var oldAuthority = oldPolicy.Accounts.GetValueOrDefault(p.OwnerId, oldPolicy.DefaultAuthority);
-            if (windowChanged || policy.Suspended || policy.RequireAdministratorApproval || oldAuthority != Authority(state, p.OwnerId)) Block(p, "PolicyChanged");
+            if (historyOnly&&preserved.TryGetValue(p.Id,out var approval))p.AdministratorApproval=approval with{Snapshot=AdministratorSnapshot(state,p)};
+            if (!historyOnly&&(windowChanged || policy.Suspended || policy.RequireAdministratorApproval || oldAuthority != Authority(state, p.OwnerId))) Block(p, "PolicyChanged");
             else ExtendDeadline(p);
             p.Revision++;
         }
@@ -404,6 +427,8 @@ public static class QueueRules
                 ScheduledFor = progress.ScheduledFor,
                 Timeline = progress.Timeline,
                 EvaluatedAt = now,
+                LastCheckedAt = p.LastCheckedAt,
+                CheckRefreshHelp = p.Terminal || p.Claim is not null ? "" : "Safety checks retry about every minute while the server is running, and after relevant changes. Slow checks may take longer. Rechecking does not execute removal.",
                 ActivityWindowDays = state.Policy.ActivityDays,
                 SafetyDelayHours = p.Terminal ? p.DelayFloorHours : Math.Max(state.Policy.DelayHours, p.DelayFloorHours),
                 ClosedCheckpoint = p.ClosedCheckpoint is "checks" or "delay" or "approval" or "activity-timeout" ? p.ClosedCheckpoint : null,

@@ -69,7 +69,8 @@ function Get-PluginReleaseMetadata {
         targetAbi = [string]$p.PluginTargetAbi; sdkVersion = [string]$p.PluginSdkVersion
     }
     if ($metadata.targetAbi -eq '$(JellyfinTargetAbi)' -or $metadata.sdkVersion -eq '$(JellyfinVersion)') {
-        [xml]$target = Get-Content -LiteralPath (Join-Path $Root '../../Jellyfin.Target.props') -Raw -Encoding UTF8
+        $targetPath = if ($env:SUITE_JELLYFIN_PROPS) { $env:SUITE_JELLYFIN_PROPS } else { Join-Path $Root '../../Jellyfin.Target.props' }
+        [xml]$target = Get-Content -LiteralPath $targetPath -Raw -Encoding UTF8
         $sdk = [string]$target.Project.PropertyGroup.JellyfinVersion
         if ($metadata.targetAbi -eq '$(JellyfinTargetAbi)') { $metadata.targetAbi = $sdk + '.0' }
         if ($metadata.sdkVersion -eq '$(JellyfinVersion)') { $metadata.sdkVersion = $sdk }

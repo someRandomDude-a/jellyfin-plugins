@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace Jellyfin.Plugin.PrivateSyncPlay;
 
-public sealed record HubUser(Guid Id, string Name, bool Administrator);
+public sealed record HubUser(Guid Id, string Name, bool Administrator, bool Enabled = true);
 
 // One projection over Configuration.Users. No separate policy database, party mutation, or Hub auth dependency.
 public sealed class HubPolicyService(Func<Configuration> read, Action<Configuration> save, Func<HubUser[]> directory, PartyStore store)
@@ -29,7 +29,7 @@ public sealed class HubPolicyService(Func<Configuration> read, Action<Configurat
         lock (Plugin.SettingsGate) { var c = read();return new { revision = HubWire.Revision(c), user = UserView(c, FindUser(id)) }; }
     }
     private HubUser FindUser(Guid id) => directory().FirstOrDefault(u => u.Id == id) ?? throw new HubAdapterException(404, "invalid_request", "User not found.");
-    public bool IsAdministrator(Guid id) => directory().Any(u => u.Id == id && u.Administrator);
+    public bool IsAdministrator(Guid id) => directory().Any(u => u.Id == id && u.Administrator && u.Enabled);
     public Guid[] Administrators() => directory().Where(u => u.Administrator).Select(u => u.Id).ToArray();
     internal void ProtectNative(Configuration before, Configuration next) => ProtectAdministrators(before, next, directory(), [], []);
 

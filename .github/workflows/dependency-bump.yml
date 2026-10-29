@@ -1,0 +1,37 @@
+name: Preview dependency bump
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 * * * *'
+permissions:
+  contents: read
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: node
+      - name: Apply fixed-scope stable dependency updates and verify refs/locks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/update-dependencies.mjs --apply
+      - name: Export reviewable dependency patch
+        run: git diff --binary > artifacts/dependency-bump/dependencies.patch
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: ./.github/actions/setup-latest-tools
+      - run: npm ci --ignore-scripts --prefix plugins/private-syncplay
+      - name: Linux root tests on the bumped working source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/test.ps1
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: dependency-bump-preview
+          path: artifacts/dependency-bump/

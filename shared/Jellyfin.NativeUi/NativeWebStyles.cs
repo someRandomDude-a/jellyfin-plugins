@@ -36,7 +36,7 @@ public sealed class NativeWebStyles(IApplicationPaths paths)
             }
         }
         // Some controls are lazy CSS chunks and are not listed in index.html.
-        var markers = new HashSet<string> { "emby-button", "inputContainer", "checkboxContainer", "selectContainer", "formDialog", "dialog", "listItem", "material-icons", "mdl-slider", "videoOsdBottom", "osdControls", "paper-icon-button-light", "htmlvideoplayer", "detailTable" };
+        var markers = new HashSet<string> { "emby-button", "inputContainer", "checkboxContainer", "selectContainer", "formDialog", "dialog", "listItem", "material-icons", "mdl-slider", "videoOsdBottom", "osdControls", "paper-icon-button-light", "htmlvideoplayer", "detailTable", "manualLoginForm", "readOnlyContent", "pageLogin", "standalonePage", "backdropPage", "margin-auto-y", "margin-auto-x" };
         var files = Directory.EnumerateFiles(root, "*.css").OrderBy(f => selected.Contains(Path.GetFileName(f)) ? 0 : 1).ThenBy(f => f).ToArray();
         foreach (var file in files)
         {

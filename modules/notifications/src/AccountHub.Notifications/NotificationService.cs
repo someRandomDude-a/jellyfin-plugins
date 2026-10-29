@@ -24,9 +24,19 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
         store.RegisterTypes(registration);
     }
     public void SaveLayout(NotificationLayoutUpdate update) { Validation.Layout(update.Layout); store.SaveNotificationLayout(update); }
-    private static NotificationTypeDefinition? Definition(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => catalogs.FirstOrDefault(catalog => catalog.Source == entry.Source)?.Types
+    public void SaveDefaults(NotificationDefaultsUpdate update) { Validation.Defaults(update.Defaults); store.SaveNotificationDefaults(update); }
+    public void SaveGrouping(NotificationGroupingUpdate update) => store.SaveNotificationGrouping(update);
+    private static NotificationTypeDefinition? Definition(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => catalogs.FirstOrDefault(catalog => catalog.Source == (entry.Source=="account-hub"&&entry.Type.StartsWith("library.",StringComparison.Ordinal)?"notifications":entry.Source))?.Types
         .Where(type => type.Type == entry.Type || type.Type == "*" || type.Type.EndsWith(".*", StringComparison.Ordinal) && entry.Type.StartsWith(type.Type[..^1], StringComparison.Ordinal))
         .OrderByDescending(type => type.Type == entry.Type ? int.MaxValue : type.Type.Length).FirstOrDefault();
+    internal static NotificationDefaults? DefaultsFor(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => Definition(entry, catalogs)?.Defaults;
+    internal static string SharedSummary(NotificationEvent entry,IEnumerable<NotificationCatalogEntry> catalogs)
+    {
+        var definition=Definition(entry,catalogs);
+        // Shared channels receive only static registered descriptions, never
+        // personal message text, media names, audience IDs or action credentials.
+        return definition is null?"A plugin reported an update. Open Jellyfin to review.":definition.Name+" — "+definition.Trigger+". Open Jellyfin to review.";
+    }
     public static NotificationEvent Present(NotificationEvent entry, IEnumerable<NotificationCatalogEntry> catalogs) => Definition(entry, catalogs) is { } definition ? entry with {
         Layout = definition.Layout,
         Body = string.IsNullOrWhiteSpace(definition.Layout.MessageTemplate) ? entry.Body : definition.Layout.MessageTemplate.Replace("{media}", entry.Title, StringComparison.Ordinal).Replace("{days}", entry.Metadata?.GetValueOrDefault("days") ?? "", StringComparison.Ordinal)
@@ -45,7 +55,20 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
                 presented = presented with { Commands = [] };
             }
         }
-        return presented;
+        var preferences = store.Preferences(user);
+        var defaults = definition?.Defaults;
+        var enabled = entry.Severity == "critical" || Enabled(preferences, entry, "in-app", defaults?.InApp ?? true) && CategoryEnabled(preferences, entry, "in-app");
+        // A previously delivered row can stay in history, but turning its category
+        // off must also stop queued/recent popups, not promote it via a fallback.
+        var catalog=catalogs.FirstOrDefault(value=>value.Source==(entry.Source=="account-hub"&&entry.Type.StartsWith("library.",StringComparison.Ordinal)?"notifications":entry.Source));
+        NotificationGroup? group=null;
+        if(entry.Severity!="critical" && catalog?.Grouping is {} grouping && (store.GroupingPreferences(user).FirstOrDefault(value=>value.Source==catalog.Source)?.Enabled??grouping.DefaultEnabled)
+            && entry.Metadata?.GetValueOrDefault(grouping.MetadataKey) is {Length:>0 and <=500} key) {
+            var label=grouping.LabelKey is null?null:entry.Metadata.GetValueOrDefault(grouping.LabelKey);
+            var text=label is null?"":new string(label.Where(c=>!char.IsControl(c)).Take(200).ToArray());
+            group=new(Validation.Hash(catalog.Source+"\0"+key),string.IsNullOrWhiteSpace(text)?grouping.Name:text){Source=catalog.Source};
+        }
+        return presented with { Importance = enabled ? Importance(preferences, entry, defaults?.Importance) : "silent", Group=group };
     }
     public async Task InvokeCommandAsync(Guid user, NotificationEvent entry, NotificationCommandRequest request, CancellationToken ct)
     {
@@ -113,7 +136,11 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
         return await PublishAsync(entry, Validation.Hash(payload.GetRawText()), ct, producer, upsert);
     }
 
-    public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null, bool upsert = false)
+    public Task<PublishResult> PublishLibraryAsync(NotificationEvent entry, CancellationToken ct) {
+        Validation.Require(entry.Source is "notifications" or "account-hub" && entry.Type is "library.movie.added" or "library.episode.added" && !entry.AdminOnly && entry.Severity=="info" && entry.Metadata?.ContainsKey("itemId")==true,"Invalid owned library event");
+        return PublishAsync(entry,Validation.Hash(Contract.Serialize(entry)),ct,legacyLibrary:entry.Source=="account-hub");
+    }
+    public async Task<PublishResult> PublishAsync(NotificationEvent entry, string hash, CancellationToken ct, ProducerIdentity? producer = null, bool upsert = false, bool legacyLibrary = false)
     {
         var registrations = host.NotificationRegistrations.Where(registration => registration.Source == entry.Source).ToArray();
         var registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
@@ -123,14 +150,14 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
         if (store.TryDuplicate(entry, hash, upsert) is { } duplicate) return duplicate;
         foreach (var registration in registrations) Register(registration);
         registered = store.NotificationTypes().FirstOrDefault(catalog => catalog.Source == entry.Source);
-        var definition = Definition(entry, registered is null ? [] : [registered]);
-        Validation.Require(registered is null ? options.Sources.Contains(entry.Source) : definition is not null, "Unregistered notification type");
+        var definition = Definition(entry, store.NotificationTypes());
+        Validation.Require(legacyLibrary || (registered is null ? options.Sources.Contains(entry.Source) : registered.Types.Any(type=>Matches(type.Type,entry.Type))), "Unregistered notification type");
         if (definition is not null) {
             Validation.Require(definition.Recipients == "event" || entry.AdminOnly == (definition.Recipients == "administrators"), "Registered recipient policy denied");
             Validation.Require(entry.Actions is null || entry.Actions.All(action => definition.Actions.Any(allowed => allowed.Label == action.Label)), "Undeclared notification action");
             entry = entry with { Layout = definition.Layout, Actions = entry.Actions?.Select(action => action with { Size = definition.Actions.First(allowed => allowed.Label == action.Label).Size }).ToArray() };
         }
-        if (registered?.RequireAccess == true && !entry.AdminOnly) {
+        if (registered?.RequireAccess == true && !entry.AdminOnly && !legacyLibrary) {
             if (!host.NotificationAccessAvailable(entry.Source)) throw new NotificationException("unavailable", "Producer permission provider unavailable", 503);
             var metadata = new Dictionary<string, string>(entry.Metadata ?? []) { ["notificationAccess"] = "required" };
             entry = entry with { Metadata = metadata };
@@ -147,8 +174,8 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             if (!await host.CanAccessNotificationAsync(user, entry, ct)) continue;
             if (entry.AdminOnly && !await host.IsAdministratorAsync(user, ct)) continue;
             var prefs = store.Preferences(user);
-            var mandatory = entry.AdminOnly || entry.Severity == "critical";
-            var inbox = mandatory || Enabled(prefs, entry, "in-app", true)&&CategoryEnabled(prefs,entry,"in-app");
+            var mandatory = entry.Severity == "critical";
+            var inbox = mandatory || Enabled(prefs, entry, "in-app", definition?.Defaults?.InApp ?? true)&&CategoryEnabled(prefs,entry,"in-app");
             var link = await host.DiscordLinkAsync(user, ct);
             var selected = new List<Route>();
             foreach (var route in routes.Where(r => Matches(r.Source, entry.Source) && Matches(r.Type, entry.Type)))
@@ -157,7 +184,7 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
                 if (entry.Type == "notifications.delivery.failed" || (route.AdminOnly && !entry.AdminOnly)) continue;
                 if (route.DirectMessage)
                 {
-                    if (link is null || (!mandatory && (!Enabled(prefs, entry, "discord", false)||!CategoryEnabled(prefs,entry,"discord")))) continue;
+                    if (link is null || (!mandatory && (!Enabled(prefs, entry, "discord", definition?.Defaults?.Discord ?? false)||!CategoryEnabled(prefs,entry,"discord")))) continue;
                     selected.Add(route with { Destination = link });
                 }
                 // Private user events NEVER enter shared channels or webhooks.
@@ -174,17 +201,43 @@ public sealed class NotificationService(NotificationStore store, INotificationHo
             .OrderByDescending(p => (p.Source != "*" ? 1 : 0) + (p.Type != "*" ? 1 : 0)).ThenByDescending(p=>p.Type.Length).Select(p => (bool?)p.Enabled).FirstOrDefault() ?? fallback;
     }
     internal static bool CategoryEnabled(Preference[] prefs,NotificationEvent e,string channel){
-        if(e.Source!="account-hub"||!e.Type.StartsWith("library.",StringComparison.Ordinal))return true;
+        if(e.Source is not ("account-hub" or "notifications")||!e.Type.StartsWith("library.",StringComparison.Ordinal))return true;
         if(!Enabled(prefs,e with{Type="category.library.*"},channel,true))return false;
-        return (e.Metadata?.GetValueOrDefault("libraryCategories")??"all").Split(',').Where(c=>c is "all" or "requested" or "favourite")
+        return LibraryCategories(e)
             .Any(c=>Enabled(prefs,e with{Type="category.library."+c},channel,c=="all"));
+    }
+    private static IEnumerable<string> LibraryCategories(NotificationEvent entry) => (entry.Metadata?.GetValueOrDefault("libraryCategories") ?? "all")
+        .Split(',').Where(category => category is "all" or "requested" or "favourite" or "watchlisted").Distinct();
+    public static string Importance(Preference[] prefs, NotificationEvent e, string? fallback = null) {
+        if (e.Severity == "critical") return "high";
+        var categories = e.Source is "account-hub" or "notifications" && e.Type.StartsWith("library.", StringComparison.Ordinal)
+            ? LibraryCategories(e).Where(category => Enabled(prefs, e with { Type = "category.library." + category }, "in-app", category == "all"))
+                .Select(category => "category.library." + category).ToArray() : [];
+        // Exact event overrides, then media categories, then narrower type
+        // families, then plugin/global defaults. Overlapping media filters choose
+        // the highest selected importance, never an arbitrary category-name length.
+        int Specificity(Preference p) => p.Type == e.Type ? 4 : categories.Contains(p.Type) ? 3 : p.Type == "*" ? 1 : 2;
+        int Priority(string? value) => value switch { "high" => 3, "normal" => 2, "low" => 1, _ => 0 };
+        return prefs.Where(p => p.Channel == "in-app" && p.Importance is not null && Matches(p.Source, e.Source)
+                && (Matches(p.Type, e.Type) || categories.Any(category => Matches(p.Type, category))))
+            .OrderByDescending(Specificity).ThenByDescending(p => p.Source == e.Source)
+            .ThenByDescending(p => Specificity(p) == 2 ? p.Type.Length : 0).ThenByDescending(p => Priority(p.Importance))
+            .Select(p => p.Importance).FirstOrDefault() ?? fallback ?? (e.AdminOnly || e.Severity is "warning" or "high" ? "high" : "normal");
+    }
+    public async Task RestoreBlockedAsync(Guid user,CancellationToken ct){
+        if(!await host.UserExistsAsync(user,ct))return;
+        var prefs=store.Preferences(user);var admin=await host.IsAdministratorAsync(user,ct);var catalogs=Catalog();
+        foreach(var row in store.Inbox(user,0,1000,null,false,admin,blocked:true)){
+            ct.ThrowIfCancellationRequested();if(!await host.CanAccessNotificationAsync(user,row.Event,ct))continue;
+            if(row.Event.Severity=="critical"||Enabled(prefs,row.Event,"in-app",DefaultsFor(row.Event,catalogs)?.InApp??true)&&CategoryEnabled(prefs,row.Event,"in-app"))store.RestoreBlocked(user,row.Id,row.Event.EventId);
+        }
     }
 
     public async Task SaveSettingsAsync(Settings settings, Guid actor, CancellationToken ct)
     {
         if (settings.Routes is null || settings.Routes.Any(r => r is null || r.Id is null || r.Source is null || r.Type is null || r.Destination is null))
             throw new NotificationException("invalid_request", "Missing route fields");
-        Validation.Require(settings.NotificationDays is >= 7 and <= 365 && settings.Routes.Length <= 50, "Invalid settings limits");
+        Validation.Require(settings.NotificationDays is >= 7 and <= 365 && settings.BlockedNotificationLimit is >=0 and <=1000 && settings.Routes.Length <= 50, "Invalid settings limits");
         Validation.Require(settings.Routes.Select(r => r.Id).Distinct().Count() == settings.Routes.Length, "Duplicate route ID");
         var previous = store.Settings(false);
         var routes = settings.Routes.Select(r =>

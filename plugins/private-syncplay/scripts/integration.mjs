@@ -8,7 +8,9 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { target } from './jellyfin-target.mjs';
+import { resolveTarget } from './jellyfin-target.mjs';
+import { assertRuntimeVersion, freshDockerArguments } from '../../../scripts/latest-releases.mjs';
+const target = await resolveTarget({ pull: true });
 import { waitForGuestState } from './guest-state.mjs';
 
 const root = resolve(process.argv.slice(2).find(arg => !arg.startsWith('--')) || join(tmpdir(), 'opencode', 'private-syncplay-integration-' + Date.now()));
@@ -29,7 +31,7 @@ function command(exe, args) {
     if (result.status !== 0) throw new Error(`${exe} ${args[0]} failed: ${result.stderr || result.stdout}`);
     return result.stdout.trim();
 }
-const docker = (...args) => command('docker', args);
+const docker = (...args) => command('docker', freshDockerArguments(args));
 const guestEncoders = () => docker('top',name,'-eo','pid,args').split('\n').filter(line=>line.includes('-hls_segment_filename segment%09d.ts')).length;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const normalize = x => Array.isArray(x) ? x.map(normalize) : x && typeof x === 'object'
@@ -60,7 +62,7 @@ async function request(path, { method = 'GET', body, auth, guest = false, origin
         if (body !== undefined) req.write(JSON.stringify(path.startsWith('Plugins/') || path.startsWith('System/Configuration/') || path.endsWith('/Policy') ? pascal(body) : body)); req.end();
     });
     if (expected !== null && !(Array.isArray(expected) ? expected.includes(result.status) : result.status === expected))
-        throw new Error(`${method} ${path.split('?')[0]}: expected ${expected}, got ${result.status}: ${String(JSON.stringify(result.data)).slice(0, 1600)}`);
+        throw new Error(`${method} ${path.split('?')[0]}: expected ${expected}, got ${result.status} (response body withheld)`);
     return result;
 }
 
@@ -153,6 +155,7 @@ try {
     assert(ready, 'Jellyfin startup timed out');
     console.log('Disposable Jellyfin started:', base, 'test data:', root);
     const password = 'Temporary-Test-Only-9714!';
+    assertRuntimeVersion((await request('System/Info/Public')).data.version, target.version, 'Jellyfin');
     if (!(await request('System/Info/Public')).data.startupWizardCompleted && !(await request('System/Info/Public')).data.isStartupWizardCompleted) {
     await request('Startup/Configuration', { method:'POST', body:{ UICulture:'en-US', MetadataCountryCode:'US', PreferredMetadataLanguage:'en' }, expected:204 });
     await request('Startup/User'); // Jellyfin 12 initializes its first user lazily here.
@@ -710,7 +713,7 @@ try {
     docker('stop','--time','30',name);
     const databaseChecks = await readFile(new URL('./check-database.py',import.meta.url),'utf8');
     console.log(docker('run','--rm','--network','none','--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=256m',
-        '-v',`${join(root,'config')}:/config:ro`,'python:3.13-alpine','python3','-c',databaseChecks,'/config'));
+        '-v',`${join(root,'config')}:/config:ro`,'python:alpine','python3','-c',databaseChecks,'/config'));
     if(keep) {
         docker('start',name);
         base=`https://127.0.0.1:${docker('port',name,'8920/tcp').split(':').at(-1)}`;

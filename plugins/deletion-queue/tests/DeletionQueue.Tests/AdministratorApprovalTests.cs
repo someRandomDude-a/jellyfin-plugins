@@ -5,6 +5,23 @@ namespace DeletionQueue.Tests;
 
 public sealed class AdministratorApprovalTests
 {
+    [Fact]public void AdministratorCreatorsAutoApproveCurrentPolicyButAutomationAndDemotionDoNot(){
+        var s=QueueRulesTests.State();var target=QueueRulesTests.Target;
+        var p=QueueRules.Propose(s,Administrator,target,true,QueueRules.Snapshot(s,target,Administrator.Id),QueueRulesTests.Now);
+        Assert.Equal(Administrator.Id,p.AdministratorRequestedBy);QueueRules.UpdatePolicy(s,new Policy{RequireAdministratorApproval=true},s.Policy.Revision);
+        QueueRules.Evaluate(s,p,Good with{AdministratorCreatorAuthorized=true},QueueRulesTests.Now);Assert.True(QueueRules.AdministratorApprovalCurrent(s,p));Assert.Equal(ProposalStatus.Waiting,p.Status);
+        QueueRules.UpdatePolicy(s,new Policy{RequireAdministratorApproval=true},s.Policy.Revision);QueueRules.Evaluate(s,p,QueueRulesTests.Good,QueueRulesTests.Now);Assert.Equal("AdministratorApprovalRequired",p.Reason);
+        var other=QueueRulesTests.State();other.Policy.RequireAdministratorApproval=true;var automatic=QueueRules.ProposeAutomatically(other,Administrator,target,QueueRulesTests.Now);
+        QueueRules.Evaluate(other,automatic,Good with{AdministratorCreatorAuthorized=true,AutomaticRuleVerified=true},QueueRulesTests.Now);Assert.Null(automatic.AdministratorApproval);Assert.Null(automatic.AdministratorRequestedBy);Assert.Empty(automatic.Consents);
+    }
+    [Fact]public void ApprovalRemindersAreSnapshotScopedAndLinkToTheFocusedApprovalView(){
+        var (s,p)=Pending();s.Schema=2;s.Hub.NotificationMode=NotificationMode.Auto;QueueRulesTests.Evaluate(s,p,evidence:Good);
+        var old=new Dictionary<Guid,long>{{p.Id,-1}};HubIntegration.Capture(s,old,[],"test","EligibilityEvaluated",QueueRulesTests.Now,true);
+        var reminders=s.Outbox.Where(e=>e.Kind=="notification"&&e.PayloadJson.Contains("proposal.approval_required")).ToArray();var reminder=Assert.Single(reminders);
+        using var doc=JsonDocument.Parse(reminder.PayloadJson);Assert.True(doc.RootElement.GetProperty("adminOnly").GetBoolean());Assert.Empty(doc.RootElement.GetProperty("audience").EnumerateArray());Assert.Equal("#/home?deletionQueueApprovals=1",doc.RootElement.GetProperty("link").GetString());
+        HubIntegration.Capture(s,old,[],"test","EligibilityEvaluated",QueueRulesTests.Now,true);Assert.Single(s.Outbox,e=>e.Kind=="notification"&&e.PayloadJson.Contains("proposal.approval_required"));
+        Approve(s,p);HubIntegration.Capture(s,old,[],"test","AdministratorApprovalChanged",QueueRulesTests.Now,true);Assert.Null(p.LastApprovalNoticeSnapshot);Assert.Contains(s.Outbox,e=>e.Kind=="notification"&&e.PayloadJson.Contains("no longer awaiting administrator approval"));
+    }
     private static readonly Account Administrator = new(Guid.NewGuid(), true, true);
     private static readonly EvaluationEvidence Good = QueueRulesTests.Good with { AdministratorAuthorized = true };
     private static (QueueState State, Proposal Proposal) Pending()
@@ -20,6 +37,11 @@ public sealed class AdministratorApprovalTests
         var s = QueueRulesTests.State(); Assert.False(s.Policy.RequireAdministratorApproval);
         var p = QueueRulesTests.Propose(s); QueueRulesTests.Evaluate(s, p);
         Assert.Equal(ProposalStatus.Waiting, p.Status); Assert.Null(p.AdministratorApproval);
+    }
+    [Fact]public void HistoryPresentationChangesReevaluateWithoutInvalidatingApprovalOrDelay(){
+        var (s,p)=Pending();Approve(s,p);QueueRulesTests.Evaluate(s,p,evidence:Good);var since=p.EligibleSince;var deadline=p.NotBefore;
+        QueueRules.UpdatePolicy(s,new Policy{RequireAdministratorApproval=true,RecentHistoryDays=14},s.Policy.Revision);
+        Assert.True(QueueRules.AdministratorApprovalCurrent(s,p));Assert.Equal(since,p.EligibleSince);Assert.Equal(deadline,p.NotBefore);
     }
     [Fact] public void RequiredApprovalBlocksAndThenStartsTheFullDelay()
     {

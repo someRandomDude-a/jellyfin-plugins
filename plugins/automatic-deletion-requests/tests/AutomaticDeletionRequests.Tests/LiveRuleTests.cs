@@ -50,13 +50,17 @@ public sealed class LiveRuleTests
             var paths = Fake<IApplicationPaths>((m, _) => m.Name == "get_DataPath" ? root : throw new NotSupportedException());
             var store = new RuleStore(paths); var actor = new User("fixture", "auth", "reset") { Id = Guid.NewGuid() };
             var movie = new Movie { Id = Guid.NewGuid(), Name = "Old movie", ProductionYear = 1990 }; var inScope = true;
-            var users = Fake<IUserManager>((m, _) => m.Name switch { "GetUserById" => actor, "GetUserDto" => new UserDto { Id = actor.Id, Policy = new UserPolicy { IsAdministrator = true } }, _ => throw new NotSupportedException() });
+            var enabled = true; var administrator = true;
+            var users = Fake<IUserManager>((m, _) => m.Name switch { "GetUserById" => actor, "GetUserDto" => new UserDto { Id = actor.Id, Policy = new UserPolicy { IsAdministrator = administrator, IsDisabled = !enabled } }, _ => throw new NotSupportedException() });
             var library = Fake<ILibraryManager>((m, _) => m.Name == "GetVirtualFolders" ? VirtualFolders(m,store.Read(s=>s.Configuration.LibraryId)) : m.Name == "GetItemList" ? inScope ? new BaseItem[] { movie } : Array.Empty<BaseItem>() : throw new NotSupportedException());
             var rule = new Rule("old", "Old movies", true, "all", [new("year", "less", JsonSerializer.SerializeToElement(2000))]);
             store.Write(s => { s.Configuration = new(1, true, actor.Id, Guid.NewGuid(), 24, [rule]); return true; });
             var runner = new RuleRunner(store, library, users, new(provider)); var check = Contract.Serialize(new AutomaticRuleCheck(actor.Id, movie.Id, rule.Id));
             async Task<bool> Matches() { using var result = JsonDocument.Parse(await runner.ValidateAsync(check, default)); return result.RootElement.GetProperty("matches").GetBoolean(); }
             Assert.True(await Matches()); movie.ProductionYear = 2026; Assert.False(await Matches()); movie.ProductionYear = 1990;
+            enabled = false; Assert.False(await Matches()); enabled = true;
+            administrator = false; Assert.False(await Matches()); administrator = true;
+            using (var forged = JsonDocument.Parse(await runner.ValidateAsync(Contract.Serialize(new AutomaticRuleCheck(Guid.NewGuid(), movie.Id, rule.Id)), default))) Assert.False(forged.RootElement.GetProperty("matches").GetBoolean());
             inScope = false; Assert.False(await Matches()); inScope = true;
             store.Write(s => { s.Configuration = s.Configuration with { Revision = 2, Rules = [rule with { Enabled = false }] }; return true; }); Assert.False(await Matches());
             store.Write(s => { s.Configuration = s.Configuration with { Revision = 3, Enabled = false, Rules = [rule] }; return true; }); Assert.False(await Matches());

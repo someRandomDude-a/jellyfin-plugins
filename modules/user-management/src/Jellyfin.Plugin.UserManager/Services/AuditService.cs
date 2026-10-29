@@ -7,7 +7,10 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.UserManager.Services;
 
 public interface IAuditSink { Task AppendAsync(AuditRecord record, CancellationToken ct); }
-public interface IAdminNoticeSink { Task PublishAsync(CancellationToken ct); }
+public interface IAdminNoticeSink {
+    Task PublishAsync(CancellationToken ct);
+    Task PublishAsync(string title,string message,CancellationToken ct)=>PublishAsync(ct);
+}
 
 public sealed class AuditService
 {
@@ -191,7 +194,7 @@ public sealed class NotificationService
 
     public async Task NotifyAdminsAsync(string title, string message, CancellationToken cancellationToken = default)
     {
-        if (_sink is not null) { await _sink.PublishAsync(cancellationToken); return; }
+        if (_sink is not null) { await _sink.PublishAsync(title,message,cancellationToken); return; }
         try
         {
             var settings = await _settings.GetAsync(cancellationToken).ConfigureAwait(false);

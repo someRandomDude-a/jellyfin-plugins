@@ -1,11 +1,21 @@
-// Read-only rendering contract using the immutable upstream Enhanced 12.13 sources.
+// Read-only rendering contract using this run's latest stable Enhanced sources.
 // No Arr, Seerr or production media calls are made by this fixture.
 const assert = require('node:assert/strict');
 module.exports = async function checkCalendar(page) {
-    const commit = 'ef1ac3c7917421fecf1211249980f037ee524d3d';
+    const { loadTargets } = await import('./latest-releases.mjs');
+    const { enhanced } = await loadTargets(['enhanced']);
+    const commit = enhanced.sourceCommit;
+    assert.match(commit, /^[a-f0-9]{40}$/);
     const base = `https://raw.githubusercontent.com/n00bcodr/Jellyfin-Enhanced/${commit}/Jellyfin.Plugin.JellyfinEnhanced/js/arr/calendar/`;
     const modules = await Promise.all(['data', 'render-events', 'render-views', 'actions'].map(async name => {
-        const response = await fetch(base + 'calendar-page-' + name + '.js'); assert(response.ok); return response.text();
+        // These are immutable, read-only fixture downloads, not production operations.
+        // A truncated upstream response must not make browser coverage randomly disappear.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const response = await fetch(base + 'calendar-page-' + name + '.js', { signal: AbortSignal.timeout(20000) });
+                assert(response.ok); const text = await response.text(); assert(text.length > 100 && text.length < 500000); return text;
+            } catch (error) { if (attempt === 2) throw Error('Enhanced calendar fixture download failed: ' + name, { cause: error }); }
+        }
     }));
     const pattern = '**/DeletionQueue/proposals?*';
     const id = '66666666-6666-6666-6666-666666666666';

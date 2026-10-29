@@ -20,9 +20,9 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"account-hub");
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("account-hub", "1", [
             new("*", "Account notifications", "Account Hub publishes an account event", "event", new(), []),
-            new("library.*", "New library content", "A new episode or movie is added", "explicit-users", new(), []),
             new("account.updated", "Account alerts", "Account management changes", "administrators", new(), [])
         ]));
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("jellyfin-security", "1", [
@@ -38,6 +38,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<HubSettingsService>();
         services.AddSingleton<ExternalCommandGate>();
         services.AddSingleton<DiscordLinkService>();
+        services.AddSingleton<LinkContinuationStore>();
         services.AddSingleton<IntegrationSecretService>();
         services.AddSingleton<HubHost>();
         services.AddSingleton<HubWorkerHealth>();
@@ -51,6 +52,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         services.DeferHubWorker<AccountHub.Seerr.SeerrReconcileWorker>();
         services.AddSingleton<IInviteNativeProvisioner, InviteNativeProvisioner>();
         services.AddSingleton<InviteOnboardingService>();
+        services.AddSingleton<InviteDefaultsService>();
         services.AddHostedService<InviteDeliveryWorker>();
         services.DeferHubWorker<InviteDeliveryWorker>();
         services.AddSingleton<Jellyfin.Plugin.PrivateSyncPlay.NativeWebStyles>();
@@ -58,14 +60,17 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         services.AddSingleton<ISecurityHubHost>(sp => sp.GetRequiredService<HubHost>());
         services.AddAccountHubSecurity();
         services.AddSingleton<DiscordBridgeClient>();
-        services.AddSingleton<Jellyfin.LibraryNotifications.LibraryNoticeStore>(sp => new(sp.GetRequiredService<HubPaths>().Database));
-        services.AddSingleton<Jellyfin.LibraryNotifications.ILibraryNoticeHost, HubLibraryNotices>();
-        services.AddHostedService<Jellyfin.LibraryNotifications.LibraryNoticeWorker>();
+        services.AddKeyedSingleton<Func<CancellationToken,Task<string?>>>(DiscordBridgeClient.PublicUrlKey,(sp,_)=>async ct=>(await sp.GetRequiredService<PluginSettingsService>().GetAsync(ct)).PublicBaseUrl);
         services.TryAddSingleton<IDiscordTransport, DiscordTransport>();
         // Never replace Jellyfin's global Data Protection provider with plugin-owned keys.
         services.TryAddSingleton<NotificationStore>(sp => new(sp.GetRequiredService<NotificationOptions>(), sp.GetRequiredService<HubStore>().Protection, TimeProvider.System));
         services.AddAccountHubNotifications(sp => new NotificationOptions { DatabasePath = sp.GetRequiredService<HubPaths>().Database }, startWorker: false, registerProducer: false);
-        services.AddKeyedSingleton<Func<AccountHub.Api.AuditEvent, CancellationToken, Task<object>>>("Notifications.HubAudit.1", (sp, _) => sp.GetRequiredService<HubHost>().AppendAuditAsync);
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.NotificationIntegration.HubAuditKey, (sp, _) => async (json, ct) =>
+        {
+            if (System.Text.Encoding.UTF8.GetByteCount(json) > AccountHub.Api.Contract.EventLimit) throw new ArgumentException("Audit too large");
+            var entry = System.Text.Json.JsonSerializer.Deserialize<AccountHub.Api.AuditEvent>(json, AccountHub.Api.Contract.Json) ?? throw new ArgumentException("Missing audit");
+            return AccountHub.Api.Contract.Serialize(await sp.GetRequiredService<HubHost>().AppendAuditAsync(entry, ct));
+        });
         services.AddKeyedSingleton<Func<Guid, CancellationToken, Task<string?>>>("Notifications.DiscordLink.1", (sp, _) => sp.GetRequiredService<HubHost>().DiscordLinkAsync);
         services.AddSingleton<ISecurityReceiptStore, SecurityReceiptAdapter>();
         services.AddSingleton<ISecurityIngressBudget, SecurityIngressBudget>();
@@ -107,7 +112,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
             });
         services.AddSingleton<DiscordIdentity>();
         services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(DiscordBridgeClient.IdentityKey,
-            (sp, _) => (json, ct) => sp.GetRequiredService<DiscordIdentity>().DispatchAsync(json, ct));
+            (sp, _) => async (json, ct) => Jellyfin.PluginSupport.SuiteDiagnostics.WithErrorId(sp,"account-hub","Discord account command",await sp.GetRequiredService<DiscordIdentity>().DispatchAsync(json, ct)));
         services.AddSingleton<IStartupFilter, HubStartup>();
         services.AddHostedService<FoundationWorker>();
         services.AddHostedService<CompositeWorker>();

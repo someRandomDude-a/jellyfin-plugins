@@ -1,14 +1,15 @@
 using Discord;
 using Discord.Interactions;
+using Jellyfin.Plugin.PrivateSyncPlay.Api;
 
 namespace Jellyfin.Plugin.DiscordBridge;
 
-public sealed class SlashCommands(BridgeRuntime runtime) : InteractionModuleBase<SocketInteractionContext>
+public sealed class SlashCommands(BridgeRuntime runtime, BridgeStore store, WatchPartyCommands parties) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("help", "Explain Jellyfin self-service commands")]
     public async Task Help()
     {
-        await RespondAsync("Use /link to confirm your Jellyfin identity, /unlink, /reset, /status, or /watchparty. Administration stays in Jellyfin. Never post a password, token or 2FA code here.", ephemeral: true, allowedMentions: AllowedMentions.None);
+        await RespondAsync("Use /link to confirm your Jellyfin identity, /unlink, /reset or /status. /invite accepts optional uses and expires-in-minutes within administrator limits. /watchparty posts a native link in this approved channel; /watchparty user:@user sends a DM instead. Open Jellyfin on your playback device first. Run commands in this server; recovery links arrive by DM. Administration stays in Jellyfin. Never post a password, token or 2FA code here.", ephemeral: true, allowedMentions: AllowedMentions.None);
         runtime.Interactions.Record("help", "completed");
     }
     [SlashCommand("link", "Link through a signed-in Jellyfin confirmation page")]
@@ -20,54 +21,53 @@ public sealed class SlashCommands(BridgeRuntime runtime) : InteractionModuleBase
     public Task Reset() => Identity("reset");
     [SlashCommand("status", "Show your own link status")]
     public Task Status() => Identity("status");
+    [SlashCommand("invite", "Create a signup invitation using administrator-approved defaults and limits")]
+    public async Task AccountInvite([Summary("uses", "Maximum account signups; administrator limits apply")] int? uses = null, [Summary("expires-in-minutes", "Invitation lifetime in minutes; administrator limits apply")] int? minutes = null)
+    {
+        await DeferAsync(ephemeral:true);
+        try {
+            var c=store.Read().Settings; var count=uses??c.InviteDefaultUses; var expiry=minutes??c.InviteDefaultExpiryMinutes;
+            if(count<1||count>c.InviteMaxUses||expiry<15||expiry>c.InviteMaxExpiryMinutes) { await FollowupAsync(runtime.Failure("invite_limits",$"Choose uses from 1–{c.InviteMaxUses} and expiry from 15–{c.InviteMaxExpiryMinutes} minutes. No invitation was created."),ephemeral:true,allowedMentions:AllowedMentions.None);runtime.Interactions.Record("invite.create","rejected_limits"); return; }
+            var result=await runtime.IdentityAsync("invite.create",Context.User.Id,CancellationToken.None,Context.User.Username,new{uses=count,expiresInMinutes=expiry});
+            await FollowupAsync(result.GetProperty("message").GetString(),ephemeral:true,allowedMentions:AllowedMentions.None);
+            runtime.Interactions.Record("invite.create","completed");
+        } catch(AccountCommandException error) { await FollowupAsync(runtime.Failure(error.Code,error.Message,error.ErrorId),ephemeral:true,allowedMentions:AllowedMentions.None); }
+        catch { await FollowupAsync(runtime.Failure("invite_uncertain","Invitation could not be confirmed. Check existing invitations before creating another."),ephemeral:true,allowedMentions:AllowedMentions.None); }
+    }
+    [SlashCommand("watchparty", "Create a Private SyncPlay link in this channel, or DM an explicitly selected user")]
+    public async Task WatchParty([Summary("user", "Optional @user: DM the link instead of posting it in this approved channel")] IUser? user = null)
+    {
+        await DeferAsync(ephemeral:true);
+        try {
+            var c=store.Read().Settings;
+            if(user?.IsBot==true)throw AccountCommandException.FromCode("invalid_party_recipient");
+            if(user is null&&!c.AllowedChannelIds.Contains(Context.Channel.Id.ToString())) { await FollowupAsync("This channel is not approved. Use an approved channel or specify @user for a DM.",ephemeral:true,allowedMentions:AllowedMentions.None);return; }
+            var identity=await runtime.IdentityAsync("identity",Context.User.Id,CancellationToken.None);var native=identity.GetProperty("userId").GetGuid();
+            BridgePermissions.Require(c,user is null?"party.share.channel":"party.share.dm",native);
+            var link=await parties.InviteAsync(native,CancellationToken.None);
+            var currentIdentity=await runtime.IdentityAsync("identity",Context.User.Id,CancellationToken.None);
+            if(currentIdentity.GetProperty("userId").GetGuid()!=native)throw new UnauthorizedAccessException();
+            var current=store.Read();var latest=current.Settings;if(!latest.Enabled||current.Revision!=link.BridgeRevision)throw new UnauthorizedAccessException();
+            BridgePermissions.Require(latest,"party.invite",native);if(latest.WatchPartyGuests)BridgePermissions.Require(latest,"party.guests",native);
+            BridgePermissions.Require(latest,user is null?"party.share.channel":"party.share.dm",native);
+            await runtime.SendAsync((user?.Id??Context.Channel.Id).ToString(),user is not null,"Jellyfin watch-party invitation:\n"+link.Url,CancellationToken.None);
+            await FollowupAsync(user is null?"Invitation posted in this channel.":"Invitation sent by DM to the selected user.",ephemeral:true,allowedMentions:AllowedMentions.None);
+            runtime.Interactions.Record("watchparty",user is null?"delivered_channel":"delivered_dm");
+        } catch(AccountCommandException error){runtime.Interactions.Record("watchparty","unavailable");await FollowupAsync(runtime.Failure(error.Code,error.Message,error.ErrorId),ephemeral:true,allowedMentions:AllowedMentions.None);}
+        catch(WatchPartyException error)when(error.StatusCode is 400 or 403 or 409 or 429){runtime.Interactions.Record("watchparty","unavailable");var safe=AccountCommandException.FromCode("native_party_denied");await FollowupAsync(runtime.Failure(safe.Code,safe.Message,error.ErrorId),ephemeral:true,allowedMentions:AllowedMentions.None);}
+        catch(Exception error) {runtime.Interactions.Record("watchparty","unavailable"); await FollowupAsync(runtime.Failure("party_invite_uncertain","Unable to confirm the invitation or delivery. Check the selected destination and native party before trying again; no automatic resend was made.",(error as WatchPartyException)?.ErrorId),ephemeral:true,allowedMentions:AllowedMentions.None); }
+    }
     private async Task Identity(string operation)
     {
         await DeferAsync(ephemeral: true);
         try
         {
-            var result = await runtime.IdentityAsync(operation, Context.User.Id, CancellationToken.None);
-            await FollowupAsync(result.GetProperty("message").GetString(), ephemeral: true, allowedMentions: AllowedMentions.None);
+            var result = await runtime.IdentityAsync(operation, Context.User.Id, CancellationToken.None,Context.User.Username);
+            var message=result.GetProperty("message").GetString();
+            await FollowupAsync(message, ephemeral: true, allowedMentions: AllowedMentions.None);
             runtime.Interactions.Record(operation, "completed");
         }
-        catch { runtime.Interactions.Record(operation, "unavailable"); await FollowupAsync("Account self-service is unavailable. Check Discord Bridge settings for missing dependencies or disabled features. Install/enable Account Hub and restart, then use /link. No action was retried.", ephemeral: true, allowedMentions: AllowedMentions.None); }
-    }
-}
-
-[Group("watchparty", "Create invitations using your own active Jellyfin session")]
-public sealed class WatchPartySlashCommands(BridgeRuntime runtime, BridgeStore store, WatchPartyCommands parties) : InteractionModuleBase<SocketInteractionContext>
-{
-    [SlashCommand("devices", "List your active Jellyfin devices privately")]
-    public async Task Devices()
-    {
-        await DeferAsync(ephemeral: true);
-        try
-        {
-            if (!store.Read().Settings.EnableWatchPartyCommands) { await FollowupAsync("Watch-party commands are disabled. Enable them in Discord Bridge settings after installing Account Hub and Private SyncPlay.", ephemeral: true, allowedMentions: AllowedMentions.None); return; }
-            var identity = await runtime.IdentityAsync("identity", Context.User.Id, CancellationToken.None);
-            var text = parties.Devices(identity.GetProperty("userId").GetGuid());
-            await FollowupAsync(string.IsNullOrEmpty(text) ? "Open Jellyfin first; no active device was found." : text, ephemeral: true, allowedMentions: AllowedMentions.None);
-            runtime.Interactions.Record("watchparty.devices", "completed");
-        }
-        catch { await FollowupAsync("A verified, enabled Jellyfin account link is required.", ephemeral: true, allowedMentions: AllowedMentions.None); }
-    }
-    [SlashCommand("invite", "Create a one-use watch-party invite, optionally shared to a user or approved channel")]
-    public async Task Invite(int device = 1, bool guests = false, IUser? user = null, ITextChannel? channel = null, [Summary("confirm-share", "Confirm disclosing a bearer invitation to the selected channel")] bool confirmShare = false)
-    {
-        await DeferAsync(ephemeral: true);
-        try
-        {
-            if (user is not null && channel is not null) throw new ArgumentException();
-            var config = store.Read().Settings;
-            if (channel is not null && (!confirmShare || channel.GuildId != Context.Guild.Id || channel.GuildId.ToString() != config.GuildId || !config.AllowedChannelIds.Contains(channel.Id.ToString())))
-            { await FollowupAsync("Channel sharing requires confirm-share:true and an administrator-approved channel in this guild. Anyone receiving the bearer link may redeem it.", ephemeral: true, allowedMentions: AllowedMentions.None); return; }
-            var identity = await runtime.IdentityAsync("identity", Context.User.Id, CancellationToken.None);
-            var link = await parties.InviteAsync(identity.GetProperty("userId").GetGuid(), device, guests, CancellationToken.None);
-            var text = $"One-use Jellyfin watch-party invitation (expires in 30 minutes):\n{link}";
-            if (channel is not null) await runtime.SendAsync(channel.Id.ToString(), false, text, CancellationToken.None);
-            else if (user is not null) await runtime.SendAsync(user.Id.ToString(), true, text, CancellationToken.None);
-            await FollowupAsync(channel is not null || user is not null ? "Invitation created and sent to the selected destination." : text, ephemeral: true, allowedMentions: AllowedMentions.None);
-            runtime.Interactions.Record("watchparty.invite", channel is not null ? "delivered_channel" : user is not null ? "delivered_dm" : "created_private");
-        }
-        catch { await FollowupAsync("Invite creation or delivery could not be confirmed. Check your active Jellyfin party before trying again; no action was automatically retried. Guest and owner permissions still apply.", ephemeral: true, allowedMentions: AllowedMentions.None); }
+        catch (AccountCommandException error) { runtime.Interactions.Record(operation, "unavailable"); await FollowupAsync(runtime.Failure(error.Code,error.Message,error.ErrorId), ephemeral: true, allowedMentions: AllowedMentions.None); }
+        catch (Exception error) { runtime.Interactions.Record(operation, "unavailable");var timeout=error is OperationCanceledException or TimeoutException;await FollowupAsync(runtime.Failure(timeout?"account_timeout":"account_unavailable",timeout?"The request timed out. Check your account.":"Account service unavailable. Contact an administrator."), ephemeral: true, allowedMentions: AllowedMentions.None); }
     }
 }

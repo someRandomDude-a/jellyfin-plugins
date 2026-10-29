@@ -10,10 +10,11 @@ const make = (tag, text) => {
 };
 const pretty = value => typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? 'Inherit');
 const title = name => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
+const requestError = code => ({ revision_changed: 'Settings changed. Refresh and review again.', command_conflict: 'This request changed. Refresh and review again.', invalid_request: 'Check the entered values.', administrator_protected: 'This administrator account is protected.', forbidden: 'You do not have permission.', unauthorized: 'Sign in again.', step_up_required: 'Enter a fresh verification code.', step_up_unavailable: 'Verification unavailable. Check Jellyfin Security.', confirmation_required: 'Enter the confirmation text.', unavailable: 'Account service unavailable. Check plugin health.', storage_recovery_required: 'Account storage needs recovery. Check plugin health.' })[code] || 'Unable to complete the request. Check permissions and plugin health.';
 function field(name, value, metadata = {}) {
-    const root = make('div'); root.className = 'inputContainer hubField'; const id = 'hub-' + uuid(), label = make('label', title(name)); label.className = 'inputLabel'; label.htmlFor = id;
+    const root = make('div'); root.className = 'inputContainer hubField'; const id = 'hub-' + uuid(), label = make('label', metadata.label || title(name)); label.className = 'inputLabel'; label.htmlFor = id;
     let input;
-    if (metadata.values) { input = make('select'); for (const item of metadata.values) { const option = make('option', item === null ? 'Inherit' : item); option.value = item === null ? '' : item; input.append(option); } input.value = value ?? ''; }
+    if (metadata.values) { input = make('select'); for (const item of metadata.values) { const option = make('option', metadata.labels?.[item] || (item === null ? 'Inherit' : item)); option.value = item === null ? '' : item; input.append(option); } input.value = value ?? ''; }
     else { input = make('input'); input.type = typeof value === 'boolean' ? 'checkbox' : typeof value === 'number' || name === 'MaxParentalRating' ? 'number' : metadata.secret ? 'password' : 'text'; if (input.type === 'checkbox') { input.setAttribute('is', 'emby-checkbox'); input.className = 'emby-checkbox'; input.checked = value; root.className = 'checkboxContainer hubField'; } else input.value = Array.isArray(value) ? value.join(', ') : value ?? ''; }
     input.id = id; input.autocomplete = metadata.secret ? 'new-password' : 'off'; if (metadata.min !== undefined) input.min = metadata.min; if (metadata.max !== undefined) input.max = metadata.max;
     if (metadata.help) root.dataset.help = metadata.help;
@@ -30,6 +31,23 @@ function table(columns, rows) {
     const wrapper = make('div'); wrapper.className = 'hubTableWrap'; const node = make('table'); node.className = 'tbl hubTable'; const head = make('tr');
     for (const label of columns) { const cell = make('th', label); cell.scope = 'col'; head.append(cell); } const thead = make('thead'); thead.append(head); node.append(thead);
     const body = make('tbody'); for (const row of rows) { const tr = make('tr'); for (const value of row) { const td = make('td'); td.append(value instanceof Node ? value : value !== null && typeof value === 'object' ? make('pre', pretty(value)) : document.createTextNode(pretty(value))); tr.append(td); } body.append(tr); } node.append(body); wrapper.append(node); return wrapper;
+}
+const accessValue = value => value === null ? 'No limit' : typeof value === 'boolean' ? value ? 'Allow' : 'Deny' : Array.isArray(value) ? value.join(', ') || 'None' : String(value);
+function accessDiff(before, after) {
+    const rows = Object.keys(after).filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key])).map(key => [title(key), accessValue(before[key]), accessValue(after[key])]);
+    return rows.length ? table(['Permission', 'Current', 'Reviewed'], rows) : make('p', 'No access changes.');
+}
+function resultSummary(result) {
+    const outcomes = result.outcomes || [], pending = outcomes.filter(item => !['applied', 'administrator_skipped'].includes(item.status)).length;
+    if (result.remediationPending || result.status === 'unknown' || pending) return 'Some changes need review. Check current access before continuing.';
+    if (outcomes.length) return outcomes.filter(item => item.status === 'applied').length + ' account(s) updated.';
+    return 'Saved.';
+}
+function changeDescription(path, payload) {
+    const operation = path.split('/').at(-1), labels = { 'user.enable': 'Enable account', 'user.disable': 'Disable account', 'user.sessions.revoke': 'Revoke account sessions', 'user.discord.unlink': 'Unlink Discord', 'policy.apply': 'Apply reviewed access', 'policy.rollback': 'Restore saved access', 'group.save': 'Save access template', 'group.copy-user': 'Copy access to template', 'group.delete': 'Delete unused template', assign: 'Save group assignment', apply: 'Apply reviewed group access', reset: 'Reset reviewed group access', rollback: 'Restore saved group access', 'settings.public-url': 'Change public URL', 'settings.library': 'Change library notifications' };
+    const label = labels[operation] || (path.startsWith('invites') ? 'Update invitation' : path === 'invite-defaults' ? 'Change invitation permissions' : 'Confirm account settings');
+    const count = payload?.payload?.userIds?.length || payload?.payload?.targets?.length;
+    return label + (count ? ' for ' + count + ' account(s)' : '');
 }
 function confirmation(description, signal, securitySensitive = true) {
     return new Promise(resolve => {
@@ -50,7 +68,7 @@ function confirmation(description, signal, securitySensitive = true) {
 export function mountWorkspace(root, client) {
     let active = new AbortController(), state, dependencies = [], selectedTab = 'People', cleanup, generation = 0, skip = 0;
     const status = root.querySelector('.hubMessage'), content = root.querySelector('.hubContent'), tabs = root.querySelector('.hubTabs');
-    const names = ['People', 'Groups', 'Invites', 'Library', 'Security', 'Audit', 'Notifications', 'Settings'];
+    const names = ['People', 'Groups', 'Invites', 'Security', 'Audit', 'Notifications', 'Settings'];
     const dependencyIds = { Security: 'security' };
     const dependencyPanel = make('details'); dependencyPanel.className = 'hubDependencyHealth'; tabs.before(dependencyPanel);
     function renderDependencies() {
@@ -68,19 +86,19 @@ export function mountWorkspace(root, client) {
         const scope = generation, signal = active.signal; let grant;
         if (proof) {
             const operational = path.startsWith('audit/') || path.startsWith('seerr/') || path.startsWith('domains/') || path.startsWith('settings/notifications') || path === 'commands/settings.library' || path === 'commands/settings.seerr';
-            grant = await confirmation('Authorize ' + path.split('?')[0], active.signal, !operational); if (!grant) throw Error('Cancelled'); payload = { ...payload, ...grant };
+            grant = await confirmation(changeDescription(path, payload), active.signal, !operational); if (!grant) throw Error('Cancelled'); payload = { ...payload, ...grant };
         }
         try {
             if (scope !== generation || signal.aborted) throw new DOMException('View changed', 'AbortError');
             const response = await fetch(client.getUrl('AccountHub/api/v1/' + path), { method, signal, credentials: 'omit', cache: 'no-store', headers: { Authorization: 'MediaBrowser Token="' + client.accessToken() + '"', 'Content-Type': 'application/json' }, body: payload === undefined ? undefined : JSON.stringify(payload) });
             const body = await response.json(); if (scope !== generation) throw Error('View changed');
             if ((response.status === 401 || response.status === 403) && body.twoFactorRequired === true) { content.replaceChildren(); throw Error('Complete Jellyfin Security 2FA, then return.'); }
-            if (!response.ok || body.ok !== true) throw Error(body.error?.message || body.error?.code || 'Request failed: ' + response.status); return body.data;
+            if (!response.ok || body.ok !== true) throw Error(window.SuiteAdminUI?.failure?.(body,response,requestError(body.error?.code))||requestError(body.error?.code)); return body.data;
         } finally { if (grant?.stepUp) grant.stepUp.code = null; if (payload?.stepUp) payload.stepUp.code = null; }
     }
     const action = fn => async () => { const current = generation; status.textContent = ''; try { await fn(); } catch (error) { if (current === generation && error.name !== 'AbortError') status.textContent = error.message; } };
     const button = (text, fn) => { const value = make('button', text); value.onclick = action(fn); return value; };
-    async function command(operation, payload) { const result = await request('commands/' + operation, 'POST', { revision: state.revision, commandId: uuid(), payload }, true); state = await request('workspace'); status.textContent = pretty(result); return result; }
+    async function command(operation, payload) { const result = await request('commands/' + operation, 'POST', { revision: state.revision, commandId: uuid(), payload }, true); state = await request('workspace'); status.textContent = resultSummary(result); return result; }
     async function show(name = selectedTab) {
         cleanup?.(); cleanup = undefined; active.abort(); active = new AbortController(); generation++; selectedTab = name; content.replaceChildren(); status.textContent = 'Loading…';
         const view = generation;
@@ -92,37 +110,60 @@ export function mountWorkspace(root, client) {
             const unavailable = dependencies.find(item => item.id === dependencyIds[name] && !item.available);
             if (unavailable) { content.append(make('h2', name), make('p', unavailable.reason), make('p', unavailable.fix)); return; }
             if (name === 'People') await people(); else if (name === 'Groups') await groups(); else if (name === 'Invites') await invites(); else if (name === 'Security') cleanup = mountSecurityPanel(content, client, { safeActions: true });
-            else if (name === 'Audit') audit(); else if (name === 'Notifications') await notifications(); else if (name === 'Settings') settings(); else if (name === 'Library') await library();
+            else if (name === 'Audit') audit(); else if (name === 'Notifications') await notifications(); else if (name === 'Settings') settings();
         } catch (error) { if (view === generation && error.name !== 'AbortError') status.textContent = error.message; }
     }
     async function people() {
-        const search = field('Search users', ''), toolbar = make('div'); toolbar.className = 'hubToolbar'; toolbar.append(search.root, button('Search', async () => { skip = 0; await load(); })); content.append(toolbar); const list = make('div'); content.append(list);
+        const selected=new Map(),search = field('Search users', ''), toolbar = make('div'); toolbar.className = 'hubToolbar';toolbar.append(search.root, button('Search', async () => { skip = 0;selected.clear();await load(); }),button('Edit selected access',async()=>{if(!selected.size)throw Error('Select users first.');await editPolicy([...selected.values()][0],[...selected.keys()]);}),button('Clear selection',async()=>{selected.clear();await load();})); content.append(toolbar); const list = make('div'); content.append(list);
         async function load() {
             const data = await request('users?skip=' + skip + '&limit=50&search=' + encodeURIComponent(search.value()));
-            list.replaceChildren(table(['User', 'Administrator', 'Disabled', 'Actions'], data.items.map(user => {
+            list.replaceChildren(table(['Select','User', 'Administrator', 'Disabled', 'Discord', 'Actions'], data.items.map(user => {
+                const choice=field('Select '+user.username,selected.has(user.id));choice.input.disabled=user.administrator;choice.input.onchange=()=>{if(choice.input.checked){if(selected.size>=100){choice.input.checked=false;status.textContent='Select at most 100 users.';return;}selected.set(user.id,user);}else selected.delete(user.id);};
                 const actions = make('div'); actions.className = 'hubActions';
                 actions.append(button('Edit access', () => editPolicy(user)), button(user.disabled ? 'Enable' : 'Disable', async () => { await command(user.disabled ? 'user.enable' : 'user.disable', { userId: user.id }); await load(); }), button('Revoke sessions', async () => { await command('user.sessions.revoke', { userId: user.id }); }));
                 if (user.administrator) actions.children[0].disabled = true;
-                return [user.username, user.administrator, user.disabled, actions];
+                actions.append(button('Copy access to template',()=>copyAccessTemplate(user)));
+                if(user.discordLinked)actions.append(button('Unlink Discord',async()=>{await command('user.discord.unlink',{userId:user.id});await load();}));
+                return [choice.root,user.username, user.administrator, user.disabled, user.discordLinked?'Linked':'Not linked', actions];
             })), button('Previous', async () => { skip = Math.max(0, skip - 50); await load(); }), button('Next', async () => { if (skip + 50 < data.total) { skip += 50; await load(); } }));
         }
         await load();
     }
-    async function editPolicy(user) {
-        const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; dialog.setAttribute('aria-label', 'Access for ' + user.username); const grid = make('div'); grid.className = 'hubGrid dialogContentInner'; const controls = {};
+    async function copyAccessTemplate(user){
+        const dialog=make('dialog');dialog.className='dialog formDialog accountHubDialog';const name=field('Template name',user.username+' access');
+        const close=()=>{dialog.close();dialog.remove();};active.signal.addEventListener('abort',close,{once:true});
+        dialog.append(make('h2','New access template'),make('p','Copies managed permissions only. Administrator status, credentials, Discord links and 2FA are never copied.'),name.root,button('Create template',async()=>{if(!name.value().trim())throw Error('Enter a template name.');await request('group-policy/commands/group.copy-user','POST',{revision:state.revision,commandId:uuid(),payload:{id:uuid(),sourceUserId:user.id,name:name.value().trim()}},true);close();await show('Groups');}),button('Cancel',close));document.body.append(dialog);dialog.showModal();
+    }
+    async function editPolicy(user,userIds=[user.id]) {
+        const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; dialog.setAttribute('aria-label', 'Access for ' + user.username); const grid = make('div'); grid.className = 'hubGrid'; const controls = {};
         active.signal.addEventListener('abort', () => { dialog.close(); dialog.remove(); }, { once: true });
-        for (const [key, value] of Object.entries(user.policy)) { controls[key] = field(key, value ?? ''); grid.append(controls[key].root); }
-        const message = make('p'), save = button('Preview', async () => {
-            const managedFields = Object.fromEntries(Object.entries(controls).map(([key, value]) => [key, key === 'MaxParentalRating' && value.value() === '' ? null : value.value()]));
-            const preview = await request('policy/preview', 'POST', { userIds: [user.id], managedFields }); message.textContent = pretty(preview);
-            apply.disabled = false; apply.onclick = action(async () => { await command('policy.apply', { userIds: [user.id], managedFields }); dialog.close(); dialog.remove(); await show(); });
+        let draft = 0;
+        const include={};for (const [key, value] of Object.entries(user.policy)) {
+            const cell = make('div'); cell.className = 'hubField';
+            controls[key] = field(key, key === 'EnabledFolders' ? value || [] : value ?? '', ['MaxActiveSessions', 'MaxParentalRating'].includes(key) ? { min: 0, max: 1000 } : {});
+            if(userIds.length>1){include[key]=field('Change '+title(key),false);controls[key].input.disabled=true;include[key].input.onchange=()=>{controls[key].input.disabled=!include[key].input.checked;invalidate();};cell.append(include[key].root);}cell.append(controls[key].root);grid.append(cell);
+        }
+        const message = make('div'); message.setAttribute('role', 'status');
+        const invalidate = () => { draft++; apply.disabled = true; message.replaceChildren(make('p', 'Preview the updated draft before applying.')); };
+        const save = button('Preview', async () => {
+            const reviewedDraft = ++draft; apply.disabled = true;
+            for (const [key, control] of Object.entries(controls)) if ((!include[key] || include[key].input.checked) && !control.input.checkValidity()) { control.input.reportValidity(); throw Error('Check the permission values.'); }
+            const managedFields = Object.fromEntries(Object.entries(controls).filter(([key])=>!include[key]||include[key].input.checked).map(([key, value]) => [key, key === 'MaxParentalRating' && value.value() === '' ? null : value.value()]));
+            if(!Object.keys(managedFields).length)throw Error('Choose at least one field to change.');
+            const preview = await request('policy/preview', 'POST', { userIds, managedFields });
+            if (reviewedDraft !== draft || !dialog.isConnected) return;
+            message.replaceChildren();
+            for (const item of preview.users || []) { const section = make('section'); section.append(make('h3', userIds.length === 1 ? user.username : selectedUsername(item.userId)), accessDiff(item.before, item.after)); message.append(section); }
+            if (preview.skippedAdmins?.length) message.append(make('p', preview.skippedAdmins.length + ' administrator(s) excluded.'));
+            apply.disabled = false; apply.onclick = action(async () => { if (reviewedDraft !== draft || !dialog.isConnected) return; apply.disabled = true; const result = await command('policy.apply', { userIds, managedFields }); dialog.close(); dialog.remove(); await show(); status.textContent = resultSummary(result); });
         }), apply = make('button', 'Apply reviewed changes'); apply.disabled = true;
-        grid.addEventListener('input', () => { apply.disabled = true; message.textContent = 'Preview the updated draft before applying.'; });
+        const selectedUsername = id => id === user.id ? user.username : id;
+        grid.addEventListener('input', invalidate); grid.addEventListener('change', invalidate);
         const history = make('div');
-        dialog.append(make('h2', 'Access for ' + user.username), make('p', 'Only managed fields change. Administrators are excluded. A durable rollback snapshot is saved before each apply. EnabledFolders accepts comma-separated library IDs.'), grid, message, save, apply,
+        dialog.append(make('h2', userIds.length>1?'Access for '+userIds.length+' selected users':'Access for ' + user.username), make('p', 'Review permissions before applying. Administrators are excluded; changes can be rolled back.'), make('p', 'Enabled Folders: comma-separated library IDs. Leave parental rating blank for no limit. Session limit 0 means unlimited.'), grid, message, save, apply,
             button('Review rollback history', async () => {
                 const data = await request('policy/snapshots', 'POST', { userId: user.id }, state.stepUpLevelMirror === 'Everything');
-                history.replaceChildren(table(['Time', 'Before', 'After', 'Action'], data.items.map(snapshot => [snapshot.occurredAt, snapshot.metadata.before, snapshot.metadata.after, button('Rollback managed fields', async () => { await command('policy.rollback', { userIds: [user.id], snapshotId: snapshot.eventId }); dialog.close(); dialog.remove(); await show(); })])));
+                history.replaceChildren(make('h3', 'Rollback history for ' + user.username), table(['Time', 'Saved changes', 'Action'], data.items.map(snapshot => [snapshot.occurredAt, accessDiff(snapshot.metadata.before, snapshot.metadata.after), button('Rollback managed fields', async () => { const result = await command('policy.rollback', { userIds: [user.id], snapshotId: snapshot.snapshotId }); dialog.close(); dialog.remove(); await show(); status.textContent = resultSummary(result); })])));
             }), history, button('Cancel', async () => { dialog.close(); dialog.remove(); })); document.body.append(dialog); dialog.showModal();
     }
     async function groups() {
@@ -176,25 +217,28 @@ export function mountWorkspace(root, client) {
             if (!current()) unmount();
         } catch (error) { unmount(); throw error; }
     }
-    async function library() {
-        const data = await request('library/settings'), enabled = field('Notify new library additions in the notification center', data.settings.enabled), episodes = field('New episodes', data.settings.episodes), movies = field('New movies', data.settings.movies);
-        enabled.root.dataset.help = 'Notify users about future additions they can access. Existing items are not included. Personal preferences still apply.';
-        const health = make('details'), healthTitle = make('summary', 'Library diagnostics'); health.append(healthTitle, make('pre', pretty(data.health))); health.className = 'suiteCard';
-        content.append(make('h2', 'New library content'), enabled.root, episodes.root, movies.root,
-            button('Save library notifications', async () => { await command('settings.library', { revision: data.settings.revision, enabled: enabled.value(), episodes: episodes.value(), movies: movies.value() }); await show(); }), health);
-        const dependency = dependencies.find(item => item.id === 'discord');
-        const link = button('Open Discord library announcement settings', async () => { location.hash = '/configurationpage?name=DiscordBridge'; }); link.disabled = !dependency?.available; link.title = dependency?.available ? '' : dependency?.reason + ' ' + dependency?.fix; content.append(link);
-    }
     function settings() {
-        content.append(make('h2', 'Account Hub settings'));
+        content.append(make('h2', 'Account settings'));
+        const general = make('section'); general.className = 'suiteCard'; content.append(general);
+        const publicUrl = field('Public Jellyfin URL', state.publicBaseUrl || '', { help: 'HTTPS address used for invitations, Discord linking and recovery. Include your Jellyfin BaseUrl if configured.' });
+        general.append(publicUrl.root, button('Save public URL', async () => { await command('settings.public-url', { publicBaseUrl: publicUrl.value() }); }), button('Invitation defaults and permissions', () => show('Invites')));
+        const integrations = make('section'); integrations.className = 'suiteCard'; integrations.append(make('h3', 'Plugin permissions'), make('p', 'Removal permissions are managed separately from account access templates.'));
+        for (const [id, label, page] of [['deletion-queue', 'Removal permissions', 'DeletionQueueAdmin'], ['automatic', 'Automatic request rules', 'AutomaticDeletionRequests']]) {
+            const dependency = dependencies.find(item => item.id === id), link = button(label, async () => { location.hash = '/configurationpage?name=' + page; });
+            link.disabled = !dependency?.available; link.title = dependency?.available ? '' : 'Install and enable this plugin, then refresh.'; integrations.append(link);
+        }
+        integrations.dataset.help = 'Deletion Queue controls who can propose removal (Denied, Own requests or Any accessible item), per-user overrides, consent, approval and execution. Automatic request rules are administrator-only and still obey Queue permissions and safety checks. Native account templates do not grant either plugin permission.';
+        content.append(integrations);
+        const advanced = make('details'); advanced.append(make('summary', 'Advanced settings')); content.append(advanced);
         const creation = make('section'), creationView = generation, creationSignal = active.signal; creation.className = 'suiteCard';
-        content.append(creation);
+        advanced.append(creation);
         async function creationStatus() {
             const policy = await request('user-creation');
             if (creationView !== generation || creationSignal.aborted) return;
-            creation.replaceChildren(make('h3', 'User creation workflow'), make('p', policy.owner === 'native'
+            if (policy.owner === 'native') advanced.open = true;
+            creation.replaceChildren(make('h3', 'Temporary native creation'), make('p', policy.owner === 'native'
                 ? 'Native user creation is temporarily enabled until ' + new Date(policy.nativeOverrideUntil).toLocaleTimeString() + '. Hub onboarding is paused.'
-                : 'Create accounts through Account Hub Invitations. Native Add user requests are blocked while Hub owns creation.'),
+                : 'Create accounts through invitations. Native Add user is blocked unless the temporary override is enabled.'),
                 button(policy.owner === 'native' ? 'End native override and resume Hub' : 'Enable native creation for five minutes', async () => {
                     await request('user-creation/native-override', 'POST', { commandId: uuid(), revision: (await request('workspace')).revision, enabled: policy.owner !== 'native' }, true);
                     await creationStatus();
@@ -203,17 +247,17 @@ export function mountWorkspace(root, client) {
         }
         creationStatus().catch(error => { if (creationView === generation && !creationSignal.aborted) status.textContent = error.message; });
         const auditDays = field('Keep audit history (days)', state.auditRetentionDays, { min: 15, max: 365, help: 'Retain audit events for 15–365 days.' });
-        const general = make('section'); general.className = 'suiteCard'; content.append(general);
-        general.append(make('h3', 'History and public links'), auditDays.root, button('Save audit retention', async () => { await request('settings/retention', 'POST', { commandId: uuid(), revision: state.revision, auditRetentionDays: auditDays.value(), notificationRetentionDays: state.notificationRetentionDays }, true); await show(); }));
-        const publicUrl = field('Public Jellyfin URL', state.publicBaseUrl || '', { help: 'HTTPS address used for public links. Include your Jellyfin BaseUrl if configured.' }); general.append(publicUrl.root, button('Save public URL', async () => { await command('settings.public-url', { publicBaseUrl: publicUrl.value() }); }));
-        const security = make('section'); security.className = 'suiteCard'; security.append(make('h3', 'Security integration')); content.append(security);
-        const mirror = field('Manual step-up mirror', state.stepUpLevelMirror, { values: ['Off', 'Destructive', 'AllConfigChanges', 'Everything'] }), mode = field('Security alert mode', state.securityAlertMode, { values: ['native', 'hub', 'both'] }), passwords = field('Local password login policy', state.passwordLoginPolicy, { values: ['auto', 'local_disabled', 'allow_local'] });
-        mirror.root.dataset.help = 'Match the level configured in Jellyfin Security. Lowering this level still requires authorization under the previous level. Alert routing does not edit Security configuration.';
+        const history = make('section'); history.className = 'suiteCard'; advanced.append(history);
+        history.append(make('h3', 'Audit history'), auditDays.root, button('Save audit retention', async () => { await request('settings/retention', 'POST', { commandId: uuid(), revision: state.revision, auditRetentionDays: auditDays.value(), notificationRetentionDays: state.notificationRetentionDays }, true); await show(); status.textContent = 'Saved.'; }));
+        const security = make('section'); security.className = 'suiteCard'; security.append(make('h3', 'Security integration')); advanced.append(security);
+        const mirror = field('Extra verification level', state.stepUpLevelMirror, { values: ['Off', 'Destructive', 'AllConfigChanges', 'Everything'], labels: { Off: 'Confirmation only', Destructive: 'Destructive changes', AllConfigChanges: 'Configuration and destructive changes', Everything: 'All security-sensitive changes' } }), mode = field('Security alerts', state.securityAlertMode, { values: ['native', 'hub', 'both'], labels: { native: 'Jellyfin Security', hub: 'Account notifications', both: 'Both' } }), passwords = field('Local password login', state.passwordLoginPolicy, { values: ['auto', 'local_disabled', 'allow_local'], labels: { auto: 'Follow native sign-in policy', local_disabled: 'Disable local passwords', allow_local: 'Allow when native policy permits' }, help: 'Controls Hub invitations and recovery; it does not change Jellyfin authentication providers or bypass native sign-in restrictions.' });
+        mirror.root.dataset.help = 'Manually match the level configured in Jellyfin Security; this is not synchronized automatically. Lowering it requires authorization under the previous level. Operational settings and audit reads do not require extra verification. Alert routing does not edit Security configuration.';
         security.append(mirror.root, mode.root, passwords.root, button('Save Security integration settings', async () => {
             const grant = await confirmation('Change Security integration settings', active.signal); if (!grant) return; grant.confirmation = 'CHANGE SECURITY SETTINGS';
-            try { await request('security/settings', 'PUT', { commandId: uuid(), revision: state.revision, settings: { stepUpLevelMirror: mirror.value(), alertMode: mode.value(), passwordLoginPolicy: passwords.value() }, ...grant }); await show(); } finally { grant.stepUp.code = null; }
+            try { await request('security/settings', 'PUT', { commandId: uuid(), revision: state.revision, settings: { stepUpLevelMirror: mirror.value(), alertMode: mode.value(), passwordLoginPolicy: passwords.value() }, ...grant }); await show(); status.textContent = 'Saved.'; } finally { grant.stepUp.code = null; }
         }));
-        const secret = field('Replace webhook secret', '', { secret: true, help: 'At least 32 characters. Keep the original database and keys together when backing up. Never disable 2FA to recover this plugin.' }); security.append(secret.root, button('Store signing secret', async () => {
+        const webhook = make('details'); webhook.append(make('summary', 'Security webhook'), make('p', state.securityWebhookConfigured ? 'Signing secret configured.' : 'No signing secret configured.')); security.append(webhook);
+        const secret = field('Replace webhook secret', '', { secret: true, help: 'At least 32 characters. Keep the original database and keys together when backing up. Never disable 2FA to recover this plugin.' }); webhook.append(secret.root, button('Store signing secret', async () => {
             try { await request('settings/secrets/security.webhookSecret', 'POST', { commandId: uuid(), revision: state.revision, secret: secret.value() }, true); await show(); } finally { secret.input.value = ''; }
         }));
         active.signal.addEventListener('abort', () => { secret.input.value = ''; }, { once: true });

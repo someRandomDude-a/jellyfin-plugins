@@ -20,9 +20,21 @@ public sealed class LifecycleAuditSink(HubStore store) : IAuditSink
 
 public sealed class LifecycleNoticeSink(AccountHub.Api.NotificationsClient notifications) : IAdminNoticeSink
 {
-    public async Task PublishAsync(CancellationToken ct)
+    public Task PublishAsync(CancellationToken ct)=>PublishAsync("Account activity","",ct);
+    public async Task PublishAsync(string title,string message,CancellationToken ct)
     {
-        var entry = new AccountHub.Api.NotificationEvent(1, Guid.NewGuid(), "account-hub", "account.updated", "info", "Account activity", "Review Account Hub audit for account activity.", [], true, DateTimeOffset.UtcNow);
+        // Project the action, never arbitrary invite contact text, usernames,
+        // passwords, reset links or provider prose supplied by a legacy caller.
+        var notice=title switch {
+            "Password changed" => ("account.password.changed","Account password changed","An account password was changed from its account page. Review the account audit if this was unexpected."),
+            "User created" => ("account.created","Jellyfin account created","A new account was created with an administrator-selected access preset. Review its current access in user management."),
+            "Invite requested" => ("account.invite.requested","Invitation request received","A new signup invitation request needs administrator review. Open invitations to review its details and decide whether to approve it."),
+            "Password reset" => ("account.password.reset","Account password reset","An account completed a password reset through its private Discord recovery link. Review the account audit if this was unexpected."),
+            "Password reset requested" => ("account.password.reset.requested","Password recovery requested","A private Discord password-recovery link was requested. Requesting a link alone does not change the password."),
+            "Invite used" => ("account.invite.used","Signup invitation redeemed","A signup invitation was used to create an account with its configured access preset. Review invitations for its remaining uses."),
+            _ => ("account.updated","Account management activity","An account management operation completed. Open the account audit to review its action and outcome.")
+        };
+        var entry = new AccountHub.Api.NotificationEvent(1, Guid.NewGuid(), "account-hub", notice.Item1, "info", notice.Item2, notice.Item3, [], true, DateTimeOffset.UtcNow,Link:"web/index.html#/configurationpage?name=AccountHub");
         await notifications.PublishRequiredAsync(entry, ct);
     }
 }

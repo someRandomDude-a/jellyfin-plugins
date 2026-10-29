@@ -9,6 +9,7 @@ using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using DiscordBridge.Api;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AccountHub.Api;
 
@@ -23,7 +24,9 @@ public sealed class InviteOnboardingController(InviteOnboardingService invites, 
     public Task<IActionResult> Create(JsonElement body, CancellationToken ct) => Run(async () =>
     {
         var caller = await host.RequireAdministratorAsync(HttpContext, ct);
-        var group = body.TryGetProperty("groupId", out var g) && g.ValueKind == JsonValueKind.String ? g.GetString() : null;
+        var hasGroup=body.TryGetProperty("groupId",out var g);
+        var group=hasGroup&&g.ValueKind==JsonValueKind.String?g.GetString():null;
+        if(!hasGroup)group=(await HttpContext.RequestServices.GetRequiredService<InviteDefaultsService>().ReadAsync(ct)).DefaultGroupId?.ToString("D");
         var policy = "{}";
         if (group is not null)
         {
@@ -100,7 +103,20 @@ public sealed class InviteOnboardingController(InviteOnboardingService invites, 
         Response.Headers.CacheControl = "no-store"; Response.Headers["Referrer-Policy"] = "no-referrer"; Response.Headers["X-Content-Type-Options"] = "nosniff";
         Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
         var path = WebUtility.HtmlEncode(Request.PathBase + "/AccountHub/");
-        return Content($"<!doctype html><html lang=\"en\" class=\"theme-{WebUtility.HtmlEncode(styles.Theme)}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"referrer\" content=\"no-referrer\"><base href=\"{path}\"><title>Accept invitation</title><link rel=\"stylesheet\" href=\"assets/native.css\">{styles.ThemeLink}<link rel=\"stylesheet\" href=\"../Branding/Css\"></head><body><main class=\"content-primary\"><h1>Accept invitation</h1><p id=\"invite-status\" role=\"status\" aria-live=\"polite\">Loading invitation…</p><form id=\"invite-form\" hidden><div class=\"inputContainer\"><label class=\"inputLabel\" for=\"invite-username\">Choose username</label><input is=\"emby-input\" class=\"emby-input\" id=\"invite-username\" autocomplete=\"username\" maxlength=\"64\" required></div><div class=\"inputContainer\"><label class=\"inputLabel\" for=\"invite-password\">Choose password</label><input is=\"emby-input\" class=\"emby-input\" id=\"invite-password\" type=\"password\" autocomplete=\"new-password\" maxlength=\"1024\" required></div><div class=\"inputContainer\"><label class=\"inputLabel\" for=\"invite-confirm\">Confirm password</label><input class=\"emby-input\" id=\"invite-confirm\" type=\"password\" autocomplete=\"new-password\" maxlength=\"1024\" required></div><button class=\"raised button-submit emby-button\" type=\"submit\">Create my account</button></form></main><script src=\"invite-assets/invite-public.js\" defer></script></body></html>", "text/html; charset=utf-8");
+        return Content($$"""
+            <!doctype html><html lang="en" dir="ltr" class="theme-{{WebUtility.HtmlEncode(styles.Theme)}}"><head>
+            <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><base href="{{path}}">
+            <title>Accept invitation</title><link rel="stylesheet" href="assets/native.css">{{styles.ThemeLink}}<link rel="stylesheet" href="../Branding/Css">
+            </head><body class="skinBody"><div class="backgroundContainer"></div><main id="loginPage" class="page standalonePage backdropPage" style="position:relative" data-role="page" data-backbutton="false" data-backdroptype="splashscreen">
+            <div class="padded-left padded-right padded-bottom-page margin-auto-y">
+            <div class="readOnlyContent margin-auto-x"><div class="padded-left padded-right flex align-items-center justify-content-center"><h1 class="sectionTitle">Accept invitation</h1></div><p id="invite-status" role="status" aria-live="polite">Loading invitation…</p></div>
+            <form id="invite-form" class="manualLoginForm margin-auto-x" hidden>
+            <div class="inputContainer"><label class="inputLabel" for="invite-username">Choose username</label><input is="emby-input" class="emby-input" id="invite-username" autocomplete="username" maxlength="64" required></div>
+            <div class="inputContainer"><label class="inputLabel" for="invite-password">Choose password</label><input is="emby-input" class="emby-input" id="invite-password" type="password" autocomplete="new-password" maxlength="1024" required></div>
+            <div class="inputContainer"><label class="inputLabel" for="invite-confirm">Confirm password</label><input is="emby-input" class="emby-input" id="invite-confirm" type="password" autocomplete="new-password" maxlength="1024" required></div>
+            <button is="emby-button" class="raised button-submit block emby-button" type="submit">Create my account</button></form>
+            </div></main><script src="invite-assets/invite-public.js" defer></script></body></html>
+            """, "text/html; charset=utf-8");
     }
     private async Task<IActionResult> Run(Func<Task<object>> action)
     {

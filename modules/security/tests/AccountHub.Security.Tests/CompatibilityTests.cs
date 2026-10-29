@@ -7,6 +7,12 @@ namespace AccountHub.Security.Tests;
 
 public sealed class CompatibilityTests
 {
+    [Fact]
+    public void CurrentReviewedBuildVersionIsAcceptedButDoesNotGrantArbitraryFutureVersions()
+    {
+        Assert.True(SupportedSecurity.Matches(SupportedSecurity.Version));
+        Assert.False(SupportedSecurity.Matches("99.99.99.99"));
+    }
     [Theory]
     [InlineData("2.6.4", true)]
     [InlineData("2.6.4.0", true)]

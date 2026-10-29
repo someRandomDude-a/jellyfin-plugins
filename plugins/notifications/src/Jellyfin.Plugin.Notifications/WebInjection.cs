@@ -38,7 +38,7 @@ public sealed class WebInjection:IStartupFilter
                 if(end>=0&&!html.Contains("data-notifications-bootstrap",StringComparison.Ordinal))
                 {
                     var root=System.Net.WebUtility.HtmlEncode(prefix+"/Notifications");
-                    html=html.Insert(end,$"<link rel=\"stylesheet\" href=\"{root}/assets/bell.css\"><script defer data-notifications-bootstrap data-notifications-api=\"Notifications/api/v1/\" src=\"{root}/assets/bell.js\"></script>");
+                    html=html.Insert(end,$"<link rel=\"stylesheet\" href=\"{root}/assets/bell.css\"><link rel=\"stylesheet\" href=\"{root}/assets/notification-studio.css\"><script defer src=\"{root}/assets/notification-card.js\"></script><script defer data-notifications-bootstrap data-notifications-api=\"Notifications/api/v1/\" src=\"{root}/assets/bell.js\"></script>");
                     bytes=Encoding.UTF8.GetBytes(html);context.Response.ContentLength=bytes.Length;
                     context.Response.Headers.Remove("ETag");context.Response.Headers.Remove("Last-Modified");context.Response.Headers.CacheControl="no-store";
                 }

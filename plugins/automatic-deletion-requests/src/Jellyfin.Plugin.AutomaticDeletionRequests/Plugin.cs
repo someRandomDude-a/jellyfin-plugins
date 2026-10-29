@@ -26,6 +26,7 @@ public sealed class Plugin : BasePlugin, IHasWebPages
 public sealed class ServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost host) {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"automatic-deletion-requests");
         services.AddSingleton<RuleStore>(); services.AddSingleton<AccountHub.Api.DeletionRequestsClient>();
         services.AddSingleton<RuleRunner>();
         services.AddSingleton<ArrConnections>();services.AddSingleton<ArrMetadata>();services.AddSingleton<JellyfinMetadata>();

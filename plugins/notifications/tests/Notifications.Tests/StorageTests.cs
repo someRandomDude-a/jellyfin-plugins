@@ -35,6 +35,7 @@ public sealed class StorageTests:IDisposable
         var deviceId=old.SavePush(user,subscription);
         var route=new Route("old","*","*","webhook","https://example.invalid",Secret:"preserve-encrypted-secret");
         old.Accept(entry,"hash",[(user,true,new[]{route},null)]);
+        var blockedUser=Guid.NewGuid();old.Accept(entry with{EventId=Guid.NewGuid(),Audience=[blockedUser]},"blocked-hash",[(blockedUser,false,[],null)]);var blockedId=old.Inbox(blockedUser,0,25,null,false,blocked:true).Single().Id;
         var leased=old.Claim();Assert.NotNull(leased);
         old.Preferences(user,[new("*","*","in-app",false)]);
         old.SaveSettings(new(0,[route]));
@@ -43,6 +44,7 @@ public sealed class StorageTests:IDisposable
         Assert.NotEqual(database,storage.Database);
         Assert.Contains(Path.Combine("Notifications","notifications.db"),storage.Database);
         Assert.Equal(id,current.Inbox(user,0,25,null,false).Single().Id);
+        Assert.Empty(current.Inbox(blockedUser,0,25,null,false));Assert.Equal(blockedId,current.Inbox(blockedUser,0,25,null,false,blocked:true).Single().Id);
         Assert.False(current.Preferences(user).Single().Enabled);
         Assert.Equal("preserve-encrypted-secret",current.Settings(false).Routes.Single().Secret);
         Assert.Equal(pushKey,current.PushSettings().PublicKey);Assert.Equal(subscription,current.PushTargets(user).Single().Subscription);Assert.Equal(deviceId,current.PushTargets(user).Single().Id);Assert.Single(current.PushJobs());
@@ -72,7 +74,7 @@ public sealed class StorageTests:IDisposable
     [Fact]public void PrePushLegacySchemaMigratesWithoutInventingSubscriptions(){
         var legacy=Path.Combine(root,"AccountHub");Directory.CreateDirectory(legacy);var protection=DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(legacy,"keys")),b=>b.SetApplicationName("AccountHub"));_=protection.CreateProtector("test").Protect("initialize");
         var database=Path.Combine(legacy,"account-hub.db");var old=new NotificationStore(new(){DatabasePath=database},protection,TimeProvider.System);var user=Guid.NewGuid();old.Preferences(user,[new("*","*","in-app",false)]);
-        using(var db=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=database}.ToString())){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DROP TABLE nh_push_jobs; DROP TABLE nh_push_subscriptions; DROP TABLE nh_push_settings";cmd.ExecuteNonQuery();}
+        using(var db=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=database}.ToString())){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DROP TABLE nh_push_jobs; DROP TABLE nh_push_subscriptions; DROP TABLE nh_push_settings; DROP TABLE nh_suppressed";cmd.ExecuteNonQuery();}
         var current=Open(Create());Assert.False(current.Preferences(user).Single().Enabled);Assert.False(current.PushSettings().Enabled);Assert.Empty(current.PushTargets(user));
     }
     [Fact] public void MissingBoundDatabaseIsNeverRecreated()

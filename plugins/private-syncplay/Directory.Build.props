@@ -1,6 +1,6 @@
 <Project>
   <Import Project="$(MSBuildThisFileDirectory)../../Jellyfin.Target.props" />
-  <!-- Latest stable Jellyfin target. Update together after the weekly latest-release check flags a new release. -->
+  <!-- Test/package bootstrap automatically imports the latest stable target. -->
   <PropertyGroup>
     <JellyfinTargetAbi>$(JellyfinVersion).0</JellyfinTargetAbi>
   </PropertyGroup>

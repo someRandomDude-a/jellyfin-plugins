@@ -1,365 +1,1009 @@
-# Consolidation and review — 2026-10-25
-
-## Web Push and metadata expansion — rebuilt acceptance passed (2026-10-26)
-
-- **Accepted current build:** `artifacts/push-parity-verified-{tests,package,installed}.log`: **954 .NET tests passed**, with the one environment-gated real-Arr test skipped in the root run and separately **passed** against real disposable Sonarr/Radarr (`artifacts/metadata-real-arr-tests.log`); root JavaScript/release-tool regressions; six-plugin packages; installed Push default/contact/enable/disable/authentication and fixed anonymous scoped worker; native single-use live handshake and replay rejection; **36** responsive/native-theme/keyboard/custom-skin browser checks including actual administrator Push enable/disable persistence; abrupt restart; seven-database integrity/foreign-key/native-ID checks; missing Hub/rule-state recovery. Linux amd64 fixture: `suite-integration-bafa5632-9e30-49b2-820f-098704dcf718`. Browser harness selectors were updated for the second expandable Notifications section and click the native checkbox's visible label, without force-clicking hidden controls. Application/package bytes were unchanged during the final browser-only reruns.
-- The two explicitly created Sonarr/Radarr containers and their anonymous configuration volumes were removed after acceptance; host logs/screenshots and all uncommitted work were retained. This is not physical-device/public-vendor Push delivery certification or a claim of every upstream metadata getter, arbitrary version skew, production Seerr destructive paths or native-Security-plugin combinations.
-
-- Implemented genuine opt-in, payload-free Web Push (RFC 8030/8292): administrator enable/contact settings, native-authenticated per-browser enrollment, explicit permission prompt, protected P-256 VAPID/subscription storage, public push-service allowlisting and public-address-pinned redirect-free transport, bounded queued delivery/retries and dead-subscription removal. Generic worker notifications carry no media, user identities, credentials or action capabilities. Native permissions/admin state, current preferences, inbox archival and subscription revocation are rechecked. Disabling clears devices/jobs; logout/account switching unsubscribes the browser. Narrow worker scope never replaces Jellyfin's own worker. See `docs/web-push.md` for setup and limitations.
-- Added additive plugin-owned Push tables with old-schema migration compatibility, re-encryption, fingerprint/checkpoint preservation and partial/corrupt-state rejection. Native Jellyfin schemas are unchanged. Fixed the native controller routing so the grant-authenticated live handshake and fixed public worker can reach their explicitly anonymous routes, without making the inbox or enrollment anonymous.
-- Expanded native metadata to people/provider IDs, manual collection/playlist names/IDs, direct manual-collection sibling native watch aggregates, stream details and completion/resume aggregates. Added explicitly scoped Sonarr latest-regular-season, finale and whole-series episode-file projections. Existence operators now use provider-confirmed absence markers instead of treating legacy null/failed/ambiguous reads as absence. Compatible cross-source metadata comparisons have two typed/validated source inputs. Unknown evidence remains blocked through NOT/OR and all execution gates remain intact.
-- User explicitly chose **native aggregates only**, not a new history recorder. Checked Maintainerr's pinned Jellyfin adapter: its `getWatchHistory` normalizes each user's completion/last-played state rather than retrieving an exhaustive event log. Added corresponding accurately labelled played-versus-watched, completed-user/item count, watched-since-added, all-episodes-since-added and newest-numbered-watched-episode timestamp summaries. Missing required timestamps stay unknown. **Not full upstream parity:** dynamic/smart membership, arbitrary selected child scopes, file ranks and authoritative Seerr approval-time semantics remain unsupported rather than guessed. Exact supported fields/scopes and remaining gaps are in `docs/metadata-source-parity.md`.
-- Current focused/root counts: **110 notification server**, **24 native notification/storage/migration**, **37 automation** and **30 notification browser-unit / 33 general web UI** tests passed. The real-Arr test is explicitly skipped in ordinary runs and separately **passed** against disposable Sonarr **4.0.20.3014** / Radarr **6.4.4.10685**, including latest-season/missing/finale/profile/provider-ID checks (`artifacts/metadata-real-arr-tests.log`). Synthetic DB seeding occurred only in stopped disposable containers; plugins used only GETs. No real vendor-to-physical-device Push delivery certification is claimed.
-- Initial root/package/installed/native-handshake/theme/database/recovery attempts are retained in `artifacts/push-parity-final-{tests,package,installed}.log`; the passing `push-parity-verified` build above supersedes those attempts. All work remains local, uncommitted and unpublished.
-- First run passed root regressions and six-plugin packaging, then installed acceptance found native Jellyfin socket middleware consuming upgrades with “Token is required” before MVC could validate the short-lived grant (403). Added an exact-path startup interception for the plugin socket only, with grant path/origin/native-session revalidation; other native sockets/authentication are untouched. A new `push-parity-verified` rebuild must pass before claiming installed acceptance for that fix or the subsequent native-summary additions.
-
-## Requester attribution, history and notification delivery — active verification (2026-10-26)
-
-- Automatic proposals now retain a separate internal automation authorizer and attribute ownership only to a uniquely verified, enabled native Seerr requester. Requester access/authority is checked on submission and requester mapping/authorizer validity are rechecked before execution. Unknown requesters remain explicitly unknown; attribution grants neither consent nor administrator approval.
-- Queue projections include requester/consent/activity badges. Administrator-only `scope=all-users` reveals requester labels only within the existing native media-visibility filter. Recent/older History grouping uses a seven-day administrator default and an inheritable personal setting; it does not purge records or change removal deadlines.
-- Notification layouts optionally archive recipient rows after a configured number of hours from the server-owned first view. Repeated views do not renew the clock; producer timestamps are rejected. Expired rows remain in History and cannot execute commands. Existing notification/native schemas are unchanged.
-- Library additions capture immutable requested/favourite audience evidence before fanout, union selected categories without duplicate inbox rows, retain legacy notice compatibility, enrich media titles and use native-authorized bounded raster thumbnail caching. Discord forwarding strips private requester/favourite arrays. Requested metadata is a bounded read-only, exact-provider/native-server-matched in-process service, not a public endpoint or authorization grant.
-- Live notification invalidations use single-use 30-second grants in WebSocket subprotocols rather than native session tokens in URLs. Connections have limits, five-minute lifetimes and native identity rechecks; only `changed` is sent. Existing permission-refresh polling remains the fallback. Added replay, cross-origin, expired/revoked grant and category union/master tests.
-- Focused evidence: **220 Deletion Queue**, **89 notification server**, **124 Account Hub** and **27 notification browser-unit** tests passed before the additional socket/category rejection tests. Fresh root → six-plugin package → Linux amd64 installed/theme/database/recovery verification is running in `artifacts/remaining-features-{tests,package,installed}.log`; no installed-acceptance claim for these changes yet.
-- **Subsequent work:** Web Push and additional metadata are now implemented with verification tracked above; the remaining metadata gaps are explicit. Arbitrary version skew, production Seerr paths and earlier concurrency/dependency limits remain unverified. Everything remains local, uncommitted and unpublished.
-- The pre-Push subset's rebuilt acceptance **passed**: root regressions, six-plugin packages, Linux amd64 installed APIs/authentication, 36 theme/layout checks, abrupt restart, seven-database integrity and missing-state recovery (`artifacts/remaining-features-{tests,package,installed}.log`; fixture `suite-integration-a3b61462-dbfd-46a8-b5f1-4ea7c248586d`). Desktop/mobile Overlay Studio screenshots were inspected; this does not certify the subsequent Push/metadata changes.
-
-## Current activity timeout and full-width layouts — active verification
-
-- User explicitly selected replacing the old 30-day intake cutoff for the **whole activity/consent stage**. Added administrator-only `ActivityWaitTimeoutEnabled` (off by default) and `ActivityWaitTimeoutDays` (45 when enabled, bounded 1–365). The clock is anchored to request creation, never renewed by playback, polling or repeated requests. Disabled means no activity/consent-stage expiry. Accepted delay and claimed/uncertain attempts do not expire under this clock. Administrator review retains its separate configured/personal deadline and continues through transient verification failures once review starts. New activity-wait expiry closes to the non-removal Cancelled graph endpoint; it never authorizes deletion.
-- Policy body/domain validation, Hub patch/schema/defaults, reset/copy paths, audit summary, all expiry call sites, public deadline/reason projection and administrative settings now carry the option. Historical expired requests stay closed and retain their actual elapsed limit even if settings later change. Native schemas were not changed; the optional settings are plugin-owned policy data. The previous hardcoded consent-path “30-day request limit” is removed for current projections.
-- Timing values are rendered **on connecting lines**: playback lookback, activity/consent waiting limit, administrator decision limit and safety-delay days/hours. Added the optional waiting-timeout → Cancelled route; its edge is routed below consent instead of crossing the consent card. Dates remain actual recorded/projected deadlines, not invented approvals or renewed clocks.
-- Expanded policy, automation form/canvas, Collections & Overlay Studio and its generated form/templates to their available settings width. Canvas height adapts to the viewport. Overlay layers now occupy a horizontal strip above the canvas rather than a short left column leaving empty space below it. Layer properties use compact columns, hide fields irrelevant to text/rectangle layers, use six accessible icon alignment controls in a 3×2 grid, and move canvas instructions into help. Container-width breakpoints stack the inspector below the preview where needed; mobile retains compact two-column properties. Fit zoom limits preview height without breaking explicit 50–200% zoom.
-- Focused evidence: **72 UI tests** and **22 lifecycle/progress tests** pass. The first full Deletion Queue run found that transient activity verification had interrupted the existing administrator expiry clock; fixed the centralized deadline selection and the original personal-review timeout regression now passes. Fresh full root/package/installed checks (including real-browser width, line-label and optional-timeout assertions plus desktop/mobile overlay screenshots) are running in `artifacts/activity-timeout-layout-final-{tests,package,installed}.log`. No latest installed/screenshot claim yet. All work is local and unpublished.
-
-### Remaining earlier requests — not all complete
-
-Typed metadata sockets/version-2 migration, editable routing/gates and the changes above are implemented; do not rely on older historical pending lists for those items. Attribution, history, expiry, categories/media, live sockets, opt-in Web Push and expanded native-summary metadata are now implemented with verification tracked at the top of this document. The explicit metadata gaps in `metadata-source-parity.md` remain. Production Seerr paths, arbitrary version combinations and previously recorded concurrency/dependency limits remain separately unverified. Disposable real Sonarr/Radarr read coverage is recorded above. “Continue all pending” has not been treated as permission to claim every upstream getter complete or publish anything.
-
-## Forked eligibility and approval timelines — current work
-
-- Previous subset **installed acceptance passed** (`artifacts/branch-timeline-final-{tests,package,installed}.log`): six-plugin packaging, installed API/authorization, restart/seven-database/recovery checks and 36 native-theme/workspace checks. Fixture: `suite-integration-c1a2a34f-fffb-4515-9188-c1004f1171e4`. This does not certify the subsequent optional-timeout/layout work above.
-
-- Confirmed user intent: **all relevant active/recent viewers consent OR all users are inactive** are alternative eligibility paths. This matches existing queue evaluation; no consent, active-playback, native-history, target/access, rule, approval, claim or execution checks were weakened. Activity lookback is not an additional wait.
-- Added public, identity-free branch metadata to timeline projections (no persistence/native-schema changes). Shared request/settings/backlog graph rendering shows real connecting forks, a safeguards rejoin, optional administrator review, approval toward the safety delay and a denial/timeout branch directly to **Cancelled**, separate from **Completed**. Backend terminal statuses, including Expired/Denied, remain intact. Old projections without branch metadata retain the compatible linear renderer.
-- Timelines display the relevant activity lookback, 30-day unaccepted-request limit, day/hour safety delay and actual administrator decision limit/deadline (default 30 days, extended by current policy/personal settings). Review clocks still start on entering review and are never renewed by viewing. Unknown dates and individual consent/approval/activity timestamps are not fabricated or exposed. Cancelled/abandoned dates are labelled stopped rather than advertised as future schedules.
-- Administrator policy inputs update the same graph without saving, including decision-limit edits and approval on/off; pause dims it. Updated activity/consent wording and personal settings labels. Added native/skin-compatible surfaces, current-stage dot, coloured travelled paths and contained horizontal scrolling; installed browser assertions exercise alternative eligibility edges and timeout → Cancelled without a timeout → delay edge.
-- Focused checks: **71 UI tests** and **13 progress/projection tests** passed before the final backlog/wording/date refinements. Full rebuilt root/package/installed checks are running in `artifacts/branch-timeline-final-{tests,package,installed}.log`. The stopped-date rendering refinement was made just after starting that pipeline; confirm package coverage before treating its result as certification of every latest byte. Earlier suite passes do not certify this work. Everything remains local and unpublished.
-
-## Editable routing and typed metadata canvas — current work
-
-- **Rebuilt acceptance passed** in `artifacts/metadata-canvas-final-{tests,package,installed}.log`: full root regressions, six-plugin packaging, installed startup/configuration/API authorization, 36 responsive/native-theme/keyboard/custom-skin checks at three widths, abrupt restart, seven-database integrity/foreign-key/native-ID checks and missing Hub/rule-state recovery. Platform: Linux amd64; disposable evidence `suite-integration-8b3313cf-f3a8-43d6-98aa-85f0509d4a76`. The later editable-settings wording/regression has separate focused coverage below. This does not establish real Sonarr/Radarr/Seerr-server coverage or full Maintainerr parity; the parity gaps remain explicit.
-
-- Clarified connection settings: Sonarr/Radarr URL and key fields are manually editable before and after Enhanced import. “Read-only” describes source HTTP operations, not locked configuration. Updated the visible copy and added a browser-unit regression exercising manual save → import → edit/save for both sources. All 31 `scripts/web-ui.test.mjs` tests pass (`artifacts/editable-arr-settings-ui.log`); this wording/test refinement was added after the current full pipeline started.
-
-- User has now explicitly authorized direct Sonarr/Radarr **metadata** integration, superseding the earlier no-Arr-metadata scope. Destructive execution remains exclusively Deletion Queue → Seerr; no Arr mutation or filesystem cleanup was added.
-- Implemented version-2 source/condition/Boolean circuits without Start, server-side source-type/port validation, browser migration of legacy circuits, expandable per-source outputs, input-scoped condition operators/units/value controls, editable rule-mode library links, click-to-edit library cards plus separate Test path, default native-library filter seeding, and filled colour-coded/resizing AND/OR gates. The minimum is two required inputs; incomplete drafts cannot be saved as executable circuits. Original node/graph/history limits remain.
-- Added a modular typed catalog, native Jellyfin aggregate provider, read-only Sonarr/Radarr provider/configuration APIs and one-click Enhanced import with ambiguity rejection/application verification. Protected keys never appear in settings responses; saved keys cannot be forwarded to changed endpoints; HTTP reads reject redirects and enforce response/time budgets. Native series descendants are revalidated before queries. Seerr metadata now includes verified requester lists and edition-scoped request counts/dates/status, independently of authorization identity.
-- **This is not full Maintainerr parity.** `docs/metadata-source-parity.md` lists the researched reference, implemented fields and remaining collection/history/stream/child-scope/existence/comparison gaps. Do not infer implemented getters from an upstream field name. Source code/assets were not copied.
-- Focused evidence before the final comparison refinements: 69 UI tests, 32 automation tests and 12 Seerr delegation tests passed. New regressions cover typed version-2 rejection/unknown propagation, gate growth/shrink, mutable source links, list comparisons, encrypted-key/non-disclosure/revision/endpoint checks, exact provider-ID HTTP matching, Enhanced ambiguity and removed-parent query refusal. Rebuilt full checks are running in `artifacts/metadata-canvas-final-{tests,package,installed}.log`; old passing installed evidence below does not certify this new schema/provider work. All work remains local and unpublished.
-
-## Requested copy removal and Seerr requester metadata — current work
-
-- Removed the redundant configured-Seerr/execution, earliest-removal and playback-lookback preview text. The actual policy inputs, validation, opt-in confirmation and enforcement remain; an unavailable Seerr connection still gives a short actionable message.
-- Removed the automation execution-settings section and administrator/default-library selectors, including their client-side dependencies. Each library-filter card selects its own native library; legacy global library scope is preserved only for migration. Browser saves no longer send actor/global-library selections. The API binds initial automation authorization to the native authenticated administrator (retains an existing valid authorizer for saved-rule compatibility, or requires reauthorization on save if unavailable); clients cannot choose a requester by supplying an actor ID. This internal authorization identity is **not** Seerr requester metadata, and queue proposal ownership is not changed by this work.
-- Added `seerr.requesterId`, the verified Seerr requester's native Jellyfin user ID, as a typed rule/filter/circuit/import/export field with equals/not-equals. Edition-scoped Seerr request records and user responses are checked; missing/deleted/disabled/unmapped/mixed owners remain null/unknown, never a guessed administrator. Owner-read failures during metadata preview do not remove unrelated edition evidence. Missing requester evidence blocks requester-dependent comparisons (including negative comparisons/NOT), not native-only rules. Draft tests, batch runs and live originating-rule checks use the same metadata provider. Existing `seerr.ownRequest` retains legacy authorizer-relative semantics; it is not relabeled as requester attribution.
-- Focused checks passed: 68 UI tests, 23 automation tests and 12 Seerr delegation/ownership tests. Full rebuilt root/package/installed acceptance is running in `artifacts/request-metadata-final-{tests,package,installed}.log`; the previous passing suite does not certify these new changes. No commits/publication, consent grants, native-schema changes or direct Arr operations.
-
-## Skin compatibility and concise UI — active verification
-
-- **Latest installed acceptance passed:** `artifacts/ui-menu-escape-fix-{package,installed}.log`. Rebuilt six-plugin combination (`hub+discord+deletion+syncplay+notifications+automatic`, without native Security) passed installed API/authorization, startup/configuration and optional-dependency checks; 36 native-theme/workspace/keyboard/custom-skin/Activity checks at three widths; abrupt restart; seven-database integrity/foreign-key/native-ID checks; and missing Hub/rule-state fail-closed recovery. Platform: Linux amd64. Disposable evidence: `suite-integration-e8381000-4874-4cec-a716-dd5eb3845b5d`. This supersedes the failed browser runs below for this UI subset, not the separately tracked unfinished features, real Seerr deletion paths, arbitrary version combinations or physical ARM/Windows certification. Everything remains local and unpublished.
-
-- Second follow-up: `ui-notification-fix` passed packaging and the installed API/restart/database/recovery checks, then failed the end-of-mobile-notification dismissal assertion. Found that the options-menu key handler consumed Escape even when the menu was already closed, trapping subsequent Escape on its summary. It now consumes Escape only while open; closed-menu Escape can reach inbox dismissal. All **27 notification web tests pass**, including this two-stage regression. Rebuilt acceptance is running in `artifacts/ui-menu-escape-fix-{package,installed}.log`; no full browser success claim yet.
-
-- Follow-up: `ui-skin-cleanup-final` passed root regressions, six-plugin packaging and installed API/restart/seven-database/storage-recovery checks, but **failed** browser acceptance at `notification-scroll/320` (fixture row existed inside a hidden inbox). Preference saves can rebuild the focused settings control, leaving Escape targeted outside the panel. Added document-level Escape dismissal for the visible inbox, respecting nested handlers that already consumed Escape; regression covers dismissal/reopening and nested Escape. All **26 notification web tests pass**. Browser acceptance now asserts dismissal completed before toggling the bell. Rebuilt installed checks are running in `artifacts/ui-notification-fix-{package,installed}.log`; full skin acceptance remains pending until that run succeeds.
-
-- Removed fixed dark canvas surfaces/text/input colours and adopted native `dialog`/`paperList` surfaces, inherited typography/foregrounds and theme accent variables. Gate/port signal colours remain semantic but are overridable; false/idle wires inherit skin colours. Added focus-visible states, a clear empty block-selection prompt, bounded toolbar selects and wrapping card headings. Removed confirmed unused hero/condition-card CSS and shortened activation/execution labels; rule administrator selection is not mislabeled as automatic requester attribution.
-- Moved persistent Deletion Queue policy explanations into existing keyboard/touch/hover help controls, retaining the explicit destructive opt-in confirmation and current safety/status messages. Notification tabs/switches/back controls retain native surfaces and focus styling.
-- Focused UI regressions: **68 passed** (`artifacts/ui-skin-cleanup-focused.log`). The earlier remaining-overhaul full run passed root regressions, packaging and installed API/restart/seven-database/storage-recovery checks, but browser acceptance failed when its outside-dismiss test targeted a hidden Account Hub heading. Replaced that harness action with supported Escape dismissal; no hidden-element force-click was introduced. Fresh acceptance is running in `artifacts/ui-skin-cleanup-final-{tests,package,installed}.log`, with native canvas skin-background/text/accent override assertions. No final six-plugin browser/skin claim until that run succeeds.
-- This cleanup does not complete the larger unfinished feature list in the next section: metadata sockets, provider-condition expansion, requester attribution, queue administrative/history controls, notification expiry/categories and live/Web Push delivery remain separately tracked. No commits, publication, production tests or native database schema changes.
-
-## Remaining-overhaul implementation — active
-
-- Added gate silhouettes with hover help, removed redundant gate/terminal explanations, added middle-button canvas panning and canvas/wire context menus (disconnect or insert NOT/AND/OR). Inserting a multi-input gate leaves its additional input unconnected until explicitly wired; invalid drafts cannot execute. Existing version-1 Start/terminal semantics are intentionally retained until typed metadata-port migration is implemented, not merely relabeled as metadata.
-- Native libraries now seed editable default filter cards (within the existing 50-filter capacity). Rule test selectors show connected libraries, or default library-filter test paths only when no filter is connected. Media lookup runs automatically on entering an editor, changing a test path, or debounced search; the Find media button is removed. Unconnected rules cannot be enabled in the editor; the runtime already skips rules with no routed input. Seeding creates no submissions, grants no consent and does not auto-enable automation.
-- Notification preferences now use accessible coloured switches, with an arrow-only transparent back button and outside-click/Escape dismissal instead of Close buttons. Dismissed notifications remain in a recipient-scoped History tab using existing `dismissed` storage; archive queries recheck native access/admin permissions and omit executable commands. No native or notification schema changes were required. Viewing a history row cannot invoke an archived inline command. Tests include recipient isolation and archive action rejection. Existing in-memory cache/background refresh behaviour remains; sockets/Web Push are not implemented yet.
-- Focused validation so far: 28 general web UI tests, 25 notification web tests and 12 notification HTTP tests passed. Full rebuilt regression/installed verification for these changes is pending. Typed metadata ports/implicit Start migration, full researched Maintainerr field parity, verified requester attribution, queue history settings/admin all-user view/status badges, producer-editable post-view expiry, notification category hierarchy/media enrichment and authenticated sockets/opt-in Web Push remain **unfinished**. The prior completed subset evidence below must not be treated as acceptance for this remaining work.
-- Full verification for the current implementation is running in `artifacts/remaining-overhaul-{tests,package,installed}.log`. Maintainerr research is pinned to the credited commit `3dbd5463a82beb4cd970a41c3afd042af4fccfd8`: reviewed its rule operators and Jellyfin/Seerr getters, including date/count/list comparisons, all-user/descendant watch aggregation, collection/playlist/favourite metadata and the distinction between confirmed absence and failed reads. No upstream source/assets were copied. Important follow-up safety gate: validate configured library roots against current native virtual folders before querying; upstream documents that a non-container parent ID can fall back to a broader Jellyfin scope. This needs explicit missing/invalid-root regressions before expanding metadata/owner-driven automation.
-- The root-validation gate was subsequently implemented in automation test-media searches, scoped draft tests, batch evaluation and live originating-rule verification. Every selected scope must still be a native virtual library before item queries run; a removed/invalid root cannot fall back to a broader native scope. All 21 automation tests pass, including assertions that removed roots issue no item queries. This last guard was added after launching the current full pipeline, so its installed/package coverage must be confirmed separately rather than assumed from that run.
-
-## Compact timelines, series context actions and overlay controls — current work
-
-- Locally implemented compact dot/elapsed-track timelines, relative-day labels with exact dates on hover/focus, cancelled/expired terminal completion styling, closure explanations confined to status help, and consent-row refresh before optional notice loading. Missing terminal dates remain unknown rather than being fabricated. Both administrator pages use available content width; policy pause is above the policy controls and disables/dims them; approval timeout is hidden/disabled when approval is off.
-- Episode/season context status now resolves the visible native parent series only after verifying access to both selected child and series. The user explicitly approved substituting whole-series removal after Seerr's documented `/media/{mediaId}/file` contract was checked (edition flag only, no season selector). Menu action/confirmation explicitly say entire series; previews/proposals still use the verified series ID and existing safety/consent gates. Direct episode/season destructive requests remain unsupported. Native context-menu icon background is explicitly transparent.
-- Overlay templates/layers accept `{days}` and `{hours}` alongside `{date}`/`{quality}`; unknown schedules remain pending and elapsed countdowns clamp to zero. Rounded rectangles have a bounded 0–50% radius of the smaller dimension, rendered by native Skia and previewed in the editor. Dragging snaps to object/artboard edges and centres as well as the grid, with temporary guides; Alt bypasses snapping. Focused tests: **61 UI cases** and **34 presentation/production-gateway cases** pass (`artifacts/compact-timeline-overlay-tests.log`). Full rebuilt acceptance is still pending.
-- The larger requested overhaul is **not complete**: default library-filter cards, implicit metadata/data sockets replacing Start, typed Maintainerr-condition expansion, gate shapes/context menus/middle-drag interactions, verified Seerr-owner attribution, consent/activity badges, administrator all-user queue, configurable recent/older history, notification categories/history/expiry, richer episode cards, cached live updates, authenticated sockets and opt-in Web Push all remain pending. Missing-owner evidence is to remain local to owner-dependent conditions and must not become a matching value through NOT/negative comparisons. Do not infer these features are implemented from the focused timeline/overlay evidence above. No production changes or publication.
-- Final verification for this subset passed: root regressions, six-plugin packaging, installed API checks, 36 browser checks, abrupt restart, seven-database read-only integrity/foreign-key/native-ID checks and missing-Hub/rule-state recovery. Logs: `artifacts/compact-series-overlay-final-{tests,package,installed}.log`; disposable fixture `suite-integration-94971073-36b8-4a39-b288-66ca9588ab39`. This supersedes the pending full-acceptance note above, not the remaining feature list. Installed acceptance does not exhaustively exercise the new episode-to-series mapping or object-snap gestures; those have focused coverage only.
-
-## Node-editor work in progress (2026-10-26)
-
-Branding headings have been removed from automatic rules. A first local node editor supports condition/AND/OR/NOT blocks, start/delete terminals, draggable nodes and connections, curved coloured wires, zoom/pan, persisted valid circuit layouts, JSON and self-contained custom-circuit import/export. Draft-media search/testing uses administrator-only native scoped queries; server traces distinguish true, false and unavailable evidence. Unknown evidence blocks execution even under NOT. Per-rule library overrides are rechecked during execution and live originating-rule validation. Existing flat rules remain readable. Focused baseline: 20 rule/backend tests and 27 web UI tests passed before the last port-type validation adjustment.
-
-The design now uses one canvas with an overview and selected-card edit modes. Library-filter cards own their predicate circuits and fan-out rule links; each rule accepts a union of filter outputs. Runtime evaluation deduplicates overlapping items per rule, and live deletion authorization rechecks current scope membership and filter predicates. A New card dialog captures fixed type plus editable title/description. In rule mode upstream library-filter cards are greyed/read-only for routing, but repositionable; selecting one searches only currently matching media and revalidates that draft path before tracing. Layouts and circuit source-card positions persist with rule configuration. Valid legacy flat rules are adopted without changing their identities; old clients/states without filters retain legacy scoping. Limits remain explicit: 50 rules/filters, 128 nodes per circuit, 256 expanded nodes, nesting 4, 200 items per library/run and 20 submissions per run; this is not an unbounded scripting engine.
-
-**Validation:** full root regressions and six-plugin packaging passed (`artifacts/node-canvas-final-{tests,package}.log`), including **21 automation tests**, **212 Deletion Queue tests** and **28 web UI tests**. Installed API, abrupt restart, read-only integrity/foreign-key/native-ID checks across **seven databases**, and missing-Hub/rule-state recovery passed before browser acceptance (`artifacts/node-canvas-final-installed.log`, `suite-integration-908eae64-6531-48b4-af8a-32aea74e6fa0`). Browser acceptance initially stopped on two harness issues: the drag target needed scrolling into view, and Jellyfin's styled checkbox requires clicking its visible label rather than the covered input. With those test-only adjustments, the retained installed six-plugin fixture passed all **36 account-focused browser checks**, administrator pages at 320/1280 widths, New card creation, real node dragging, filter-to-rule attachment and locked upstream inputs (`artifacts/node-canvas-browser-retained.log`; screenshots in `artifacts/node-canvas-browser-retained/`; fixture `suite-integration-d3b8a1a4-6828-404c-bdca-f8f120e55be4`). Reviewed desktop screenshot: large graphs extend beyond the viewport until panned/zoomed or **Fit canvas** is used; further framing/readability polish is still warranted. Full real-browser wire-drag gestures, real Seerr-dependent path tests and every graph import/export combination remain unverified. Full-canvas JSON file export includes filters, rules and overview layout; legacy rule-array intake is retained. No release-readiness claim or publication.
-
-## Six-plugin safety audit (2026-10-26; local, unpublished)
-
-- Reviewed plugin-owned storage/open paths, hosted-service failure containment, public/authenticated endpoint boundaries, outbound HTTP handling and artwork recovery across the six plugins and shared modules. This is a targeted source review, not an exhaustive security certification. Native Jellyfin schemas/indexes were not changed.
-- **Automatic Deletion Requests:** serialize/validate before replacing state and enforce the same 2,000,000-byte limit on writes as reads. Malformed/null receipt sets, empty item IDs, excessive history and null rules/conditions are rejected. A durable installation marker adopts valid legacy state and makes later missing state fail closed across restart; orphaned pending writes also block silent reinitialization. Preserve/restore the complete plugin directory, including the marker. Loss of the entire directory/marker cannot be distinguished from a first installation. Invalid evidence types, invalid dates and non-finite numeric evidence now invalidate the whole evaluation, including OR/NOT comparisons.
-- **Account Hub / user-management module, Discord Bridge, Notifications migration:** dispose SQLite connections when opening or connection setup fails. Existing transactions/migrations, durable claims and native authorization remain intact. **Private SyncPlay:** removed redundant disposal on the unsupported-version path; its enclosing catch already owns cleanup. `DeferHubWorker<T>` replaces its registration; no duplicate-worker fix was warranted.
-- **Deletion Queue artwork:** reject linked/junction-backed plugin-owned paths before reading/writing them and before opening pending output; bound storage inventories to 10,000 entries and stop accounting once over the byte budget instead of recursively following arbitrary trees. Restoration does not depend on spare generation capacity. Removed confirmed unused pre-studio hero/preview/color/safety CSS, duplicate fieldset styling and unused imports. No migration/compatibility/fault tests were proven obsolete, so none were removed.
-- **Deletion Queue Seerr reads:** added one 15-second cancellation deadline covering headers and body buffering/parsing. `ResponseHeadersRead` otherwise ends `HttpClient.Timeout` protection at the headers, allowing a stalled upstream body to hold a worker/API operation indefinitely. A regression verifies that body serialization receives a deadline even when the caller supplies no cancellation token. Destructive writes remain single-attempt/no-retry.
-- NuGet's solution-wide direct/transitive vulnerability scan completed successfully with **no reported vulnerable packages** (`artifacts/safety-audit-vulnerabilities.json`). This only covers vulnerabilities known to the configured feed, not unpublished vulnerabilities or bundled third-party web assets.
-- Production npm audits were also run for all three lockfiles. Private SyncPlay and the Deletion Queue browser fixture report zero production vulnerabilities. Discord Activity's latest official SDK (2.5.0) is flagged through Zod 3 by **GHSA-mrhx-c7xc-m3w5** (high, memory exhaustion); upstream still declares Zod 3 and includes prebundled code, so no unsupported Zod 4 override was applied. Added a capturing message guard before SDK construction: rejects excessive collection width, nesting, node/string budgets, cycles and non-JSON object types before SDK schema validation. Browser-side mitigation, not an upstream dependency fix; npm continues to flag the SDK/Zod chain. Real Discord-host compatibility with these message limits remains unverified.
-- **Final validation passed:** full root regressions and six-plugin packaging (`artifacts/safety-audit-final-{tests,package}.log`), including 18 automatic-rule tests and 14 Activity tests. The final Seerr body-deadline regression was added after the root test phase; a subsequent complete Deletion Queue run passed **212/212** (`artifacts/safety-audit-final-deletion-tests.log`). The packaged infrastructure DLL was built after that source change. Installed Linux amd64 acceptance passed **36 browser checks**, abrupt restart, read-only integrity/foreign-key/native-ID checks across **seven databases**, missing-Hub-storage recovery and missing-rule-state fail-closed/recovery across restart (`artifacts/safety-audit-final-installed.log`, `suite-integration-04a5abf1-9367-47ec-910f-f0c536446971`). All tests used disposable fixtures. Final fixture containers were removed automatically; the two older retained UI diagnostic containers were also removed. No publication/commit occurred.
-- Remaining risks: native full-policy lost updates and native internal-ID allocation concurrency documented in `docs/release-safety-review.md` remain unresolved; no private native database locks/constraints were introduced. Path checks do not defend against a privileged local process swapping filesystem entries between checks and writes. Native artwork-pointer writes lack an atomic compare-and-swap against simultaneous administrator edits. No guarantee of zero crashes/corruption or release readiness is claimed.
-
-## Integration badges, connection probes and direct-manipulation studio (2026-10-26)
-
-- Added shared versioned integration badges to all six native administrator pages. Native plugin inventory supplies installed versions/load status; capability/storage/gateway checks are separately labeled rather than treating a loaded assembly as proof of an external connection. Deletion Queue includes actual Notifications readiness, saved monitoring/safety state, optional Enhanced and explicit Seerr-test results. Badge details replace the top monitoring/dependency paragraphs. No credentialed external connection is tested automatically.
-- Added an administrator-only, bounded **Test connection** endpoint/button for Deletion Queue's saved Seerr settings. It makes authenticated reads, verifies this Jellyfin server identity and optionally discovers a bounded semantic version. It does not save drafts, grant permissions, publish messages, create requests or remove media. Raw upstream errors/keys are not returned. Existing Discord and Hub Seerr test paths remain in use; the Hub Seerr panel's label is now Test connection. Enhanced copying remains confirmed/revision-checked, but the button is clickable when unavailable and explains the missing/ambiguous configuration only after a click.
-- Simplified the section to **Collections & Overlay Studio**. Three schedule badges show the current native triggers (not hard-coded daily claims) and link to native task details. Earliest-date explanation appears on focus/hover of the sample date field instead of a permanent paragraph.
-- Added a basic original canvas editor: text/rectangle layers, pointer drag/resize/rotation, alignment, stacking, duplication/deletion, bounded undo/redo, snapping, keyboard nudging and fit/zoom. At most 12 layers, four text lines per layer and bounded normalized geometry are accepted server-side. Native Skia PNG rendering supports the same layer model; existing single-band templates remain readable, and original-file preservation/restoration is unchanged. This is not a full Canva clone, image-upload service or arbitrary font/SVG/script renderer. Server PNG preview remains authoritative for font fitting.
-- Shared JSON diagnostics now offer syntax-highlighted pretty code, copying and lazily expanded/paged blocks, including transaction summaries. Rule JSON drafts retain the native textarea with explicit formatting and a highlighted/browsable preview; invalid drafts are preserved rather than rewritten. Navigation disposes diagnostic trees and editor state. Current focused UI/backend tests pass; rebuilt installed acceptance is being verified separately.
-
-## Daily native jobs, live rule gates and studio UI (2026-10-26)
-
-- Added native Jellyfin Scheduled Tasks with stable identities and editable daily defaults: `AutomaticDeletionRequests.RuleMaintenance` at 02:00, `DeletionQueue.RemovalMaintenance` at 03:00, and `DeletionQueue.OverlayGeneration` at 04:00 (Jellyfin local scheduled-task time). Rule processing delegates collection maintenance to Deletion Queue. Due-removal processing refreshes collections too. Artwork runs separately, up to 1000 changes per cancellable job; interactive sync retains its 20-change budget. Removed minute rule/artwork polling and the execution polling loop; continuous playback capture/safety invalidation and startup uncertain-claim recovery remain.
-- Persisted automatic provenance on newly created automated requests. Added a framework-only live originating-rule validation boundary: current administrator, enabled configuration/rule, current library membership and current Jellyfin/verified Seerr conditions must still match. Queue progression/claiming/pre-dispatch/final dispatch fail closed if rules stop matching or the provider is missing. Failed rule checks clear eligibility; successful checks start a fresh safety delay. Manual requests do not gain a rules-plugin dependency. Date-only deadlines are never sufficient authorization.
-- Refreshed the rule editor with a themed hero, safety chips, native administrator/library pickers, responsive rule/condition cards and guided scope → rules → activation sections. Refreshed the artwork studio with separate portrait/landscape preview stages, color controls, collection cards and explicit preservation/scheduling guidance. Synthetic PNG samples use original geometric artwork, not upstream assets. Native controls are parsed with complete parent/label trees before Jellyfin Web upgrades them; both object-style and eager string-style construction proved incompatible with its checkbox shim.
-- Final full root regression script passed in `artifacts/daily-jobs-final-tests.log`, including **207 Deletion Queue** and **6 automatic-rules** tests and all scripted frontend/release-tool checks. Coverage includes changed live metadata, disabled/out-of-scope rules, mandatory checks after the deletion date, fresh-playback blocking, malformed/missing providers and daily trigger identities. Production-gateway regressions explicitly reject changed rules before claiming, before dispatch and at final dispatch without issuing deletion HTTP calls; uncertain claims remain non-repeatable.
-- Fresh six-plugin Linux amd64 packages (`artifacts/daily-jobs-final/packages`) passed installed API/browser acceptance in disposable fixture `suite-integration-0c3470eb-72b3-4c9e-9e96-41c0a57e687d` (`artifacts/daily-jobs-final-installed.log`). Native task discovery, daily triggers and manual task execution were checked for all three jobs. Real portrait/landscape PNG responses, native collection creation/retention, administrator authorization, disabled defaults and confirmation/revision safeguards passed. All six administrator pages passed 320/1280-pixel layout/help checks; the rule and artwork editors had no JavaScript page errors. Native-theme/workspace, consent/history/calendar and notification checks also passed. Generated mobile rule-editor and desktop artwork-studio screenshots were reviewed.
-- Exact-current-source Automatic Deletion Requests packages also passed three-runtime independent release-set validation in `artifacts/daily-jobs-automatic-three-runtime` (Linux x64/ARM64, Windows x64; `artifacts/daily-jobs-automatic-three-runtime.log`). Reviewed screenshots are copied into `artifacts/daily-jobs-final/`. The retained diagnostic containers were removed after verification; disposable evidence remains isolated from production data.
-- Resolved the installed editor failures: mixed native JSON casing is normalized at the rule UI boundary; customized controls are parsed with complete label/parent trees, and their native initialization-marker classes are not set prematurely. Regression fixtures now model native casing and marker behavior. Native scheduled-task ordering is a default, not a dependency: every destructive attempt still verifies its own current safety evidence.
-- This verifies the local disposable deployment, not production Seerr deletion or all clients/platforms. Real pending-media image-pointer persistence across restart, physical ARM/Windows, arbitrary package skew and the complete expanded combination matrix remain outside this evidence. Original-file restoration and conflict handling are covered by focused native-interface tests, not a claim that every client/restart scenario has been certified. All changes remain local and unpublished.
-
-## Deletion Queue presentation and sixth-plugin packaging (2026-10-26)
-
-- Added opt-in existing/plugin-managed collections, durable creation/membership receipts, reversible native-image overlays, separately preserved original bytes and administrator-only portrait/landscape template editors with server PNG previews. Applies to pending requests regardless of source. Presentation never grants consent, approval or deletion authority. Collections/pre-existing members are retained; conflicting artwork is not overwritten. Native image persistence uses Jellyfin's service, not painting over originals.
-- Hardened interrupted-save recovery (including cached pointers), revision checks, missing/deleted collections, original-file conflicts and output-capacity checks. Storage limits stop new artwork generation without freezing queue authorization or preventing restoration. Backups/generated files are conservatively retained; automatic purge is not implemented. Current limits and supported formats are documented in the Deletion Queue README.
-- Added sixth-plugin root package/catalog/release selection, independent test/package dispatch, release-set fixtures, CI selectors, administrator help and installed authorization checks. The standalone Linux amd64 plugin passed disabled-default/native administrator/dependency checks in disposable fixture `suite-integration-47ed278d-e2cc-4b4d-a036-f7333a86112d`. Three-runtime independent package validation passed in `artifacts/automatic-sixth-package-review` (prior to the shared-help resource addition); no packages published.
-- Full root regression script passed in `artifacts/six-plugin-full-tests.log`, including **198 Deletion Queue tests**, four automation tests and all scripted frontend/release-tool checks. The final backend run passed **200/200** (`artifacts/presentation-final-backend.log`), adding disk-capacity/restoration isolation regressions. Presentation coverage includes original-byte preservation, Undo/restoration, prepared receipts, failed native saves, deleted collections, stale settings, conflicts, preview blobs/abort cleanup and confirmations. Current shared-help/editor/isolation/Web UI tests passed **39/39**, including a regression modeling Jellyfin Web's string-based customized-element shim and late responses after reopening a view.
-- The earlier installed six-plugin API run passed disabled-default/native administrator authorization, presentation confirmation/revision rejection, real native collection creation and non-destructive disabling (`artifacts/six-plugin-installed-retry.log`), then failed at the browser editor-mount check. It was not a passing browser run. Its failures have since been resolved and the current packaged deployment passed as recorded above. The native-user fixture uses Hub's explicit native-creation override rather than bypassing its ownership policy.
-- Remaining certification limits: real pending-media native pointer persistence across restart/all client types, external Seerr execution and owner-specific Enhanced/skin deployment. The newly expanded 64-subset matrix (128 with native Security) has not been run in full; earlier matrix evidence is not evidence for all six-plugin combinations. Automatic rules remain bounded to 200 scoped items/20 submissions per run.
-
-## Automatic request rules — focused first implementation slice (2026-10-26)
-
-- Added the independent, disabled-by-default Automatic Deletion Requests plugin project and tests to the root solution. The native Dashboard page has field/operator/value rule controls, all/any groups, enabled flags, bounded schedules, saved-rule preview and advanced JSON draft import/export. The implemented catalogue is deliberately limited to Jellyfin title/year/date-added/rating/kind and three verified Seerr target facts; no complete Maintainerr parity is intended. No Radarr/Sonarr credentials, direct actions or filesystem cleanup are introduced.
-- Added the framework-only `DeletionQueue.Automation.1` submission/inspection boundary and SDK. Deletion Queue alone resolves native/Seerr identity, verifies the live administrator actor and proposal authority, requires Notifications for writes, and commits the request through its authenticated store. Automated creation does not grant consent or administrator approval. Repeat matches return active requests without joining/voting/renewing; cancellation/administrator denial prevents automatic recreation. Missing facts never match, including OR and negative comparisons.
-- Automation configuration is revisioned, atomically written and fail-closed on corruption. Submission receipts are persisted; run concurrency and configuration changes are gated. Current limits are 200 scoped library items and 20 submissions per run; oversized scopes fail before submission rather than truncate silently. This preview is not appropriate for larger whole-library scopes until pagination is implemented.
-- Foundation tests passed (`artifacts/automatic-rules-foundation-tests.log`), including four new rule-engine tests and **188 Deletion Queue tests**. The new plugin built with zero warnings/errors. A subsequent native claim-parsing normalization was rebuilt and the four rule tests rerun; editor/shared settings tests passed **27/27** (`artifacts/automatic-rules-editor-tests.log`). Packaging and presentation follow-up evidence is recorded above; the older five-plugin matrix does not certify the sixth plugin.
-- At this initial slice, collection/artwork/editor and sixth-plugin packaging were pending. Those features have since been implemented in Deletion Queue and the root scripts as recorded above. The broader suite is still not generally release-ready.
-- Maintainerr attribution is at the bottom of the root and new-plugin READMEs. Feature research pinned upstream MIT-licensed commit `3dbd5463a82beb4cd970a41c3afd042af4fccfd8`; no upstream source/assets were copied into the plugin.
-
-All changes remain local; no commits, pushes, tags or publication were performed.
-
-## Progressive consent/activity flow, approval fork and pending-stage marker
-
-- Preserved the active-participant rule: every recent participant must consent, while uninvolved users are excluded. Added longer personal activity windows to native-inventory selection, eligibility, consent visibility and notice fanout. Native evidence is invalidated if preference revisions change during a scan. “Inactive” is a verified no-recent-participant state, not a new inactivity wait, and fresh activity clears it immediately.
-- Added administrator decision timeout policy (default 30 days, configurable in the admin timeline), longer personal decision-timeout preferences and explicit review-start/deadline milestones. Repeated evaluation does not renew review time; longer settings extend pending deadlines conservatively, lower values do not shorten already-established deadlines, and legacy review requests preserve their original expiry anchor. Denial still closes immediately. The safety delay remains administrator-configurable, with longer personal delay floors preserved. Permissions-only resets preserve preferences; selected-user full resets clear the new personal timeline choices too.
-- Request timelines now progressively reveal Consent and activity/Inactive, optional Administrator consent, Safety delay, Removal started and combined Confirm removal & completed. Approval shows a yes/denied/timeout fork; History uses the same template. Removed unreached removal-start stages from early-cancelled History. Closely dated requested/check nodes use Check permission. Unknown stages remain interpolated without fabricated dates.
-- Without concrete dates, Now anchors to the next current/pending checkpoint and follows that checkpoint's lane. Known-date histories retain their actual stopping-date position. Marker/node collisions at final closure were corrected. Opening and resizing center the marker horizontally; mobile/desktop acceptance explicitly waits for marker visibility and checks non-overlapping checkpoint/branch labels.
-- Full root regressions passed (`artifacts/consent-flow-verified-tests.log`, 185 Deletion Queue tests at that point). The final legacy-expiry regression raised the backend total to **186 passing tests** (`artifacts/consent-flow-final-backend.log`). The affected UI group passed **49/49** (`artifacts/consent-flow-final-ui.log`). Fresh installed all-five Linux amd64 Jellyfin 12.3 browser/API acceptance passed against `artifacts/consent-flow-final-suite` in disposable fixture `suite-integration-5af2d768-44cc-4265-b939-6f3fb08ddff1`; pending/denied History forks and marker centering were checked at 320 and 1280 pixels, and screenshots reviewed. That installed run precedes only the final legacy-expiry-anchor safeguard, which is covered by the final backend run. Final package revalidation is recorded below when complete.
-
-- Final rebuilt packages including the legacy-expiry safeguard (`artifacts/consent-flow-reviewed-suite`) also passed installed all-five browser/API acceptance: disposable fixture `suite-integration-4ce184cd-073f-4298-8674-12a170b68111`. This is the final package/browser evidence for the flow and marker changes.
-
-No production data, native database schema changes, commits, tags or publication. The owner-specific external integration/skin and physical-platform limits below remain in force.
-
-## Editable administrator policy timeline and bounded lookback follow-up
-
-- Replaced the flat global-policy fields with a responsive five-stage policy timeline. Native Jellyfin controls edit lookback and delay in days; the existing hours control remains available for precision and preserves the API contract. Live unsaved descriptions explain permission/identity, bounded native playback checks, consent/optional approval, monotonic delay floors/playback resets, final verification, pause/opt-in and uncertain-outcome handling. Editing the preview makes no API write or automatic deletion opt-in.
-- Clarified that native verification reads latest-played values, not all playback events. It now discards timestamps outside the administrator's saved activity window immediately. All relevant accounts and media aliases still require verification. A policy revision check both after inventory and in gateway evidence projection prevents a changing lookback from qualifying an incomplete scan.
-- Affected tests passed: **183 Deletion Queue backend tests** (`artifacts/admin-policy-timeline-dq.log`) and **47 shared/admin/removal UI tests** (`artifacts/admin-policy-timeline-ui.log`), including day/hour synchronization, live approval descriptions, no-write previews and saved policy payloads. Fresh packages `artifacts/admin-policy-timeline-suite` passed installed all-five Linux amd64 Jellyfin 12.3 browser/API checks in disposable fixture `suite-integration-d5919b2f-4027-4599-896a-528b9cf6c5e0`. Desktop admin screenshot reviewed; mobile overflow/native-control checks also passed. The broader external-integration limits below still apply. No commits or publication performed.
-
-## Native playback-history, timeline simplification and notification updates
-
-- Root cause of the reported `ActivityCoverageIncomplete` blocker: eligibility previously required an entire continuous collector window even when the existing bounded native inventory scan succeeded. Restarts reset that window. A successful fresh native last-played scan now supplies explicit evidence that replaces the observation-warmup requirement. It covers all returned accounts (including disabled/restricted accounts), aliases and related series items, without requiring playback to be marked completed. A healthy collector, fresh heartbeat, healthy clock, target verification, live-session checks, snapshot consent and the existing delay/claim gates remain mandatory; missing data and incomplete scans do not qualify. Native-history evidence is an additive property, retaining the existing evidence constructor/deconstruction ABI.
-- Scheduler scans are now due initially, daily, when proposal revisions change, and at an earlier pending deadline. Incomplete/failed verification retries after five minutes. Explicit request-status and active item-menu inspection can request fresh verification; pre-dispatch checks remain fresh and destructive attempts remain claimed once. Native state is not edited, and no native schemas/indexes were added. Existing expired requests stay closed rather than being silently revived.
-- Normal revision conflicts no longer enter the scheduler's generic failure path and reset eligibility. Actual verification failures project a safe retry reason instead of falsely labeling the owner unauthorized. The checks checkpoint distinguishes safety checks, consent and administrator review. The clock-discontinuity latch remains fail-closed; native history does not bypass it.
-- Timeline dates are date-only, without current-settings summaries or per-second timestamp updates. Undated stages are evenly interpolated between nearest known stage anchors, with single unknowns centered and unknown tails sharing remaining space. Dates are not fabricated. Removed the separate pending-stage layout, redundant compact renderer parameter, old thumbnail positioning and obsolete live-marker update loop. Icons have transparent backgrounds and defer foreground styling to Jellyfin/skins.
-- Non-actionable right-click sections are omitted, including failure-only placeholders. Detail actions use short allowlisted reasons such as Not your request, Permission required, Item unavailable and Service unavailable. Request cards without an identity omit the action; metadata-only unfulfilled cards must first match a verified owned server request. Requests actions use the same transparent removal icon. Existing active requests retain available consent/owner Undo actions even when new proposals are unavailable.
-- Added `notifications.upsert`, `NotificationsClient.UpsertAsync` and `ReadyForUpsertAsync`. New updates revalidate producer scopes, registered definitions, audience/access/preferences and preserve each user's inbox ID, refresh content/order, restore unread/undismissed state, reject stale content and retain event-ID idempotency. A same-second ordering regression is covered. Normal Publish deduplication remains unchanged. Deletion Queue uses stable per-proposal notice keys and checks upsert readiness; independent admin/security alerts remain independent. Already-issued external deliveries are not edited/resend; historical inbox rows are not destructively coalesced.
-- Full root suite passed in `artifacts/native-history-upsert-verified-tests.log`, including **183 Deletion Queue tests** and **86 shared Notifications tests**; the final affected UI group passed **47/47** (`artifacts/native-history-upsert-final-ui.log`). Fresh all-five Linux amd64 Jellyfin 12.3 installed browser/API checks passed against `artifacts/native-history-upsert-verified-suite` in disposable fixture `suite-integration-ae3a4d8d-e5c1-4a2b-92cf-c419024095c3`; date-only timeline and transparent context-icon screenshots were reviewed. A subsequent no-API-change action-label cache correction also passed the 47-test UI group.
-
-This review covers the affected removal/activity/notification/API/UI paths and full repository regression suite, not a proof that every external integration has no remaining issues. Real owner Seerr/Arr operations, complete owner Enhanced/custom-skin navigation, physical ARM/Windows and arbitrary version skew remain outside this evidence. The changes remain local, with no commits, pushes, tags or publication.
-
-## Enhanced Calendar CI readiness follow-up
-
-- The CI `enhanced-12.13-native-calendar: 0 !== 1` failure was a test readiness race: the Deletion Date-only check waited for a native event to disappear, then immediately counted `.dq-calendar-event`. Enhanced's synchronous render can satisfy that absence check before Deletion Queue decorates the retained raw removal event on its next animation frame.
-- Calendar acceptance now also waits for the positively identified, visible deletion-event button before asserting its count. Calendar assertions have specific failure messages. No plugin/runtime behavior was changed.
-- Added a deterministic held-animation-frame regression to the real Enhanced 12.13 renderer/filter acceptance. It verifies that the raw deletion event is retained and native releases are absent while the decorated count is still zero, releases the frame in `finally`, and then verifies positive readiness and the exact decorated count. Pending mounts are drained before the gate is installed; no arbitrary sleeps or weakened event-count expectations were added.
-- Installed all-five Linux amd64 Jellyfin 12.3 browser/API acceptance passed against existing `artifacts/visual-timeline-verified-suite` packages in disposable fixture `suite-integration-38bae4be-2378-404c-892a-84b104b93711`, including the forced race and the remaining calendar/native-theme/Notifications regressions. This is local reproduction/verification, not a claim that GitHub CI has rerun successfully. No rebuild is required for this test-only fix, and no commits or publication were performed.
-
-## Date-scaled timelines, native removal actions and calendar integration
-
-- Removed thumbnail overlays. Native right-click/More menus have an independently separated Deletion Queue section, proper menu icons, scoped live request status/timeline and revision-checked Allow/Keep/owner-only Undo commands. Keep is consent withholding, not an administrator denial. Detail actions and queued context actions encode status with color, an explicit label and a stage icon; queued detail actions open the existing request. The item-status endpoint rechecks native visibility and returns only matching accessible active user projections.
-- Shared request views now render a real time-axis with dated icon nodes, collision-staggered labels, semantic colors and a movie/series marker at server time. Undated checkpoints have a separate pending area, rather than invented dates. New closure metadata preserves the stopped stage and shared check date; public history explains Undo, denial or expiry without actor identities. An abandoned earliest date stays explicitly labeled, with the media marker at the actual cancellation time. Old missing closure facts remain unknown. Timing explains the current activity-window setting, request delay floor and remaining wait as of the server snapshot; the live marker advances from the server-time sample, without changing safety decisions.
-- The queue is a right-aligned, half-height header popout on desktop and a centered modal on mobile. Its sticky header uses a small popout icon to open Enhanced Requests and retain selection; unavailable Requests uses a small close icon. A failed Requests navigation falls back to the queue. Both Notifications and Deletion Queue have scoped thin/theme-aware scrollbars.
-- Removed the large Calendar sidebar queue. The shape-checked Enhanced 12.13 adapter supplies scheduled earliest-date events to the native calendar renderer and adds a Deletion Date filter. Native month/week/day/agenda, list/card/backdrop and OR/AND/NOT filtering remain in use. Blocked/paused requests without a scheduled date are not assigned fake dates. Calendar clicks focus the corresponding Requests deletion entry, falling back to the popout when Requests is unavailable.
-- Auto routing is now fixed: the selector/help, editable capability field and ordinary user-facing mode output are removed. Legacy valid wire fields remain deserializable but cannot select another mode; startup normalizes old modes once with an authenticated journal entry and Hub revision increment. Tests cover restart idempotence, retained state/claims/keys/credentials and write-time normalization.
-- Added an administrator-only, confirmed permissions-only reset (`POST DeletionQueue/admin/users/reset-permissions`) using the saved policy revision. It clears every `Policy.Accounts` override, not personal preferences/subscriptions, consent, history or monotonic delay floors. This is deliberately separate from the older broader Hub reset. Live administrator authorization, stale revision rejection, cancellation/no-write, payload scope and reset journaling are covered.
-- Final full root suite passed (`artifacts/visual-timeline-verified-root-tests.log`), including **181 Deletion Queue backend tests**. The affected UI group passed **46/46** (`artifacts/visual-timeline-verified-ui-tests.log`). Fresh local packages in `artifacts/visual-timeline-verified-suite` passed installed all-five Linux amd64 Jellyfin 12.3 browser/API checks in disposable fixture `suite-integration-b0695e7f-cc42-459a-9890-136e19ba82ba`; desktop/mobile screenshots were reviewed. Browser coverage retains Notifications held-startup/save-readback and native foreground/custom-skin precedence checks.
-- Calendar acceptance also executes the actual immutable upstream Enhanced **12.13.0.0** data/render/action modules at commit `ef1ac3c7917421fecf1211249980f037ee524d3d`, with controlled per-user media/API fixtures, across all native view/display modes and filter logic (`scripts/enhanced-calendar-acceptance.cjs`). It downloads these pinned, test-only sources during installed browser acceptance; no third-party source is shipped in the plugins. This improves renderer evidence but does not certify the owner's complete Enhanced/custom-skin/navigation deployment or real Arr/Seerr removal. Windows/physical ARM and arbitrary version skew remain unverified.
-
-All changes/packages remain local. No commits, pushes, tags, uploads or publication were performed.
-
-## Queue status help, review focus and timeline follow-up
-
-- Added a bounded, allowlisted public status/help projection. Scheduled dates are conditional earliest times, not guarantees; blocked requests do not present stale deadline floors as schedules, and automatic-removal-off cases say paused/not scheduled. Unknown internal reason text is not forwarded into ordinary user projections or tooltips.
-- Queue rows now have hover/focus/tap **?** help and six operational timeline checkpoints with a current-step marker and localized dates. Individual votes, activity times, identities, paths and upstream/journal evidence are excluded. New close transitions persist an optional plugin-owned timestamp; historical missing timestamps remain explicitly unknown. Original Undo/Complete method signatures remain available.
-- Review links open the queue directly, preserving the underlying Web route. Accessible selected requests are highlighted, focused and scrolled into view; a selected older request can be pinned without duplicate rows, and closed requests open History. Refresh failures withdraw stale rows. Timeline/help interaction does not reset scrolling through an incidental refresh.
-- All Deletion Queue modals now dismiss on genuine backdrop clicks; inside-to-outside drags do not dismiss or submit. Native Escape remains available, with Escape first dismissing an open tooltip. Destructive/security confirmations were not bypassed. Fixed the native HTML dialog's user-agent black foreground with a zero-specificity inherited-color rule; explicit skin foreground rules still win.
-- Full root tests passed (`artifacts/removal-timeline-root-tests.log`), including **171 Deletion Queue tests** and projection privacy/scheduling/milestone regressions. Final UI-only refinements passed **39 shared/settings/removal UI tests** (`artifacts/removal-timeline-final-ui-tests.log`).
-- Fresh packages `artifacts/removal-timeline-verified-suite` passed installed all-five Linux amd64 Jellyfin 12.3 browser/API checks: approved temporary fixture `suite-integration-11196376-f34a-40e3-addf-77e69b1e65ca`. Browser coverage includes direct review without navigation, focus/highlight, current/timestamped checkpoints, horizontally reachable final steps, mobile/desktop help and overflow, skin foreground override, genuine outside dismissal, plus the held Notifications startup/save-readback regression. Readable mobile/desktop screenshots were reviewed in the preceding same-CSS fixture `suite-integration-8dbe6e5d-c4b9-401b-9d83-ab6a455e906b/admin-screenshots/deletion-queue-timeline-*.png`; latest screenshots are also retained.
-
-The Enhanced view/API browser fixtures are controlled contracts, not certification of the owner's complete Enhanced/custom-skin installation. Real Seerr/Arr removal, full version-skew and Windows/physical ARM execution remain outside this evidence. No commits, pushes, tags or publication were performed.
-
-## Notifications catalog startup race — CI follow-up
-
-The reported Playwright image pull completed successfully. The later `admin/Notifications` density assertion exposed an editor startup race: opening Registered notification types while the initial routing/delivery chain was pending completed an early catalog fetch, then startup fetched and rebuilt the catalog a second time. A deterministic run of the committed baseline produced two reads and changed `standard` back to `compact`.
-
-The catalog now caches its successful initial load; only explicit Reload forces another fetch. The editor stays disabled inside a native fieldset with `aria-busy=true` until initialization finishes. The installed-browser check holds the initial settings request, opens the catalog early, proves controls are disabled and the same catalog rows survive startup, then checks the PUT payload, successful response and persisted API layout. It no longer uses SPA `networkidle` as Notifications readiness or accepts an unrelated/stale success message.
-
-All **35 affected shared/settings/removal UI tests** passed, including early-toggle/late-startup, explicit reload, abort/secret-erasure and mount lifecycle regressions. Fresh packages in `artifacts/notification-catalog-readiness-suite` passed the installed all-five Linux amd64 browser/API checks, including the held-startup regression and real layout save/readback: approved temporary fixture `suite-integration-e2d2eef5-d920-4ee8-b915-91a6bccb018e`. No GitHub-hosted rerun, commit, push or publication was performed. CI must rebuild packages from the fixed source rather than reuse an earlier browser package artifact.
-
-## Removal actions and Enhanced integration follow-up
-
-- Removal notices now project live, per-recipient Allow/Keep/Undo controls through Notifications' allowlisted framework command interface. Inbox ownership, live access, revision and activity snapshot are rechecked before mutation; selected state is not stored in a shared event. Missing/broken command providers fail closed without hiding other notifications. Owner-only Undo remains enforced.
-- The queue is an icon, with compact rows, a small status badge, selected green/red consent tints and short safety copy. Creation feedback remains in the notification menu rather than opening a review modal. Queue views silently revalidate on interaction and use scrolling rather than a Load more button. Desktop notification height is capped at half the viewport, aligned to the right edge.
-- Duplicate active submissions register consent on the existing request and do not renew expiry. Unaccepted requests expire after 30 days; a distinct administrator Deny action expires immediately. Accepted delay-stage and claimed/uncertain execution are not expired. Existing approval revocation semantics remain compatible. An administrator requester records approval for the current policy/activity snapshot without skipping other safeguards.
-- Owned unfulfilled requests can be resolved without a native item, using verified Seerr native-user/server associations. Pending unmanaged requests are declined through Seerr (history retained); managed incomplete downloads use the existing media-file endpoint after whole-scope ownership checks. No request-history DELETE endpoint or direct Arr access was added.
-- Owner playback resets the deadline floor and intake clock, invalidates old consent, and emits a dedicated owner-only reset notice once per session. Its message (`{media}`, `{days}`) and 0–10-second toast duration are admin-configurable. View/Cancel controls remain scoped to the recipient; default toast duration is six seconds.
-- Playback progress/stop still updates protective activity evidence but no longer generates a new general notice on every tick. A mounted bell continues polling when playback temporarily hides the header. Completed removal history remains readable to its owner after the native item actually disappears; a visibility revocation while the item still exists does not receive that fallback.
-- Enhanced's Requests view gains a Deletion queue tab with Active/History, and Calendar gains a removal agenda with consent/queued stages and explicitly earliest dates. The popout's full-page shortcut is gated on enabled Enhanced Requests configuration; only administrators see dependency guidance. The existing same-origin Web injection is sufficient; File Transformation is not required.
-
-### Evidence and boundaries
-
-- Final full root tests passed: `artifacts/removal-actions-release-review-tests.log` (**835 .NET tests**, including 166 Deletion Queue and 84 notification backend tests, plus frontend/release fixtures). Includes **25 bell tests** and shared/removal/settings UI coverage. The playback message handles fractional-day settings without overstating the minimum delay. Workflow lint and `git diff --check` passed locally.
-- Latest packages: `artifacts/removal-actions-verified-suite`, local test version `0.2.6.0`. Installed all-five Linux amd64 Jellyfin 12.3 browser/API checks passed in approved temporary fixture `suite-integration-f8dc255e-fa19-4ad2-8417-1b32ba153264`. Includes inline command clicks without modal navigation, half-height/right alignment, Enhanced-style Active/History and Calendar contracts, real layout saves and native/custom-theme coverage. The same compact frontend's mobile/desktop screenshots were reviewed in preceding fixture `suite-integration-27c35b7e-eadb-4fd3-829d-4a54908773ba/admin-screenshots`; the latest fixture also retains screenshots.
-- That latest package set passed Deletion Queue + Notifications + pinned Security (`suite-integration-d2acc12d-1c7f-4a9e-af75-64fd31fe40a0`) and Deletion Queue without Notifications (`suite-integration-5d235a9e-2fc3-4e9f-8746-cb3033b5bc5b`). These are focused installed checks, not a new 64-case matrix.
-- Enhanced integration uses reviewed public DOM/configuration and controlled installed-browser fixtures, **not the owner's complete Enhanced 12.13 installation**. Calendar additions are an integrated agenda, not events injected into Enhanced's private date-grid state. Custom/native-tab navigation modes still need owner acceptance. Real Seerr/Arr download cancellation/deletion is not certified by controlled gateway HTTP tests. Production data, native schema/index changes, Windows/physical ARM execution and arbitrary mixed-version packages remain outside this evidence. Older 64-case matrix results are not a matrix of these packages. No commits, pushes, tags or publication were performed by the assistant.
-
-## Earlier Notifications interface checkpoint
-
-Notifications owns the producer registry, layout overrides, inbox and administrator-alert recipient resolution. Other plugins register declarative types, trigger descriptions, allowed navigation actions and recipient policies through `NotificationsClient` / `NotificationIntegration`. Registrations and revisioned layout overrides persist independently of producer restarts. Domain access requirements persist and fail closed when callbacks disappear. Administrator alerts use current native administrators; private notifications are not copied to them. Deletion Queue now uses a distinct `alert.removal_uncertain` administrator type while retaining legacy `proposal.uncertain` compatibility.
-
-Personal preferences use atomic per-rule writes, show On/Muted state, allow restoring muted sources, and retain an active editor during silent refresh. Inbox projections withhold other recipients' identities. New removal requests require standalone Notifications with `registered-types` and `scoped-access`; existing consent, Undo and history remain available when that dependency fails.
-
-### Latest local evidence
-
-- Full root tests passed: `artifacts/notification-interface-hardened-root-tests.log`.
-- Both updated isolated gates passed: `artifacts/notification-interface-hardened-notifications-tests.log` and `artifacts/notification-interface-hardened-deletion-queue-tests.log`. Coverage includes **81 notification backend**, **22 bell frontend** and **154 Deletion Queue** tests. Workflow lint passed. The common jsdom harness is now installed for every selected plugin; the notification test-name filter avoids Windows shell pipe interpretation.
-- Fresh five-plugin Linux x64 packages: `artifacts/notification-interface-hardened-suite`, local test version `0.2.6.0`. No release/tag/publication was performed.
-- Installed all-five browser/API checks passed on disposable Jellyfin 12.3 Linux amd64: `suite-integration-fdb08e4a-699b-4f4c-ae8c-ee4cf7ddc40a` in the approved temporary folder. Includes real preference mute/restore, real revisioned layout save, four read-only removal menu contracts, compact grouped notification scrolling/options and shared admin/help/theme checks. Mobile menu screenshot reviewed under `admin-screenshots/notifications-menu-320.png`.
-- Fresh Deletion Queue + Notifications + pinned Security passed: `suite-integration-7541ea94-a7e0-45e5-935a-1269ee15113d`. Fresh Deletion Queue without Notifications passed its dependency-failure checks: `suite-integration-95a6a917-5eb4-4fe9-9728-5a522f31a83f`.
-- The **64/64** combination matrix in `artifacts/notification-interface-combinations` used the older `artifacts/notification-interface-suite`. It predates final preference/privacy/access/UI hardening; it is not a matrix run of the newest packages. The newer focused installed checks above do not replace exhaustive version-skew certification.
-
-### Still not release ready
-
-Account Invitations extraction/owner-profile migration and the authoritative shared connection registry remain incomplete. Actual Enhanced 12.13/custom-skin right-click markup, real Seerr/Arr removal, human Discord commands/DM/Activity, two-player visual synchronization, installed Windows and physical ARM remain unverified. Rich images/media, executable/custom-command actions and audio/toast preferences are follow-ups. Retained constructor ABI does not certify arbitrary independently versioned DLL combinations. Some older admin/help copy still uses “proposal”; integrated removal actions use **Request removal**, while backend identifiers remain compatible. No production data was tested and no native Jellyfin schema/index was changed.
-
-The sections below are historical checkpoints; newer evidence and scope statements above supersede conflicting descriptions of embedded Notifications or four-plugin architecture.
-
-## Preserved work
-
-The six nested working trees were moved into `plugins/` and `modules/`, not replaced from upstream. Before moving, source and Git histories were archived under `C:\Users\abhyu\AppData\Local\Temp\opencode\jellyfin-monorepo-backup-20261023-090907`. Original nested `.git` directories are also preserved there. Build outputs/node_modules were not included in the tar snapshots but remain in the moved working directories. No commits, pushes, tags, catalog publications or production-server changes were performed.
-
-## Changes
-
-- One shared producer SDK, bounded timeout/noncooperative-provider protection, preserved framework-only cross-ALC boundary.
-- SyncPlay notification metadata is flat non-null strings rather than an incompatible nested audit projection.
-- Expanded explicit audit-summary allowlist for native domain policy fields; arbitrary nested secret fields remain rejected.
-- User Manager generated bearer links now use fragments and body-based invite APIs; legacy routes remain for compatibility. Anonymous flows omit Jellyfin credentials. Saved tokens are matched to the server address, not the first saved server.
-- Restored missing User Manager script routes/CSS embedding and removed a successful-registration DOM exception.
-- Owner authorized relicensing User Manager to MIT; dependency licenses still apply.
-- Root build/test/release workflows and platform-specific combined catalogs. Security/Notifications are not packaged as fake standalone plugins.
-
-## Runtime implementation
-
-- Hub now mounts embedded Security, Notifications and `AccountHub.Lifecycle`. The legacy plugin entry, HTTP controllers, Discord bot and File Transformation registration are not compiled into Lifecycle. Hub does not replace Jellyfin's global Data Protection provider.
-- Discord Bridge is a fourth separately packaged plugin: one bot, encrypted token/settings, durable interaction claims, self-service commands and native SyncPlay invitation integration. Hub owns verified links/recovery. Cross-plugin management authorization uses framework-only JSON/delegates, not implementation exceptions.
-- The native Hub workspace covers people, managed-policy preview/apply/snapshots/rollback, template CRUD, Security, audit query/export/verification, structured notification routing/delivery health, domain adapters, Discord health, Seerr connection/directory and settings. Styles use native control structures and layout-only CSS, without forced palette or fonts. Public pages reuse installed CSS/Branding and preserve BaseUrl.
-- Added durable non-replayable external command claims, authorization/fallback/denial auditing, body bounds/duplicate-property rejection, private fragment link confirmation, single-use password recovery with session revocation stages, and retry-only session revocation after ambiguous password outcomes. Proof dialogs erase inputs on navigation.
-- A clean installed-package test found and fixed the outer-router startup failure, native legacy-header rejection, and native compact-GUID parsing. The pinned Security jf12 archive reports **2.6.4.1**, despite its `2.6.4.0-jf12` asset name; compatibility now explicitly includes that observed revision and still rejects 2.6.4.2.
-- Seerr HTTP now adds `/api/v1` exactly once, pins validated DNS addresses at connection time, requires explicit HTTP/private-network approval, blocks metadata/special destinations and redirects/proxies/cookies, bounds response reads/time, protects owner/admin accounts, preserves unknown permission bits and withholds raw upstream error content. The UI only exposes implemented connection/directory features.
-- Extracted a portable optional Security SDK; separate plugin load contexts use distinct typed-HTTP-client names instead of colliding in Jellyfin's common service container. Native dependency health now greys only unavailable features and gives repair instructions across all four installable plugins.
-- Added opt-in future episode/movie notifications, native Library controls, per-kind personal preferences, durable intake/deduplication and conservative uncertain-send handling. In-app publishing/reads/counts/DM delivery check current native media access. Discord requires explicit library/channel scope and disclosure acknowledgment, rechecks live membership before sending, and receives no Jellyfin audience identities. Hub captures once when installed; Bridge captures independently otherwise. No metadata/audience intake occurs when both destinations are opted out. See [configuration and limits](library-notifications.md).
-
-## Not complete / release blockers
-
-**The user's complete implementation request is not finished. These are integration previews, not a production-ready suite.**
-
-1. Durable invite provisioning, approval and public/administrator UI are now wired, with disabled-first native creation and explicit interrupted-account recovery. Matching-claim lookup and bounded fingerprint-keyed tab correlation have regression coverage. The pinned native database adapter still needs real installed-server concurrency/event/recovery acceptance; administrator history pagination and reconciliation controls remain unfinished. The reconciliation API now requires the standard command ID/revision/authorization wrapper. Retained legacy invite code is not a substitute for these gates.
-2. Canonical primary groups, assignments/overrides, snapshots, drift and explicit apply/reset/rollback are wired and unit/UI tested. Compatibility with legacy lifecycle templates and full native installed-server acceptance remain under review; no automatic reconciliation is implied.
-3. Seerr lifecycle, discovery, quota/reconciliation and durable deletion modules are wired, but actual disposable Seerr 3.5.1 integration and dependency/capability UI acceptance are outstanding. Compilation and mocks do not establish upstream compatibility.
-4. Paginated/bulk domain editors are wired and have targeted UI tests. All-domain fanout, retention consistency, installed combined behavior and fault recovery need more coverage.
-5. Disposable credentials are now supplied locally. Installed-plugin live checks passed gateway connection, guild/channel membership, slash-command registration, actual episode/movie delivery (one per kind), no everyone mentions, and no duplicates after rescan. The first live run failed after registration without sufficient diagnostics; the instrumented retry passed, so the original failure remains unexplained rather than claimed fixed. Interactive command execution, DMs and watch-party delivery remain unverified. Live checks are local pre-push only, not a GitHub Actions requirement; `.env` stays ignored.
-6. Recovery-code proof, pending-2FA, Security device actions/deletion cleanup, native outbound webhook transport, reverse-proxy/trusted-TLS, mobile/Modern/Legacy/custom-theme coverage, restart/fault recovery and Windows/ARM64 installed-package loading remain acceptance gates. Fresh real TOTP proof has passed, but is not all-factor certification. Cross-compilation is not a platform runtime test. Transitive distribution notices/SBOM still need release review.
-
-Do not install the retained legacy User Manager alongside Hub. New fragment links prevent future request-path leakage; previously issued legacy links may already have appeared in logs. No wildcard Security exemptions, 2FA bypasses, guessed Seerr matches or administrative Discord commands were added.
-
-## Verification evidence
-
-- **Installed-browser readiness race:** the Notifications workflow's reported failure occurred after the Playwright image pulled successfully: the SyncPlay help button inherited a disabled refresh fieldset. A visible old Save button and `networkidle` did not establish editor readiness. SyncPlay now marks loading/saving with `aria-busy` and keeps newly rendered fields disabled until dependency loading completes; the browser check waits for an idle form, enabled Save and enabled visible help before focusing. Added a delayed configuration/dependency unit regression and an installed-browser regression holding the actual dependency request during refresh. All 71 SyncPlay UI tests pass, and rebuilt five-plugin Linux x64 packages (`artifacts/browser-readiness-fix`) pass the full installed `--theme-check`, including the held-refresh case (`suite-integration-7c92b656-688a-4b39-be70-e6a653d0ea65`). No GitHub-hosted rerun or publication performed.
-- **Admin UI refresh, 2026-10-25:** all five primary admin pages independently embed shared, scoped presentation (`shared/Web/admin-ui.js`): rounded setting groups, consistent spacing, responsive tables, per-item help on hover/focus/tap with Escape dismissal, and safe formatted JSON code blocks. Advanced diagnostics collapse by default. Shortened labels and user-facing retry text without removing destructive confirmations, disclosure consent or permission checks. Account Hub settings are grouped; notification routes have individual explanations; Discord settings no longer repeat available-provider details. Private SyncPlay's player designer also loads the shared presentation. The root test suite passes (`artifacts/admin-ui-full-tests.log`), including 799 .NET tests, 70 SyncPlay UI tests and four new shared-UI tests. Rebuilt local five-plugin Linux x64 packages (`artifacts/admin-ui-acceptance`) pass installed authorization/API checks, 36 account dark/light/viewport checks, custom-theme/keyboard checks, and ten additional five-page mobile/desktop help/overflow cases. Browser review caught and corrected native focus-manager compatibility and cramped Discord checkbox rows. Screenshots/results: approved disposable fixture `suite-integration-cf327acb-a76f-43e4-ae8e-d428a72c6c2c`. This does not certify the owner's custom skin/Enhanced installation or Windows/ARM execution. No commit, tag or publication performed.
-- **Final Notifications verification:** `scripts/test.ps1` passed after the final partial-schema/cleanup hardening, including package/catalog/upgrade fixtures (`artifacts/notifications-migration-final-full-tests.log`). All **64 installed Linux amd64 plugin combinations** passed with/without pinned Security (`artifacts/notifications-migration-combinations`). The matrix used `artifacts/notifications-migration-suite`, which predates only the final partial-schema/cleanup hardening; those final changes passed the newer isolated tests, selected-only three-platform package validation and standalone installed restart check with Security described below. This is not Windows/physical ARM, production migration or complete five-plugin product acceptance.
-- **Notifications stable-storage follow-up, 2026-10-25:** standalone Notifications now owns `Notifications/notifications.db`, its independent key ring, producer API, bell and worker. Migration preserves history/preferences/IDs and in-flight leases, re-encrypts protected routes/settings, validates before retirement, removes old notification tables transactionally and leaves only a source tombstone. Completed startup does not read Hub's database/keys and removes interrupted cleanup leftovers. Tests additionally reject changed source data, invalid ciphertext, unsupported versions and partial legacy schemas without retiring the source. The isolated Notifications/common/backend/frontend runner passes (`artifacts/notifications-migration-isolated-tests.log`), including 15 frontend tests. Selected-only packages for Linux x64/ARM64 and Windows x64 pass release validation (`artifacts/notifications-migration-platforms`); this is not Windows/ARM runtime certification. Installed Linux x64 standalone producer authentication/replay/read-state/restart tests pass with/without Security; the final selected-only package also passes with Security (`suite-integration-13a18b7b-840c-4360-9834-203e48348a95`). The all-five browser fixture passes one Notifications bell, no competing Deletion Queue bell, user settings and the existing 36 workspace/theme checks (`suite-integration-9b1043d3-f79d-4188-a623-cf5e2784ba32`). That suite package predates only the final partial-schema/cleanup hardening, which is covered by the newer isolated/package/installed checks. Full-suite refresh and the expanded 64-case matrix are running; do not treat them as passed yet. Initial extraction requires coordinated consumer updates because shared API/backend assembly identities are now pinned independently of release versions. Account Invitations extraction, the common connection registry, rich notifications/unified Deletion Queue actions and real Enhanced right-click acceptance remain unfinished. No publication performed.
-- **Notification UI/extraction work in progress, 2026-10-25:** first-pass changes limit Deletion Queue to a single visible user-header container, prefer a visible native user-menu anchor for Hub's bell, introduce an icon/badge and separate gear/settings view, silently refresh on opening and dismiss on outside pointer interaction with focus return. Scoped notification layout CSS is embedded/served through the existing module. Removed the assumption that right-clicked cards always expose `data-type`; server-side preview remains authoritative. 15 frontend adapter tests and 68 notification module .NET tests pass; no installed-browser verification of these latest edits yet. **Standalone extraction, preservation/migration of encrypted settings and inbox history, unified Deletion Queue notification actions, rich-content schema, sound/toast preferences and actual native/Enhanced right-click acceptance remain unfinished.** Notifications is still embedded in Account Hub; do not label this requested five-plugin migration complete or release-ready.
-- **Deletion Queue missing Web controls, 2026-10-25:** reproduced absent injection in a real packaged Jellyfin 12.3 browser fixture using `/suite` BaseUrl: no `dq-web-client`, loaded flag or toolbar controls. The injector matched only root `/web` paths before native BaseUrl middleware ran. It now recognizes prefixed Web paths and captures the correct asset prefix before downstream middleware restores PathBase. Three regression tests added; all 153 Deletion Queue .NET tests pass. Rebuilt local packages (`artifacts/deletion-ui-baseurl-review`) pass the installed browser check for injected toolbar access and synthetic detail-page, native action-sheet and Enhanced Requests card contracts opening read-only proposal previews. No deletion/proposal write occurs in these checks. Actual owner Enhanced 12.13/skin markup remains unverified; this is not live Enhanced/Seerr/Arr deletion acceptance. With a visible Account Hub bell, the existing local Deletion Queue shortcut remains the expected fallback rather than a duplicate bell. Browser evidence: approved temporary fixture `suite-integration-89375ab2-5ff2-4b18-9f6f-38f28776e262`. No publication performed.
-- **Final local verification after release isolation/SDK correction, 2026-10-25:** full root tests pass **781 .NET / 156 JavaScript** plus package/catalog/upgrade fixtures and extracted SDK consumer build (`artifacts/independent-release-full-tests.log`). Private SyncPlay's SDK assembly now retains declared version **1.1.0.0**, immune to global plugin package version overrides; SDK archive validation checks this explicitly. Catalog-installed standalone SyncPlay plus the real consumer and native-socket/current-queue checks pass (`private-syncplay-integration-1792873568190` under the approved temporary directory). Fresh Linux amd64 packages pass all **32 combinations** with/without pinned Security (`artifacts/independent-final-combinations/results.json`); installed browser checks include the settings page and pass (`suite-integration-5126ada5-a65c-416f-ae10-94c705f275ed` under the approved temporary directory). Selected-only three-runtime packages validate after the SDK correction (`artifacts/independent-syncplay-release-check-final`); workflow lint passes. These are local results, not execution of the new workflows on GitHub and not full two-player/production/physical ARM acceptance. No commits, tags, pushes, uploads or publication were performed.
-- **Additional isolated release verification, 2026-10-25:** all four `scripts/test-plugin.ps1` selections passed, including common offline publisher/release fixtures; Private SyncPlay now has 229 passing .NET tests after exact-actor native-dispatch regressions. `scripts/test-plugin-package.ps1 -Plugin private-syncplay` built only that plugin for all three runtimes and passed selected-release validation, including encoded plugin-prefixed asset URLs (`artifacts/independent-syncplay-release-check-3`). A selected-only catalog (no other plugin ZIPs) installed successfully with native Security. This is Linux amd64 execution and cross-platform packaging evidence, not Windows/ARM runtime certification. Workflow syntax and isolation regressions pass locally; the restructured GitHub workflows have not been executed remotely.
-- **CI failure and independent release follow-up, 2026-10-25:** reproduced the stale Discord confirmation assertion and Hub `remediation_pending` write failure. Updated operational Discord integration expectations while retaining invalid-settings, stale-revision, duplicate-body and origin denial checks. Reviewed 270 identical official database/user/event blobs across v12.2/v12.3 before explicitly adding 12.3 to the shared SQLite boundary; see `docs/native-database-12.3-review.md`. The Linux amd64 installed matrix now passes **32/32** with/without pinned Security 2.6.4 (`artifacts/syncplay-settings-combinations/results.json`). Installed all-plugin browser checks pass, now including Private SyncPlay settings. The owner's generic settings error was **not reproduced** in that fixture; the editor now reports the failing stage/HTTP status without raw response data, offers explicit retry and recovers from a rejected cached UI loader (70 UI tests pass). Native websocket integration verifies creator-session-only admission, code/invite `GroupJoined` and current-media `PlayQueue` delivery; it does not claim two real video players were visually synchronized. Standalone fixture dependency DLLs now come from the same built plugin output to avoid mixed build versions. All four isolated plugin/common test runners pass locally. Release workflow definitions now gate only the selected plugin plus common/actual dependency checks, using plugin-prefixed immutable tags and independent feeds; the combination matrix is not a release dependency. Offline selected-release validation and common publisher protocol tests pass; workflow definitions lint locally. No remote workflows or publication actions were executed. Independent workflow details and remaining migration boundaries: `docs/independent-plugin-releases.md`.
-- **Private SyncPlay focused follow-up, 2026-10-25:** automatic invitation clipboard copying with selected-field fallback, single retained output and revocation erasure; scoped responsive native-hook modal layout; realtime readiness checks and pre-mutation modal disposal for creation/public/code/invitation joining. Native navigation is authoritative, and uncertain invitation mutations no longer automatically replay. Added seven DOM regressions; all 68 Private SyncPlay UI tests and 227 plugin .NET tests pass. The standalone disposable Linux Jellyfin 12.3 integration suite passes (native admission/moderation, guest HLS/subtitles, encoding limits, revocation and database integrity); its monorepo dependency-copy path was corrected. Full root tests pass: 779 .NET / 152 JavaScript plus offline package/catalog/upgrade fixtures and the newly included extracted SDK consumer build. Corrected standalone package target readers for Private SyncPlay/Deletion Queue and included portable target settings in the SDK archive. Ten inactive nested component workflows removed; see `docs/cleanup-audit.md`. **Not installed-browser acceptance:** DOM navigation/clipboard regressions and native API/HLS integration do not demonstrate actual two-browser player opening, cross-skin visual quality or browsing-page synchronization. Native SyncPlay does not mirror arbitrary browsing routes; no guessed redirects added. No publication actions performed.
-- **Jellyfin target update, 2026-10-25:** owner confirmed Linux x86_64/amd64 and Jellyfin 12.3. Official upstream release discovery reported `v12.3`; NuGet offers the matching 12.3.0 SDK. `Jellyfin.Target.props` now centrally selects SDK 12.3.0/server image 12.3/catalog ABI 12.3.0.0; projects, packaging/merged-release validation, fixture target selection and Seerr fixture consume that target. CI tests verify it still matches the latest stable upstream release instead of silently using an older SDK or mutable image. Solution build passed with zero warnings/errors; target unit tests and offline merged-release tests passed. This is **not installed 12.3 acceptance**: the native disabled-first account adapter still intentionally refuses databases outside its source-reviewed 12.2 contract, pending schema/API review or replacement during the invitation refactor. Do not simply relabel that safety guard. Historical 12.2 test evidence and owner-reported installed plugin versions are retained as history; the five-plugin migration and full compatibility fixture remain incomplete.
-- **Owner replaced the product architecture on 2026-10-25.** `docs/product-requirements.md` is authoritative: five focused installable plugins (Invitations, Private SyncPlay, Deletion Queue, Discord Bridge, standalone Notifications), common protected/revisioned connection settings, explicit dependencies, and native login/Security handoff instead of plugin-owned 2FA onboarding. README/dependency/release-gate notices now distinguish the old four-plugin implementation/evidence from this target. The extraction, migration, shared-settings wiring, five-plugin packaging/installer behavior and new matrix are **not implemented or verified yet**; do not claim the whole repository has been migrated. The owner supplied 27 backend plugins and KefinTweaks; `test-profiles/owner-server.json` records exact reported versions and preserves Ani-Sync/AnimeMultiSource as disabled. JSON/profile assertions passed. Exact server version/platform and source/checksum resolution are still outstanding; the complete external plugin set has not been installed into the local fixture. No production data/configuration/credentials were accessed or copied.
-- **Owner-directed step-up scope change:** introduced an explicit non-security operational risk. Plugin-owned step-up no longer applies to audit reads, notification administration, Seerr lifecycle commands, domain administration or Discord transport settings; ordinary administrator authorization remains. Security-affecting user/group/policy, onboarding/creation, verified identity/recovery, public recovery URL and native Security controls retain their existing security gates. Active Hub non-security confirmations omit the factor input; Discord transport settings no longer display a fresh-code field. Native Security's own global enforcement is not disabled or patched. All **779 .NET tests** and **28 targeted UI tests** passed; an initial parallel compile hit a shared-output Windows file lock, then the single solution test run passed. Full UI/installed/release acceptance needs refreshing; earlier r10 packages/matrix predate this policy change. Unmounted legacy editors and broad endpoint/UI classification still require follow-up review before claiming every surface migrated.
-- **Owner-directed Account Hub UI scope reduction:** removed Seerr, Deletion Queue, Private SyncPlay and Discord administration tabs and their workspace mounting functions. Hub now exposes People, Groups, Invites, Library notifications, Security, Audit, Notifications and its own Settings. Dependency presentation is limited to account Security/Discord notification integrations; deletion/party administration belongs to standalone plugins. Backend contracts, existing stored settings/credentials and Seerr lifecycle state are preserved rather than destroyed. The affected UI group passed **45/45**, including core group/invite/native-creation and LF/CRLF secret-erasure regressions. Browser harness now expects 36 account-focused workspace theme cases rather than the old 60; a fresh installed run/package matrix is still required. Earlier unified-screen descriptions are superseded by this owner decision. This UI change does not itself certify every onboarding/identity/Security/notification failure boundary.
-- **Connectivity/import follow-up is partial, not complete:** a read-only authenticated Discord test endpoint/button with bounded timeout, busy/result state, BaseUrl-aware ApiClient routing, cancellation/stale-response containment and fixed diagnostics is implemented; Hub's existing Seerr test now has busy state and explicit saved-settings/success text. Thirty Bridge tests and 28 affected UI tests passed. Coverage for these newly introduced operations and other connection types is not complete; fresh root/packages/matrix are required. Owner additionally requested one-click Enhanced import including API keys. Upstream public configuration was reviewed: Seerr uses `JellyseerrEnabled`, `JellyseerrUrls`, `JellyseerrApiKey` and optional URL mappings; Arr configurations have separate single-/multi-instance fields. A complete matching-service import has **not** yet been implemented. Existing runtime Seerr discovery/import adapters must not be represented as a completed all-connections import. Import must use supported public runtime configuration, explicit administrator/proof authorization, redacted results and supported destination secret storage, without importing unrelated Enhanced UI preferences or granting HTTP/private-network exceptions silently.
-- **Windows GitHub UI-test failure fixed in the test harness:** the workspace import-stubbing regex used `.*\n`; JavaScript's dot excludes CR, so CRLF checkout left the ES-module import intact before `window.eval`, causing `Cannot use import statement outside a module`. All four fixture call sites now share a CRLF-aware transform. Settings secret-erasure regressions explicitly run with both LF and CRLF for tab switch, viewhide and viewdestroy. The complete affected root UI group passed **45/45 locally on Windows**, including the six line-ending/navigation combinations. Packaged plugin source is unchanged. A new GitHub-hosted rerun has not been claimed; earlier local full-root totals predate these three additional regression cases.
-- **r10 final installed Linux x64 matrix completed: all 32 cases passed**, including every subset of the four plugins with/without pinned native Security and the baseline. Results: `artifacts/runtime-review/r10-combinations/results.json`. All four r10 packages additionally built for Linux ARM64 and Windows x64; all 12 ZIPs/three catalogs and SHA256/MD5/SBOM/license inventories passed `scripts/validate-release-set.ps1` after the same flattened artifact merge used by the release workflow (`artifacts/runtime-review/activity-r10/merged-release-check`). This is not installed Windows or physical ARM execution evidence.
-- **Release pipeline strengthened and locally validated:** release packaging now depends on the reusable installed-integration workflow at the verified tag, including the full 32-case matrix; integration packages use that tag's version. Test concurrency includes the caller workflow to avoid a tag-push test canceling the release's reusable tests. Merged release artifacts are checked before any GitHub release write. Offline validator fixtures reject checksum tampering, missing runtime catalog, ABI/URL mismatches and unexpected upload files. Actionlint passed on all updated workflows. Final root run with these new tests passed **778 .NET / 142 JavaScript tests** and offline distribution fixtures (`artifacts/r10-release-gate-tests.log`). No GitHub-hosted run, tag, push, upload or publication was performed. Remaining Activity/playback/live/platform/license-supplement gates still prevent full v1 sign-off.
-- **Final r10 root rerun passed 778 .NET / 142 JavaScript tests**, including the latest Activity companion source/settings help link, lifecycle/privacy/native-control tests, SDK/runtime-license hash inventory, syntax and offline distribution/upgrade fixtures. Evidence: `artifacts/activity-r10-final-tests.log`. Workflow lint and the equivalent installed Docker-browser path also passed locally; no GitHub-hosted run is claimed. The r10 plugin matrix remains tracked independently. Actual Discord Activity launch, human slash-command/DM/watch-party acceptance, in-Discord video playback and supplemental SDK distribution review remain open; this does not make the suite release-ready.
-- **r10 Activity companion package and installed browser checks passed locally.** Candidate: `artifacts/runtime-review/activity-r10/linux-x64`, with generated JavaScript bundle hash/runtime-license inventory and original license texts staged alongside the .NET distribution inventory. The full root run passed **778 .NET / 142 JavaScript tests** (`artifacts/activity-r10-full-tests.log`); the subsequent settings help-link edit passed targeted UI tests, and a final root rerun is tracked separately. Installed all-four-plugin native onboarding/groups plus Activity shell/CSP/config/asset allowlist passed (`suite-integration-b5a1f34d-da7e-409a-ba39-9d65a1cb645a`). An initial installed assertion failed because native JSON serialization omits null public fields; the privacy assertion now accepts null or omitted fields while rejecting unknown fields. No production code weakening was needed for that mismatch.
-- The new `--theme-check` path passed against the r10 installed package: 60 workspace dark/light/viewport checks, keyboard and custom-theme override, plus companion unavailable-state/native-labeled-control/overflow checks at 320/390/1280px (`suite-integration-a31c2308-b511-420d-9ec3-e1358025e803/theme-results.json`). Browser and fixture share only the owned Docker network namespace; no public tunnel or live credentials are involved. This exact path is now wired into the normal GitHub `installed-browser` job. Both workflow lint runs passed locally. GitHub itself has **not** been dispatched or claimed passed; actual SDK-parent launch and external-link confirmation in Discord remain human acceptance. Retained owned inspection containers from this r10 check were removed. The r10 32-combination matrix/final root rerun are pending independently. This companion is still **not** in-Discord media playback.
-- **Activity companion frontend/CI work in progress:** Bridge now embeds official Embedded App SDK 2.5.0, serves a CSP-restricted anonymous native-themed companion shell/config/assets, validates invitations against the configured HTTPS server/BaseUrl, erases bearer input on handoff/navigation/hiding/failure, and disables SDK console forwarding. No identity/OAuth scopes, native credentials/storage or participant lists are read. Playback is an explicit external Jellyfin handoff, **not in-Discord video playback**. Eight frontend tests and 30 Bridge .NET tests passed; actionlint validated all workflow definitions locally. New GitHub jobs install/test the locked frontend, lint workflows, and offer an explicit opt-in secret-free real Cloudflare sentinel smoke with labeled-container cleanup. No GitHub run was dispatched or claimed passed. Full root/package/installed checks are being refreshed; the new SDK/runtime-dependency distribution requires supplemental license review despite the earlier owner-confirmed review.
-- The r9 installed interactive invocation with `--load-test-env --discord-tunnel` successfully configured a generated HTTPS BaseUrl and reached the real human-command window after gateway/card/privacy checks passed. No human-command completion was recorded before the bounded window ended, so the run **failed at human interactive commands** and cleaned its owned tunnel/messages/credential-bearing fixture. The expired endpoint is not a persistent service. This advances installed temporary-HTTPS setup evidence, not human command/DM/watch-party or embedded Activity acceptance.
-- **Full root suite with tunnel tooling passed 776 .NET / 131 JavaScript tests**, syntax/inventory and offline distribution/upgrade fixtures (`artifacts/r9-tunnel-full-tests.log`). The subsequent `--load-test-env` alias adjustment is test-harness-only and used by the fresh installed interactive invocation. No packaged plugin source changed from r9; its 32-case matrix and 60 browser checks remain separately scoped evidence. Embedded Activity implementation/acceptance is not passed.
-- Interactive fixture startup exposed a CLI collision: Node pre-parses its own bare `--env-file` flag even when used as a fixture argument and interpreted a following `--interactive-discord` as a missing filename. The recommended fixture spelling is now `--load-test-env`; no secret values are passed as CLI arguments. The historical alias is retained for older invocations but must not be used before other flags. This is separate from Discord gateway/handler failure and does not change packaged plugin source.
-- **Accountless temporary HTTPS workaround verified**: `node scripts/discord-tunnel-smoke.mjs --allow-public-disposable-tunnel` passed trusted public HTTPS through a real Cloudflare Quick Tunnel into an isolated harmless HTTP fixture. No Cloudflare login/domain/tunnel token, bot credentials or Jellyfin state was used. Owned tunnel/fixture containers were removed. Initial 30-read probes failed with NXDOMAIN; a longer bounded readiness run passed. Host and Docker resolver behavior differed, but no universal cause is claimed. Public probes now run through a pinned isolated Node-capable container, preserve hostname/TLS checks and restrict routes/hosts; no system DNS changes. Four new tunnel unit tests plus two interaction predicates/cleanup tests pass. `--interactive-discord --discord-tunnel` now creates/configures/cleans an owned tunnel for the installed fixture instead of requiring `DISCORD_TEST_PUBLIC_BASE_URL`. This is development connectivity evidence, not embedded Activity or human-command acceptance. See `docs/discord-activity-development.md` for Developer Portal, SDK, proxy/cookie and privacy requirements. Packaged plugin source is unchanged from r9; new harness changes have targeted tests, not a new full-root run yet.
-- **Current r9 Linux x64 installed combination matrix passed all 32 cases**: every subset of Hub/Bridge/Deletion Queue/Private SyncPlay, with and without pinned native Security, including the no-plugin baseline. Candidate: `artifacts/runtime-review/discord-theme-r9/linux-x64`; results and sanitized logs: `artifacts/runtime-review/r9-combinations/results.json`. This validates standard startup/configuration/authorization/dependency boundaries after the latest Bridge and Hub CSS changes, not comprehensive feature/fault/browser coverage in every combination. Human Discord commands/DM/watch-party acceptance and other outstanding gates remain open.
-- **Current r9 full root suite passed 776 .NET / 127 JavaScript tests**, syntax checks, shipped-inventory and offline package/catalog/publisher/upgrade fixtures. Log: `artifacts/r9-full-tests.log`. This run includes the latest Bridge metrics, interactive acceptance predicates/cleanup and scoped Hub mobile wrapping change. Fixture publication messages are mocked; nothing was published. The r9 installed combination matrix is tracked separately and human Discord acceptance remains blocked on the disposable public HTTPS endpoint and consenting participant.
-- **Fresh r9 real Discord transport/library acceptance passed** through the installed Bridge: gateway connection, all expected guild command registrations, exactly one episode/movie card each, media-only allowlisted fields, no identity/URL/image/user/everyone mentions, native access revocation, per-kind inbox preferences and rescan deduplication. Only read-side history visibility was retried. Credential-bearing fixture state and owned messages/container were cleaned. This is transport/card evidence, **not** human slash-command execution, personal DM, watch-party redemption, `/reset` or `/unlink` acceptance.
-- **Discord/theme r9 candidate prepared locally**, with per-package shipped-binary/license inventories: `artifacts/runtime-review/discord-theme-r9/linux-x64`. Installed all-four-plugin onboarding/groups flow passed (`suite-integration-7d57dc61-f2b0-48ee-b808-42ca1cef571b`). New process-local administrator-only Bridge metrics count acknowledged command outcomes without retaining identities, channel IDs, bearer links or payloads. Interactive harness requires human commands and both DM/channel invitation paths; pure predicate/cleanup regression tests passed. `.env` presence-only inspection found bot/guild/channel/recipient configured but **public HTTPS base URL missing**; no values were printed. Human interactive acceptance is not passed. License review is complete per owner confirmation; final inventories are still generated.
-- **Real Chromium installed-theme acceptance passed 60 checks** against the r9 package: ten Hub tabs (People, Groups, Invites, Library, Seerr, Notifications, Settings, DeletionQueue, Private SyncPlay, Discord), native dark/light CSS at 320/390/1280px, associated labels, native checkbox structure and panel overflow. Keyboard Home/End/ArrowRight tab navigation and custom-theme native-button foreground override passed. The harness waits for color transitions before asserting. A real 320px Library status-text overflow was fixed with scoped `overflow-wrap: anywhere`, without fixed presentation colors/fonts. Browser Web Crypto uses a container-local loopback relay, not disabled browser security. Evidence: `artifacts/theme-r9-browser.log` contains the successful check JSON (its earlier PowerShell pipeline wrapper exited nonzero due npm stderr handling; a subsequent direct Docker invocation exited successfully after suppressing npm notices). This is DOM/computed-style coverage, not a comprehensive visual/contrast/player/Modern/Legacy or TLS certification. Security/Audit are excluded: an attempted broader Audit probe reported `unauthorized` during iteration, cause unproven. Both owned retained theme containers were removed; the unrelated pre-existing inspection container was untouched.
-- Fresh **r8 Linux ARM64 installed** all-four-plugin plus pinned Security run passed `--v1-flows --database-safety`: native HTTP creation ownership, onboarding/groups, authorization/retries, native Security compatibility/signed ingress, abrupt restart preserving identities/policies/Hub revision, and five-database integrity/foreign-key/native-ID checks. Packages: `artifacts/runtime-review/creation-ownership-r8/linux-arm64`. Evidence: `suite-integration-06145482-2fd8-4c57-a790-5775536296e3` in the approved temporary folder. Execution used ARM64 Docker emulation on x64, not physical ARM hardware/performance certification. This run did not include extended real-factor proof or missing-database restoration flags. Windows and other acceptance gates remain open.
-- **Current r8 exhaustive Linux x64 matrix passed all 32 standard installed cases**: every subset of Hub/Bridge/Deletion Queue/SyncPlay, with and without pinned native Security, including the no-plugin baseline. Results and sanitized logs: `artifacts/runtime-review/r8-combinations/results.json`. The updated fixtures explicitly use/end the authorized native-creation override for setup while asserting default native blocking and paused Hub redemption. This covers standard startup/configuration/authorization/dependency boundaries, not every feature/fault/browser scenario in each combination.
-- Current r8 full root suite passed **775 .NET / 125 JavaScript tests**, syntax checks, inventory and offline package/catalog/publisher/upgrade fixtures. Log: `artifacts/r8-full-tests.log`. Publication messages in fixtures remain mocked. The subsequently edited Seerr fixture diagnostics are test-harness-only, not packaged plugin code. ARM64 packaging/execution and r8 exhaustive combination acceptance are tracked independently. An unauthenticated lookup for the exact `v12.2.0` Windows release on the upstream GitHub release API returned 404; no matching official Windows runtime was obtained through that lookup, and Windows installed acceptance is not claimed.
-- Current r8 **installed Hub-to-Seerr** fixture passed: `scripts/seerr-api-integration.mjs --packages=artifacts/runtime-review/creation-ownership-r8/linux-x64` exercised real Seerr 3.5.1/Jellyfin 12.2 discovery, durable provisioning/quota application, immutable linking/drift/request reads and native-deletion follow-up, in addition to direct API contract checks. Only Seerr public HTTP APIs were used; no private Seerr state access. Temporary native-create overrides were explicitly granted/ended for fixture setup. Owned containers/network and credential-bearing fixture directories were removed. The first attempt failed with an uninstrumented transport error; the instrumented retry passed, but no cause is claimed proven. Diagnostics now expose only request path/status/allowlisted transport code and container status/exit/OOM flags, never raw bodies/headers/keys. This advances normal installed Seerr lifecycle acceptance, not every API fault/identity/connection-change boundary.
-- Creation ownership r8: native HTTP `POST /Users/New` is blocked by default with Hub instructions. An elevated administrator can grant a revisioned/audited five-minute native override from Hub Settings; Hub redeem/resume pauses and ownership changes drain active work. Admission expiry uses a monotonic clock, restart clears the override, and an already admitted native request cannot overlap Hub creation when time expires. 124 targeted Hub tests and 17 workspace UI tests passed, including expiry, draining, nested Hub creation and fresh confirmation. Fresh `artifacts/runtime-review/creation-ownership-r8/linux-x64` all-four-plugin installed `--v1-flows --database-safety --storage-recovery` passed default blocking, authorized native fixture creation, paused Hub redemption, return to Hub, onboarding/groups, abrupt restart, five-database integrity and missing-database recovery. Evidence: `suite-integration-99a333d4-898b-44ce-ac0c-e76ebad8349c`. No native schema/index/service/binary changes. This guards HTTP admin creation, not other plugins' direct native-service/database calls; it does not repair historical duplicate IDs. See `docs/user-creation-workflow.md`. The full r6 matrix predates this intentional native HTTP behavior change and must be rerun before release.
-- Owner-requested Hub-only concurrency scope: new `NativeUserWrites` bounded queue serializes Hub operations; explicit SQLite immediate transactions begin before ID allocation/policy reads, and tracked updates touch only selected managed fields. Onboarding enable and latest explicit account enable/disable paths no longer submit full stale policy snapshots. No native schema/index/service replacement was added; native Jellyfin races remain an accepted known external limitation per the owner's request. 121 targeted Hub tests passed. r7 all-four-plugin Linux x64 installed `--v1-flows --database-safety --storage-recovery` passed against `artifacts/runtime-review/atomic-writes-r7/linux-x64`, evidence `suite-integration-6b9c64dd-0ec8-410a-a490-c015055d73a7`. This package predates the final explicit account enable/disable targeted-update edit, which has only targeted build/test coverage so far. New maintenance detects duplicate native internal IDs and reports administrator-only summary/worker remediation status; automatic live ID reassignment is deliberately not implemented because it cannot safely invalidate/resolve native legacy user-data cache ownership. Reviewed offline repair remains outstanding.
-- The fresh **r6 exhaustive Linux x64 matrix passed all 32 cases**: all 16 subsets of the four installable plugins (including no plugins), with and without pinned native Security. Logs/results: `artifacts/runtime-review/r6-combinations/results.json` and adjacent sanitized case logs. This verifies the standard installed startup/configuration/authorization/dependency checks in `scripts/test-combinations.mjs`; it is not every feature/fault/browser flow in every combination. The installed Hub-to-Seerr lifecycle fixture is separate.
-- Current r6 all-four-plugin plus pinned native Security passed `--v1-flows --database-safety --storage-recovery --proof --extended-security`: real factor/replay/pending/trust/session checks, abrupt restart, five-database integrity/foreign-key/native-ID checks, missing Hub database fail-closed behavior and restoration without stopping native Jellyfin. Evidence: `suite-integration-0c2f1d83-ddf9-4f10-9dfe-8a74a0252743`. A separate owned r6 Hub browser fixture rendered native Groups checkbox controls with labels/outlines and disabled administrator selection using installed `/suite/web/...css` plus `/suite/web/themes/dark/theme.css`; Invites correctly disabled missing-Bridge delivery while preserving copy-link inputs. Browser coordinate clicking failed (`UnknownVizError`); DOM navigation and computed-style/accessibility inspection succeeded. This is not screenshot/mobile/Modern/Legacy/custom-theme certification. The owned browser fixture container `jellyfin-suite-test-c8426bb6` was removed after review; older unrelated fixtures were untouched. See `docs/integration-production-status.md` for the production decision and boundary-specific gaps.
-- Candidate r6 passed installed all-four-plugin Linux x64 `--v1-flows --database-safety --storage-recovery` without native Security: onboarding/groups, concurrent native/invite requests, abrupt restart preserving native identity/policy and Hub revision, five-database integrity/foreign-key/native-ID checks, and deliberate Hub database removal. Native Jellyfin remained available, Hub reported recovery-required, no module created replacement Hub state, and restoring the original fixture database recovered Hub successfully. Evidence: `suite-integration-1eae6026-3226-4245-aaa1-2a5bc07d7fa2` under the approved temporary folder. Owned test container removed. This is missing-database acceptance, not all I/O/permission/backup/fault cases.
-- `node scripts/seerr-api-integration.mjs` passed against disposable **real Seerr 3.5.1 and Jellyfin 12.2**, using HTTP APIs exclusively: native onboarding/authentication, API-key retrieval via authenticated settings, targeted import, immutable native-ID lookup, quota updates/null inheritance, permissions, empty request pagination and deletion/absence verification. No host state mounts, private config/database access, `.env`, CLI secrets or raw response logging were used; owned containers/network were removed. Earlier failures were fixture bootstrap/header/hostname construction defects, corrected before the passing run. This directly exercises documented upstream contracts, not installed Hub job transport; full installed Seerr lifecycle/fault acceptance remains open.
-- Blocker follow-up root run passed **770 .NET / 124 JavaScript tests** plus inventory and offline packaging/catalog/publisher/upgrade fixtures (`artifacts/blocker-followup-tests.log`). Includes authenticated DQ checkpoint/heartbeat-delta/restart/tamper tests, missing/mismatched plugin installation identity, durable reset revocation/fairness and immutable Seerr audit-outbox cases. The first UI follow-up run exposed group navigation incorrectly rejecting visible controls while requests were pending; the corrected response/disconnected-control handling passed all eight new follow-up cases. Fresh Linux x64 candidate: `artifacts/runtime-review/blocker-followup-r6/linux-x64`. New installed `--storage-recovery` and real Seerr API fixtures are tracked separately, not implied passed by this root run. See `docs/plugin-storage-recovery.md` for marker/key/database restoration requirements.
-- Latest safety fixes passed full root validation: **735 .NET / 116 JavaScript tests**, inventory and offline release/upgrade fixtures (`artifacts/release-safety-review-fixed-tests.log`), plus four isolated Python read-only-inspector regressions. Fresh `artifacts/runtime-review/safety-review-r5/linux-x64` packages passed all-four-plugin plus pinned native Security `--v1-flows --database-safety --proof --extended-security`, including abrupt restart and five-database integrity/foreign-key/native-ID checks. Evidence: `suite-integration-c326c249-3570-43c9-881a-c4344b514393`. Fixes include guarded worker construction, per-operation maintenance isolation/health, ordered invite finalization and explicit interrupted-recovery resume, managed-only legacy-route effects, stable Seerr audit retry timestamps, delayed-tab/secret cleanup and native checkbox/layout CSS corrections. See `docs/release-safety-review.md` for substantial remaining blockers; these results do not establish release readiness.
-- Safety-review r4 packages (`artifacts/runtime-review/safety-review-r4/linux-x64`) passed a complete installed all-four-plugin `--v1-flows --database-safety` run without native Security: concurrent native/invite creation, abrupt restart with unchanged native identities/policies and Hub revision, then read-only integrity/foreign-key/native-ID checks across all five databases. Evidence: `suite-integration-a4f0b14b-5efb-4e92-bc7f-808afb453b48` under the approved temporary folder, including `database-safety.json`. This candidate includes the native database version/provider/pending-migration guard, but predates subsequent invite-finalization, legacy-policy, UI and worker fixes. The earlier Security run passed its TOTP/recovery/device/session subchecks but timed out in the old stale-port restart harness; it is not a complete passing safety run.
-- Release-safety review root `scripts/test.ps1` passed: **724 .NET tests / 106 JavaScript tests**, syntax checks, shipped-binary inventory and offline package/catalog/publisher/two-version upgrade fixtures. Log: `artifacts/release-safety-review-tests.log`. Publication output inside those fixtures is mocked. See `docs/release-safety-review.md` for unresolved native database concurrency/policy-update risks; a passing root run is not release certification.
-- Docker became available again and fresh `artifacts/runtime-review/v1-onboarding-r3/linux-x64` packages passed `--v1-flows` on real disposable Jellyfin 12.2/Linux x64, both **Hub-only** and **all four plugins**, without native Security. Checks cover canonical group assignment, explicit apply/durable retry, native drift without automatic effects, reset, approval-only one-time invite issuance, password-only native login, hidden enabled non-admin creation, primary-group association, slot deduplication, and durable administrator reconciliation retries. Evidence directories: `suite-integration-dbb9accb-4a4d-431b-8d03-e54a5ac7b358` and `suite-integration-e1b5761e-eb33-47c3-89bc-305ebf8a8d8f` in the approved temporary folder. Owned test containers were removed. The first installed r2 run exposed an invite approval 404 from MVC's reserved `{action}` route value; r3 uses `{operation}` and passed. These two runs do not replace the full combination/Security/platform/fault/browser gates.
-- Latest targeted onboarding checks (2026-10-24): **102 Hub .NET tests** and **23 targeted JavaScript UI tests** passed. New cases cover matching versus unrelated claims after restart, explicit resume without account recreation, fragment erasure, omitted native credentials, password erasure, token-fingerprint-only bounded storage, original-link reload and storage/transport failures. The previous full root run passed **722 .NET / 102 JavaScript tests** plus inventory/package/catalog/offline upgrade fixtures (`artifacts/v1-integration-tests.log`); that run predates these latest tests and command-wrapper edits.
-- Fresh local Linux x64 packages and inventory sidecars were generated at `artifacts/runtime-review/v1-onboarding-r1/linux-x64`. `v1.0.0` is a packaging input only: no Git tag, commit, push or publication occurred. Packages predate the subsequent invite-reconciliation command-wrapper edit. The new `--v1-flows` installed test was attempted but **did not run**: after correcting the portable PowerShell PATH, Docker failed because the Docker Desktop Linux-engine pipe was absent. This is an environment blocker, not installed acceptance evidence; older matrix/platform evidence below does not certify the new source.
-- Root `scripts/test.ps1` passed on 2026-10-24: **649 .NET tests**, **90 JavaScript tests**, syntax checks and package/catalog/tamper/offline-publication/two-version upgrade fixtures. Includes library queue/consent/timing/uncertainty/privacy regressions, current-access revocation and cached-inbox invalidation, native library settings, personal kind preferences, BaseUrl links, and separate-ALC Security registration. Log: `artifacts/library-verification.log`. Publication messages inside fixtures are mocked, not real GitHub writes.
-- Root `scripts/package.ps1`: rebuilt all four plugin packages for Linux x64, Linux ARM64 and Windows x64 with the library observer, portable Security SDK and corrected per-copy HTTP-client registration. ZIP roots, required assemblies, checksums and assembly/catalog alignment passed. Current packages: `artifacts/runtime-review/library-v3/{runtime}` (includes the final native bell fix). Local `v0.2.0` is only a packaging input; no Git tag or publication was created. Cross-compilation is not Windows/ARM64 installed-server certification.
-- `scripts/integration.mjs`: real four-package Jellyfin 12.2/Linux x64 startup at `/suite`, administrator/header auth, anonymous/cross-origin/non-admin/API-key rejection, native domain reads, embedded notification endpoints, Discord disabled health, duplicate JSON rejection, hosted bell bootstrap/public shell, durable command retries/conflicts, administrator bulk exclusion, managed-policy snapshot/apply/rollback all passed. Evidence: `artifacts/runtime-review/final/linux-x64` packages and isolated `suite-integration-e3d48ac2-c64c-4099-8985-d2f8cff963cf` test directory. This is not a full feature acceptance run.
-- Browser-loaded native Jellyfin configuration page successfully rendered the Hub workspace. JSDOM regressions cover structured routing/native fields, navigation erasure of fresh-proof dialogs without writes, and public recovery fragment erasure with no Jellyfin credentials.
-- Real pinned Security v2.6.4 jf12 archive was downloaded and verified against SHA-256 `6c1ae5e41cc0bc7f168025d9b941578f13115cd73cac7a72496888c46f64a998`. Combined clean-server checks passed Security compatibility/users/devices, authorized signing-secret storage, exact raw-body HMAC acceptance, durable receipt dedupe and tamper rejection. Native self-enrollment of the disposable administrator then proved invalid-code denial, fresh real TOTP authorization, completed-command retry without re-verification, and code replay rejection without a second policy effect. No private Security records were inspected. Evidence directory: `suite-integration-7d1ba8f3-83dc-4f89-8d31-af665d326945` in the approved temporary folder. Native sender/proxy/TLS/recovery/device-action coverage is still not claimed.
-- Latest library installed-package checks passed with synthetic physical movie/episode files: Hub-only, standalone Bridge with pinned Security, and all four plugins with pinned Security. They proved native library discovery, opt-in/no backfill, kind preferences, inaccessible-user exclusion, revoked-access inbox/count suppression, rescan deduplication, and exactly one durable Bridge intake per new item. Combined and standalone configuration also passed invalid/fresh/replayed real native TOTP proof after SDK extraction. No live Discord message delivery is claimed. Logs: `artifacts/runtime-review/library-v2-{hub,discord,full}.log`.
-- Final v3 packages passed the full installed four-plugin synthetic-library plus real native Security proof fixture again after the browser fix. Evidence: `artifacts/runtime-review/library-v3-full.log`, isolated `suite-integration-0c8363f2-f4fb-449f-8828-c6a0e5e6ea1d` directory. All containers created for this notification validation were removed after checks; the older pre-existing inspection container was not touched.
-- Local `--live-discord --env-file` installed Hub+Bridge checks subsequently verified real Discord gateway/command registration and real synthetic episode/movie announcements, including post-rescan message counts. Verified test messages were deleted and credential-bearing fixture state removed; no raw Discord history, credential-bearing server logs, or fixture DB/key rings were retained as evidence. Existing secret-free CI remains unchanged. See [local live-test configuration](discord-test-credentials.md).
-- Follow-up shared Discord cards use an explicit media-only projection inspired by Seerr's presentation, without its requester/reporter/commenter fields. No author/avatar/thumbnail/server link or audience/item/library IDs are included. Metadata markdown/mentions are neutralized; native Jellyfin controls remain theme-owned. Discord Bridge's 26 targeted tests passed, including three new card privacy/formatting cases. A new installed live card verification is tracked separately from the earlier plain-text delivery evidence.
-  The first live card run completed its intake queue without uncertain/failed entries but failed message-content verification; its cause remains unexplained. The instrumented retry passed real episode/movie card delivery, exact counts, media-only field allowlisting, no identity/URL/image fields, no mentions, and post-rescan deduplication. Read-side verification now permits up to 20 seconds for Discord history visibility; it never retries sends or uncertain deliveries. This is not a claim that read lag was proven to cause the earlier failure. Linux x64 card packages: `artifacts/runtime-review/discord-cards/linux-x64`. Check the channel's Embed Links permission as well as send/read permissions.
-- All **32** clean Jellyfin/Linux x64 combinations passed: every subset of the four plugins, including no plugins, with and without pinned Security. The previous eight Hub+Bridge failures are resolved by per-loaded-copy HTTP-client names. Evidence: `artifacts/runtime-review/library-v2-combinations/results.json`. These packages precede only the final bell URL correction, not any server-side changes.
-- A native browser inspection found the notification bell's old empty-path `ApiClient.getUrl('')` call was rejected by the actual Jellyfin web client. It now scopes identity using the valid inbox endpoint URL; the bell harness rejects empty paths like native Jellyfin. Installing the final v3 Hub package into the owned disposable server and restarting preserved exactly two notices. The real browser mounted `Notifications (2)`, rendered the episode/movie metadata, and opened the movie's native details page under `/suite/web/` without a nested `web/web` path. Native Hub Library controls rendered with current settings/health and missing-Bridge remediation. Screenshot capture was unavailable because the browser tool could not obtain a visible desktop tab; DOM/interaction verification is not full theme/mobile certification.
-- Root workflow files passed `actionlint` again on 2026-10-24 in a disposable Docker container. The scheduled/manual workflow now includes generated-media library fixtures for combined Hub, standalone Bridge and Hub-only. GitHub-hosted Windows/Linux execution and real publication have not run.
-- Detailed ignored local logs: `artifacts/test-verification.log`; local packages under `artifacts/verification-*`.
+# Current review status
+
+**Not release ready. Nothing committed or published.**
+
+## Current work
+
+### Latest verified outcome — 0.0.37.0, Linux x64
+
+**Newer source work is active:** factor continuation now carries only a five-minute
+per-tab intent expiry across Security's marker-dropping redirect; no challenge,
+identity or credential is stored there. The source is newer than 0.0.37.0 and
+requires a fresh package/native acceptance. The owner additionally requested
+automatic latest tools/version bumps before tests and releases. Official
+checksum-verified Node/PowerShell/SDK bootstrap is wired into local test/package
+and shared CI target entry points; both release engines preflight before tagging.
+The dependency bump preview is hourly alongside the existing protected Renovate
+PR/validation/promotion workflow. No workflow was triggered or release published.
+Discovery-only bootstrap, workflow lint and real Windows tool installation pass.
+`artifacts/grouping-diagnostics-tool-bootstrap-install-r1.log` verifies official
+checksums and executable versions for Node 26.13.0, PowerShell 7.6.9 and SDK
+10.0.403. **223 script regressions pass** in
+`artifacts/grouping-diagnostics-scripts-r17.log`. Current direct-image updates
+(Python digest/cloudflared 2026.10.6) pass the 99-declaration freshness audit in
+`artifacts/grouping-diagnostics-freshness-r11.log` and offline version launches.
+Hosted CI and Linux tool installation are not yet end-to-end certified; current
+plugin-source changes still require a fresh coherent package/native gate.
+
+The fresh matrix **passes 128/128 unique combinations**, including **64 with
+native Security**, in `artifacts/grouping-diagnostics-combinations-r11/results.json`.
+The exact previously failed Security combination also passes separately in
+`artifacts/grouping-diagnostics-security-route-r1.log`. Restored PowerShell is
+checksum-verified; preflight now stops promptly on runner loss. The original
+93/128 matrix failure and its missing native Security directory remain retained
+evidence, with no claim to have explained the external disappearance.
+
+Completed for this package: 1,201 .NET tests (one optional skip), full-suite and
+standalone Hub/Notifications browser acceptance, native grouping/defaults/user
+overrides, same-tab synthetic linking and exact-account consent, signup,
+combination-independent diagnostics/cached-owner navigation, themes/studio,
+eight-database restart/recovery and extended native Security. Current script
+regressions pass 218 cases; later changes are fixture-only.
+
+Remaining: factor-enrolled same-tab link continuation, then renewed human
+Discord acceptance only after the owner is ready. Fresh target discovery passes in
+`artifacts/grouping-diagnostics-targets-r2.log`, with unchanged Jellyfin 12.4,
+Security 2.6.5, Enhanced 12.14.0.0 and Seerr 3.5.1, reviewed contracts and a new
+snapshot at `artifacts/grouping-diagnostics-current-r2/targets.json`. The old
+snapshot is not an expired fallback. Three exact-package gates are running:
+`artifacts/grouping-diagnostics-factor-link-r1.log` (native public-API enrollment
+and actual browser factor challenge, no pre-factor handoff consumption),
+`artifacts/grouping-diagnostics-seerr-r10.log`, and
+`artifacts/grouping-diagnostics-syncplay-r10.log` after the isolated consumer build
+in `artifacts/grouping-diagnostics-consumer-r10.log`. The SyncPlay catalog copies
+the immutable archive and original checksum without rebuilding it. No pending
+gate is counted as passed. Windows/ARM and broader production boundaries remain
+separate. No live human fixture or release is active.
+
+The exact-package **real Seerr gate passes** in
+`artifacts/grouping-diagnostics-seerr-r10.log`: Seerr 3.5.1 public-API onboarding,
+native import/lookup, quotas/inheritance/permissions/request paging/deletion, plus
+installed Hub provisioning/drift and native-account deletion follow-up. This is
+not real media-removal certification. **Native SyncPlay/consumer/media also passes**
+in `artifacts/grouping-diagnostics-syncplay-r10.log`, with the isolated consumer
+build in `artifacts/grouping-diagnostics-consumer-r10.log`: immutable catalog
+install, native guest/HLS/captions/encoder/moderation/revocation, isolated public
+consumer API and database integrity. Native screenshot/JSON evidence from the
+full run is preserved in `artifacts/grouping-diagnostics-native-r10`.
+
+The first factor-enrolled link attempt fails in
+`artifacts/grouping-diagnostics-factor-link-r1.log`: the browser does not reach
+the expected native challenge and loses the marker after native navigation. The
+fixture now asserts native enrollment state and captures only auth response flags
+and endpoint status in a new diagnostic repeat; no enrolled-factor pass or native
+factor bypass is claimed. A read-only direct-dependency audit is also running in
+`artifacts/grouping-diagnostics-freshness-r10.log`.
+
+### Producer grouping, native onboarding and shared diagnostics — active source work
+
+The owner superseded the current human run with new requirements. Inbox grouping
+must use each registering plugin's declared metadata key (for example show ID),
+with administrator per-plugin defaults and independent personal inherit/on/off
+choices. Source grouping/projection/preferences and bell/admin controls are being
+implemented; unregistered keys never infer a group, and rows retain individual
+authorization, actions and read/dismiss state. Library notices now carry show/movie
+grouping identity; party notices declare party grouping and action-specific text.
+
+The broader requested work remains active: automatic session-aware link review
+without anonymous Jellyfin identity disclosure; native-login-styled signup with
+signed-in detection, safe actionable failures and normal native-login redirect;
+one combination-independent diagnostics database, user-facing opaque error IDs,
+administrator search/owner navigation/clear/level controls and secret-safe details;
+and useful audience-safe notifications across all plugins. Current source is not
+certified by the preceding 0.0.27.0 package evidence. No new release claim is made.
+
+The error boundary also applies to ordinary UI callbacks, native/AJAX failures,
+guest playback, legacy account pages and Security integration controls. User
+messages use fixed safe categories, not provider prose, internal codes, exception
+text, model-state values or technical help. Native verification signals and
+machine-readable compatibility/no-retry codes remain intact. An opaque ID is
+shown when supplied by the server; client/network failures do not invent a
+searchable server record. Technical investigation is administrator-only, and even
+diagnostics omit message formatters, state/scope arguments, credentials, payloads,
+private links and exception messages.
+
+Latest completed coherent backend/package gate:
+`artifacts/grouping-diagnostics-backend-package-r12.log` records **1,178 .NET
+passes**, one optional external-service skip, and six validated local **0.0.34.0**
+Linux archives in `artifacts/grouping-diagnostics-packages-r7`. It predates the
+same-tab continuation and explicit invitation direction changes below.
+`artifacts/grouping-diagnostics-scripts-r10.log` records **213 script passes**;
+`artifacts/grouping-diagnostics-syncplay-ui-r6.log` records **71 SyncPlay UI passes**;
+`artifacts/grouping-diagnostics-bell-r3.log` records **60 bell passes**. Security
+client tests (5) and legacy account-client tests (3) also pass. Backend r4's stale
+startup-filter count included MVC's own filter; the corrected assertion still
+requires exactly one diagnostics startup owner. Raw native content/status results
+and framework-provider failures now have explicit redaction regressions. The
+removal UI's asynchronous status test waits for the projected state instead of
+assuming two fixed timer ticks. These tests do not certify native installations,
+cross-plugin controller ownership, Windows/ARM or a new human Discord run.
+
+A fresh immutable local **0.0.28.0** Linux package candidate built successfully in
+`artifacts/grouping-diagnostics-packages-r1` (six validated archives, each containing
+`Jellyfin.Diagnostics.dll`; build/inventory log:
+`artifacts/grouping-diagnostics-package-r1.log`). Standalone Notifications completed
+its API/library gate, but the all-six run failed on a domain denial incorrectly
+rewritten from 403 to 500. Native logs also caught redaction of already-started
+adapter responses. The correction runs redaction after domain envelope filters,
+preserves verified provider diagnostic IDs and skips already-written safe adapters;
+explicit regression tests cover both cases.
+
+`artifacts/grouping-diagnostics-backend-package-r6.log` builds the corrected local
+**0.0.29.0** candidate in `artifacts/grouping-diagnostics-packages-r2`. Its full
+installed run (`artifacts/grouping-diagnostics-full-r2.log`) passes shared
+diagnostics/permissions, domain 403 preservation, signup/groups/library and abrupt
+restart/integrity across **eight databases**, then fails before browser execution
+because the new browser flag was omitted from the fixture restart condition.
+The standalone browser run (`artifacts/grouping-diagnostics-standalone-r2.log`)
+passes APIs/library but fails at lookup. A concurrent initial-list/search race was
+identified and is now covered by queued-read and stale-list/owner-navigation tests.
+Those follow-up UI/health-compatibility changes are not certified by the 0.0.29.0
+package. No whole installed/browser pass is claimed for either predecessor.
+The **0.0.30.0** standalone/full installed/browser repeats and a fresh **128-case**
+matrix (64 with native Security, all with shared diagnostics wiring checks) are
+recorded in `artifacts/grouping-diagnostics-{standalone,full}-r3.log`
+and `artifacts/grouping-diagnostics-combinations-r3/results.json`. The matrix
+completed **128/128 unique passes**, including **64 with native Security**, for
+**0.0.30.0 only**. The full fixture passes native grouping/defaults/user overrides,
+eight-database integrity and missing-state recovery, then fails the browser's strict
+page-error assertion. The standalone browser reaches layout/levels/clear checks,
+then its checkbox action targets a row collapsed by the preceding reload; the
+harness now reopens the current row and uses its visible native label. Neither
+browser run is counted as passing. A dedicated owned debug fixture is retaining
+sanitized page-error evidence rather than hiding those errors. A native-control
+regression also reproduced missing stable IDs/associated labels; the follow-up UI
+now supplies native labelElement/container/focus contracts and themed selects.
+Those latest UI changes are newer than the 0.0.30.0 archives and need a fresh
+candidate. The installed library fixture now also checks producer-supplied
+show/movie grouping keys, revisioned admin defaults and per-user inherit/on/off
+isolation without external replay. The native browser harness checks opaque lookup,
+owner navigation, native dark/light × 320/1280px layouts, level controls, explicit
+selected clearing, ordinary-user denial and page errors; it does not suppress errors.
+
+The **0.0.31.0** full installed/browser repeat now **passes** in
+`artifacts/grouping-diagnostics-full-r4.log`, including all-six authorization and
+source discovery, native grouping/defaults/user overrides, signup/groups, abrupt
+restart/eight-database integrity, original-state recovery, cross-owner diagnostics
+navigation, four native theme/width cases, levels, explicit clearing and ordinary
+user denial with **zero page errors**. Credential-free JSON/screenshots are retained
+in `artifacts/grouping-diagnostics-native-r4`; the narrow dark view was visually
+reviewed. Earlier page errors were native `attachedCallback` failures setting a
+missing label's `htmlFor`; IDs/associated labels/focus containers fixed them. The
+owned debug container `jellyfin-suite-test-dcf68182` was verified by its exact config
+mount and removed after preserving sanitized evidence.
+
+The 0.0.31.0 standalone browser repeat instead timed out trying to sign in to
+`suite-user`, which only the Hub fixture creates. The harness now creates a
+dedicated hidden ordinary test account for any plugin selection; no product
+authorization requirement was weakened. Standalone native/browser acceptance must
+be repeated. Invitation markup was also aligned with the installed native login's
+`standalonePage`/`backdropPage`, centering and form placement, rather than interior
+dashboard classes. A fresh **0.0.32.0** candidate is building for that source, and
+new disposable native-browser signup checks cover session detection, layout,
+pre-reservation validation, normal-login redirect and used-link denial. Those
+newest invitation changes are not certified by the 0.0.31.0 pass or running
+0.0.30.0 matrix.
+
+**0.0.32.0** builds after **1,177 .NET passes** (one optional skip) in
+`artifacts/grouping-diagnostics-backend-package-r9.log`. Standalone Notifications
+now passes its own installed/native-browser gate in
+`artifacts/grouping-diagnostics-standalone-r5.log`, with four theme/width cases,
+normal-user denial and zero page errors; sanitized evidence is retained in
+`artifacts/grouping-diagnostics-native-standalone-r5`. The full run passes API,
+grouping and storage gates but its signup browser check targets the initial submit
+button text after validation changes it; the harness now targets the form's submit
+action. The separate Hub signup repeat in `artifacts/grouping-diagnostics-signup-r5.log`
+passes session detection, invalid username before reservation, native-login redirect,
+new-account sign-in and used-link denial with zero page errors. **Do not treat its
+automated layout checks as a visual pass**: screenshot review found the native fixed
+background painted over the static fields/headings. The latest source positions
+the standalone page above that background and the browser harness now requires
+visible, hit-testable headings/labels/inputs/buttons before recording layout passes.
+
+A real `ILoggerFactory` regression also proved that host-level logging defaults
+discarded debug events before diagnostics could apply its own selected threshold.
+The correction is provider-specific and leaves the native/global threshold intact;
+it still never formats state, scopes or exception messages. The first 0.0.33.0
+attempt failed compilation on a logging overload before creating any packages
+(`artifacts/grouping-diagnostics-backend-package-r10.log`). The corrected serial
+backend/new-package run is `artifacts/grouping-diagnostics-backend-package-r11.log`
+and targets `artifacts/grouping-diagnostics-packages-r6`. Its logger/paint fixes are
+newer than every preceding installed pass; no latest-source acceptance is implied.
+
+**0.0.33.0** standalone Hub signup passes the stronger paint/pointer checks in
+`artifacts/grouping-diagnostics-signup-r6.log`; screenshots confirm fields are
+visible above the native background. The current source also sets explicit English
+`dir="ltr"` so native safe-area padding activates; this is newer than that pass.
+Cached diagnostics-owner restoration has a passing unit regression, but its repeated
+native browser case has not yet passed on the newest package.
+
+Same-tab `/link` is now wired in source: signed-out and rejected-session paths
+prepare a server-memory handoff with an anonymous same-origin POST, then navigate
+the same tab to native login with only a credential-free return marker. The native
+helper uses an HttpOnly, Strict, path-scoped session cookie to resume review, not
+confirmation. Challenges are not persisted in browser storage; transport is bounded,
+volatile, expires within five minutes/original challenge expiry, and is one-use.
+Unknown handoff outcomes are not retried. Original durable challenge confirmation,
+exact-account consent and native/Bridge authorization remain unchanged. Reset login
+behavior stays separate. New store/controller/bootstrap/JS regressions cover these
+boundaries. The first coherent attempt fails test compilation and the targeted
+retry finds a wrong expectation about native cookie deletion; both test issues
+are corrected without changing the authorization boundary. The coherent
+**0.0.35.0** backend/package retry in
+`artifacts/grouping-diagnostics-backend-package-r14.log` passes **1,201 .NET tests**
+with one optional skip. The server restart interrupted captured output during
+packaging, but the surviving owned container was separately observed exiting **0**
+and six archives exist in `artifacts/grouping-diagnostics-packages-r8`. Installed
+full/standalone/browser runs are active; no installed pass is claimed before they
+complete. A new `--public-link-ui` disposable fixture seeds only synthetic
+challenge rows and checks native same-tab login/review/confirmation; this is not
+human Discord issuance. Its first standalone Hub attempt
+(`artifacts/grouping-diagnostics-hub-r8.log`) reaches native Web but times out on
+an exact login URL assertion. The browser harness now waits for actual native
+login fields and records sanitized routing state. Its repeat reaches native sign-in
+but remains at `#/home?accountHubLinkReturn=1` rather than reopening review; this
+is an unresolved native continuation failure, not a passing flow. A dedicated
+disposable debug repeat confirms the helper was injected and the native client
+was authenticated, but no continuation request was made. Native SPA history
+navigation can skip `hashchange`; source now checks the credential-free marker on
+a 500ms interval, without replaying any request. The regression and all **214**
+scripts pass in `artifacts/grouping-diagnostics-scripts-r11.log`. The serial
+**0.0.36.0** backend/package gate passes **1,201 tests**, one optional skip, and
+six local Linux archives in `artifacts/grouping-diagnostics-packages-r9`; evidence
+is `artifacts/grouping-diagnostics-backend-package-r15.log`. The standalone Hub
+and full installed/browser repeats were started. The standalone Hub repeat
+`artifacts/grouping-diagnostics-hub-r10.log` still fails at native continuation:
+the helper and authenticated client exist but no request is sent. The interval
+alone is not yet reliably verified. A second disposable debug run successfully
+performs same-tab sign-in, review, exact-account denial, consent/link and
+replay/expiry/origin checks, then fails its existing-session case because navigating
+to the same path with a new fragment did not reload the public script. The harness
+now opens a new document before testing that case; another repeat is running. The
+earlier continuation timeout is now traced in the full-suite sanitized evidence:
+Jellyfin bubbles a `pagehide` CustomEvent from an SPA view, incorrectly triggering
+the helper's browser-lifecycle cleanup. The source now ignores those custom events
+and stops only on actual `PageTransitionEvent`; both cases have regressions, and
+all **216 scripts** pass in `artifacts/grouping-diagnostics-scripts-r12.log`.
+The 0.0.36.0 repeat also fails on this issue. A fresh serial **0.0.37.0** build
+and package gate passes **1,201 .NET tests**, one optional skip and six Linux
+archives in `artifacts/grouping-diagnostics-backend-package-r16.log`; standalone
+Hub and full installed/browser repeats were started. The standalone Hub run
+`artifacts/grouping-diagnostics-hub-r12.log` now passes synthetic same-tab native
+login, exact-account review/consent, no automatic link, one-use cookie, replay,
+expiry/origin/credential denial and existing-session review with zero page errors;
+it also passes signup's session detection, native layouts and padding, validation,
+normal login redirect/sign-in and used-link denial. This is **not human Discord
+issuance**. The full six-plugin repeat `artifacts/grouping-diagnostics-full-r10.log`
+also passes API/auth/grouping, eight-database restart integrity and missing-state
+recovery, synthetic same-tab review/consent and signup, and shared diagnostics
+including repeated cached-owner navigation, four theme/width cases and zero page
+errors. Narrow signup and exact-account review screenshots were visually reviewed.
+Standalone Notifications diagnostics/studio also passes on 0.0.37.0 in
+`artifacts/grouping-diagnostics-standalone-r10.log`: native library grouping,
+ordinary-user denial, four diagnostics theme/width cases with zero page errors and
+six studio theme/width cases with editing/persistence/live bell/no preview sends.
+The first full theme/studio attempt (`artifacts/grouping-diagnostics-theme-r10.log`)
+fails in an outdated responsive fixture that clicked the now-hidden manual Review
+link button despite automatic authenticated review. The fixture now waits for
+the actual reviewed accounts; the repeat `artifacts/grouping-diagnostics-theme-r11.log`
+passes **18 responsive**, **30 native workspace/theme** and **six studio** cases
+on 0.0.37.0. Native Security/proof and the 128-case matrix are running, with no
+pass claimed before completion. The Security-enabled link browser case uses
+an ordinary unenrolled disposable account; it does not itself certify an enrolled
+factor challenge continuation.
+
+The first 0.0.37.0 Security attempt `artifacts/grouping-diagnostics-security-r10.log`
+passes native Security 2.6.5 HMAC/replay/tamper, exact-session reset, real factor
+enrollment/proof/recovery/replay, native session termination and eight-database
+restart/recovery. It then fails when the new link fixture tries to create its user
+after administrator factor enrollment: native user-creation override correctly
+requires fresh proof. The harness now creates that disposable user before factor
+enrollment, with no Security bypass. The exact-package repeat
+`artifacts/grouping-diagnostics-security-r11.log` **passes** all those checks and
+synthetic same-tab linking with Security installed and zero page errors. The link
+test's ordinary user is not enrolled in a factor; factor-enrolled same-tab link
+continuation remains a separate unverified case.
+
+The current **0.0.37.0 matrix failed: 93/128 pass, 35 fail**, recorded in
+`artifacts/grouping-diagnostics-combinations-r10/results.json`. Of the failures,
+34 stop on `ENOENT` launching the configured temporary PowerShell executable;
+that exact executable is now absent. One additional combination
+(`hub+deletion+syncplay+notifications+security`) reaches native APIs but receives
+404 from `AccountHub/api/v1/security/devices`. The tool availability problem and
+the devices-route failure require investigation and a fresh matrix; this is not
+128-combination certification, regardless of the passing standalone/full Security
+run. No background matrix remains running.
+
+On the owner's rerun request, runner restoration is in progress from the latest
+official PowerShell release with its published SHA-256 checked before extraction.
+New fixture preflight rejects missing/broken/old PowerShell before creating
+servers, and the matrix checks again between cases and stops on tool loss without
+manufacturing plugin failures. All **218 scripts** pass in
+`artifacts/grouping-diagnostics-scripts-r13.log`; focused runner/isolation checks
+pass 19 cases in `artifacts/grouping-diagnostics-matrix-preflight-r1.log`.
+Read-only retained diagnostics confirm the 404 was produced inside Hub's existing
+Security devices action (`not_found`, diagnostic `5526d7dc-1dfa-4320-950b-089da94a4666`),
+not a missing Hub route. A failed-read evidence hook now compares native endpoint
+status without dumping device data or credentials. Exact-combination reproduction
+and a fresh matrix remain pending tool restoration; no corrected pass claimed.
+
+The first official PowerShell restoration download was truncated (56,819,548
+bytes versus the release's 109,620,855) and failed its SHA-256 check. It was not
+extracted or executed; the rejected archive is preserved. A second verified
+download is active. Further read-only investigation of the failed fixture finds
+the native Security `TwoFactorAuth/users` directory absent; its endpoint log
+reports a missing path. This is not a missing Hub MVC controller and no original
+Security state is recreated or bypassed. Fresh owned-fixture reproduction remains
+required; the cause of the directory/tool disappearance is not yet established.
+
+Official PowerShell **7.6.9** restoration succeeds on the second download, with
+release size/SHA-256 and executable launch verified; evidence is
+`artifacts/grouping-diagnostics-powershell-restoration-r2.json`. The unchanged
+0.0.37.0 packages are now under exact-combination reproduction in
+`artifacts/grouping-diagnostics-security-route-r1.log` and a fresh complete matrix
+in `artifacts/grouping-diagnostics-combinations-r11`. No rerun pass is claimed
+before completion; earlier failed logs and the rejected download are preserved.
+The exact failed Security combination now **passes** in
+`artifacts/grouping-diagnostics-security-route-r1.log`, including status/users/
+devices and HMAC/replay/tamper checks in a new owned fixture. No product workaround
+or state recreation was needed. This does not establish why the prior fixture's
+Security directory disappeared, and the full matrix remains running.
+The first 0.0.35.0 standalone Notifications
+attempt (`artifacts/grouping-diagnostics-standalone-r8.log`) passes APIs/library
+grouping but its browser harness reads the initial list before an exact-ID lookup
+finishes; the harness now waits for the one-record rendered status and the repeat
+passes in `artifacts/grouping-diagnostics-standalone-r9.log` on 0.0.35.0, including
+native library grouping, diagnostics controls, ordinary-user denial, four native
+theme/width cases and zero page errors. Full/latest Security, matrix and other native
+gates must be rerun against the exact new candidate.
+
+The **0.0.35.0** full attempt (`artifacts/grouping-diagnostics-full-r8.log`)
+passes installed authorization, shared diagnostics APIs, grouping, onboarding
+APIs, eight-database restart integrity and missing-state recovery, then fails at
+the same link browser continuation before signup/diagnostics browser acceptance.
+Those partial results are not a full installed/browser pass.
+
+The authorized Discord fixture was deliberately stopped before editing, interrupting
+its human phase. The owner reported successful linking and status; signup limits,
+party redemption and privacy were not completed or confirmed. Its sanitized log
+remains `artifacts/notification-catalog-discord-human.log`; its owned container,
+tunnel, credential-bearing temporary state and private readiness file were cleaned.
+Root `.env` values were loaded only for that authorized run, never printed or edited.
+No current human acceptance pass is claimed, and no replacement live run is active.
+
+### Earlier human Discord window — interrupted by the new implementation request
+
+The owner explicitly announced readiness after local non-human gates passed.
+The exact 0.0.27.0 invitation/watch-party human fixture became ready with
+`--human-invitations --discord-tunnel`, the configured consenting recipient and a
+60-minute human window. Only this explicitly authorized live process loads the
+ignored root `.env`; values are not printed or changed. Its credential-bearing
+fixture/readiness state is in the approved temporary directory, not published
+artifacts; the sanitized log is `artifacts/notification-catalog-discord-human.log`.
+The later interruption/cleanup is recorded above; this window is no longer active.
+No human acceptance pass is claimed. HTTPS reachability and native trusted-proxy
+authorization passed, and the private readiness file was opened for the owner's
+disposable sign-in details without printing passwords in chat. Actual
+handler results and native signup records are checked separately from explicit
+human confirmation of party redemption, recipient privacy and third-use denial.
+
+### Grouped registered-notification navigation — installed gates pass on 0.0.27.0
+
+The latest owner request groups the admin catalog by **registering plugin →
+plugin-reported notification type**, using existing source/name/type registration
+metadata rather than inventing categories from event-name prefixes. Plugin/type
+sections start collapsed, sort by display name, show source/type identifiers and
+plugin type counts, and use native keyboard-accessible disclosures. Unknown plugin
+sources remain visible. Collapsing a section preserves the active studio draft;
+navigation performs no writes and source/type/revision save boundaries stay intact.
+No registry schema, authorization, delivery or existing custom layout changes.
+
+All **56 focused catalog/studio/frontend tests pass** in
+`artifacts/notification-catalog-focused-r2.log`, including duplicate names across
+plugins, exact reported IDs, unknown/empty sources, plain-text labels, retained
+drafts and per-plugin revision/save isolation. The serial root/new 0.0.27.0 Linux
+package gate PASSES in `artifacts/notification-catalog-root-package.log`:
+**1,129 .NET / 331 JavaScript tests**, one optional external-service skip and six
+validated Linux packages in `artifacts/notification-catalog-packages`.
+Installed acceptance now navigates the grouped catalog and verifies every reported
+plugin/type is represented, checks narrow/wide navigation geometry and retained
+drafts without writes, and captures collapsed/expanded plugin menus. Both installed
+runs PASS in `artifacts/notification-catalog-{standalone,installed}.log`. The full
+suite verifies **six plugin groups / thirteen reported types**, retained studio
+drafts without writes, all six dark/light × 320/390/1280px studio cases, loaded
+left-poster geometry and strict page-error checks. It also passes installed
+authorization/wiring/invitation/groups/library, restart/seven-database integrity,
+missing-state recovery, 18 responsive cases and 30 native-theme/workspace cases.
+Collapsed narrow/wide and expanded narrow plugin menus were visually reviewed.
+The 0.0.26.0
+passes below certify the prior frontend only. Human Discord testing was unstarted
+at completion of these non-human gates; its later authorized window is tracked above.
+
+Exact 0.0.27.0 extended Security/reset/proof/recovery PASSES in
+`artifacts/notification-catalog-security.log`: exact-session reset/negative cases/
+factor preservation, real TOTP/recovery consumption/replay protection, trusted-device
+revocation, native session termination, HMAC ingress/replay/tamper and restart/
+seven-database integrity/missing-state recovery. The chained matrix PASSES **128
+unique cases**, zero failures, **64 with Security**, in
+`artifacts/notification-catalog-combinations/results.json`.
+Exact filtered-catalog SyncPlay/consumer/media and real Seerr PASS in
+`artifacts/notification-catalog-{syncplay,seerr}.log`: native guest/HLS/captions/
+encoder/moderation/revocation/consumer and database checks, plus real Seerr public
+API and installed Hub account provisioning/quotas/drift/native-deletion follow-up.
+These are not human Discord/party redemption or real media deletion certification.
+The owned retained 0.0.26.0 debug container `jellyfin-suite-test-ab78cbf4` and its
+browser tab were cleaned after preserving its native log in
+`artifacts/notification-studio-poster-retained-native.log`; fixture files and all
+failed evidence remain intact. Unrelated containers were not stopped or removed.
+Current grouped-catalog static checks PASS: **190 script tests** in
+`artifacts/notification-catalog-all-scripts-final.log`, **96 direct dependency
+declarations** in `artifacts/notification-catalog-freshness-final.log`, Actionlint
+in `artifacts/notification-catalog-actionlint-final.log` and whitespace in
+`artifacts/notification-catalog-evidence-whitespace-final.log`. No dependency
+manifests or locks were modified by the freshness check.
+
+**Historical local candidate: 0.0.27.0, Linux x64 only.** Applicable local root,
+packaging, standalone/full browser, native SyncPlay/consumer, real Seerr, extended
+Security and 128-combination gates above pass. This is not release readiness:
+Discord human commands/DM/redemption/privacy remain unverified (the later authorized
+window is tracked above); Windows/ARM, full owner-plugin profile, native-origin
+outbound webhook transport and broader fault/proxy certification remain separate
+unclosed boundaries. Nothing committed, tagged, pushed or published. Root `.env`,
+original identities, histories, keys and credentials remain untouched.
+
+### Notification Studio frontend review — installed gates pass on 0.0.26.0
+
+The owner requested a proper frontend review, not just test completion. The studio
+now has a dedicated responsive canvas/layers/inspector workspace, compact native
+controls, bounded direct resizing and keyboard editing, layer duplication/order
+tools and accurate dirty/save acknowledgments. Selecting a layer is not an edit.
+At the owner's request, **Ctrl+Z / Ctrl+Y** replace dedicated Undo/Redo buttons;
+shortcuts stay scoped to the studio and leave native text-field undo alone.
+The subsequent PowerPoint-style request adds screen-pixel edge/center snapping,
+live guide lines, Alt bypass and explicit Left/Center/Right/Top/Middle/Bottom
+alignment relative to the card or another layer. Resize handles snap too. Snapping
+preferences/reference selection are not saved-design edits; geometric alignment
+is undoable and bounded. New pure-geometry and pointer-handler regressions pass.
+The latest default-poster request also fixes two live-card defects: compact inbox
+image CSS could override canvas poster sizing, and image intake accepted only the
+legacy Hub source, not Notifications' own library source. Canvas posters now use
+the left column with Contain, text starts after a clear gap, and timestamps occupy
+a separate grid row. New text layers use the text-column defaults. Saving an
+untouched opened designer persists its actual displayed canvas. Native image
+authorization, matching item/image IDs and current-session checks remain intact.
+All **53 focused frontend tests / 58 bell tests pass**. Installed acceptance now
+creates a local synthetic native poster and checks actual image loading, left
+placement, gap, sizing and timestamp separation. Current-package standalone
+acceptance now PASSES, both standalone and with all six plugins.
+Focused tests cover history, selection, resizing/cancellation, bounds and stale-save
+acknowledgments. An initial 0.0.23.0 standalone
+installed run passes six theme/width/shortcut/drag/persistence cases. Its native
+screenshots exposed shared admin margins bloating the inspector; scoped overrides
+and a bounded desktop inspector now fix that. Native input nodes persist through
+edits for stable focus/Tab order; empty/out-of-range fields block a save. The final
+acceptance also tests real resizing, native Tab order and invalid-save refusal.
+The serial 0.0.24.0 run completed in
+`artifacts/notification-frontend-final-root-package.log`, but the snapping request
+arrived during it. The 0.0.23.0/0.0.24.0 results do not certify the latest refinements.
+The 0.0.25.0 run completed as the poster request superseded it; no cancellation
+actually occurred (the owned build container had already exited). The coherent
+current-source serial run PASSES in `artifacts/notification-studio-poster-root-package.log`:
+**1,129 .NET / 324 JavaScript tests**, one optional external-service skip, six
+validated **0.0.26.0 Linux packages** and the external consumer build. Exact-package
+native SyncPlay/consumer/media and real Seerr account-lifecycle acceptance PASS in
+`artifacts/notification-studio-poster-{syncplay,seerr}.log`.
+Earlier frontend candidates are not promoted as final proof of the poster changes.
+
+The first 0.0.26.0 standalone studio run passed poster geometry but failed the
+strict reload page-error gate: native capability registration returned 404 after
+the HTTP-only harness relay dropped WebSocket upgrades. The fixed-upstream relay
+now preserves HTTP identity/auth and bidirectional WebSocket upgrade/head data;
+four relay regressions pass. No fake sessions, error suppression or write retries
+were added. Its first two retained-fixture repeats reached live-poster verification
+but failed on detached-row screenshot/scroll stabilization, not geometry. Those
+failed logs remain in `artifacts/notification-studio-poster-relay-{review,capture}.log`.
+Refreshing inbox screenshots now capture the viewport without retaining a row.
+Fresh standalone acceptance PASSES in
+`artifacts/notification-studio-poster-relay-standalone.log` and its
+`studio-results.json`: six dark/light × 320/390/1280px cases, Ctrl+Z/Y, alignment,
+guides, Alt bypass, resize, stable native Tab order, invalid-save refusal,
+persistence, loaded native poster geometry and strict page-error assertions.
+The full-suite attempt in `artifacts/notification-studio-poster-relay-installed.log`
+passes installed API/permission/invitation/library/restart/storage and 18 responsive
+checks, then fails the theme harness's hidden Layout control action: that control
+is now inside the collapsed Message & delivery behavior disclosure. The harness
+now opens the disclosure normally; it does not force interaction with hidden
+controls. The fresh full-suite run PASSES in
+`artifacts/notification-studio-poster-relay-installed-r2.log`: all-six installed
+authorization/wiring/invitation/groups/library, restart/seven-database integrity,
+missing-state recovery, 18 responsive cases, 30 native-theme/workspace cases and
+all six studio cases with loaded-poster geometry and strict reload page-error
+assertions. Its live-poster and desktop inspector captures were visually reviewed.
+The first attempt did not reach its studio gate. Both passing runs use the exact
+0.0.26.0 packages; only harness corrections followed packaging.
+
+Direct authenticated native-browser inspection of 0.0.26.0 confirms the loaded
+Contain poster at the left edge, an **11.8px gap** before both text layers and a
+timestamp below the canvas. Desktop light, mobile dark, live-poster and center-guide
+captures were visually reviewed; the default poster/text gap is visible. The
+desktop-app screenshot operation itself was unavailable because its tab was not
+visible, so reviewed screenshots are installed Playwright captures, not a claimed
+desktop capture. Current direct browser console failures are caught missing-episode
+image 404s, not native capability/session failures. The first current-package
+Security attempt (`artifacts/notification-studio-poster-security.log`) timed out
+downloading the release asset before fixture startup; it did not execute Security
+tests or its chained matrix. A fresh extended Security attempt and chained 128-case
+matrix use the existing exact asset after checking its SHA-256 against the same
+unexpired current-run target, not an older-version fallback. Evidence paths are
+`artifacts/notification-studio-poster-security-r2.log` and
+`artifacts/notification-studio-poster-combinations-r2/results.json`; both PASS on
+0.0.26.0. The matrix contains **128 unique passing cases**, zero failures, **64 with
+Security**. Native acceptance covers exact-session reset/negative cases/factor
+preservation, real TOTP/recovery consumption/replay protection, trusted-device
+revocation, session termination, HMAC ingress/replay/tamper and restart/seven-database
+integrity/missing-state recovery. These earlier-package passes do not certify the
+subsequent grouped frontend. No human Discord
+fixture, tunnel or live bot test has started.
+
+Final script checks PASS **187 cases** in
+`artifacts/notification-studio-poster-all-scripts-final.log`; direct dependency
+freshness PASS **96 declarations** in
+`artifacts/notification-studio-poster-freshness-final.log`, and Actionlint PASS in
+`artifacts/notification-studio-poster-actionlint-final.log`. The separate relay,
+studio, docs and route group also passes **24 cases** in
+`artifacts/notification-studio-poster-relay-final-tests.log`. These do not substitute
+for the separately recorded native Security/matrix gates.
+
+The first 0.0.22.0 full run passes its theme/menu checks but later fails the studio
+gate on an uncaught native `Response` error; the failed log is retained in
+`artifacts/commands-studio-menu-final-installed.log`. Studio acceptance now records
+error phase/stack and failed HTTP paths rather than only an unhelpful message.
+The chained Security rerun did not execute after that failure. No new full-package
+frontend or current-source completion claim is made yet.
+
+**Previous local candidate: 0.0.22.0, Linux x64 only.** No commit, tag, push or
+publication. Earlier candidate passes below retain their original scope.
+
+| Current gate | Status / evidence |
+|---|---|
+| Serial root, six packages and consumer build | PASS: 1,129 .NET/310 JS cases; one optional external-service skip. `artifacts/commands-studio-menu-final-root-package.log` |
+| Detached-menu regression | PASS: reproduced before fix; all 57 bell cases pass after. `artifacts/commands-studio-menu-detached-toggle-{before,after}-fix.log` |
+| Standalone/full Notifications browser and storage | Standalone and full theme/menu/storage gates pass on 0.0.22.0; its later full studio gate fails on an uncaught `Response` and does not execute the chained Security stage. Current frontend changes require fresh acceptance. |
+| Native SyncPlay/consumer and real Seerr | PASS against exact 0.0.22.0 packages: `artifacts/commands-studio-menu-final-{syncplay,seerr}.log`. Native media/consumer/isolation and real Seerr account lifecycle, not human redemption or production media deletion. |
+| Extended native Security and 128-subset wiring | Both 0.0.21.0/0.0.22.0 matrices pass 128 unique cases (64 with Security each). Extended reset/proof/recovery passes separately on 0.0.21.0; the 0.0.22.0 chained rerun did not execute after its studio failure. |
+| Discord human commands/DM/redemption/privacy | DEFERRED: owner must explicitly announce readiness. No human server/tunnel/live bot acceptance started. |
+| Windows/ARM, full owner profile, native-origin outbound webhook transport | Separate unclosed acceptance boundaries; no local Linux pass certifies them. |
+
+### Native invitations, Notifications studio and external Seerr changes — Linux acceptance
+
+Discord Activities, embedded-video APIs/player/SDK, associated tests and dedicated
+documentation are removed at the owner's request. The canceled human fixture exited
+unsuccessfully; no real Discord OAuth/video pass was established. Historical
+`discord-embedded-*` artifacts remain untouched but do not certify current source.
+
+`/invite` now exposes bounded uses/expiry; Bridge has its own defaults/limits UI,
+while Hub retains independent owner ceilings/delegation/template/quota checks.
+`/watchparty [user]` posts a native link in the current approved channel by default
+or DMs @user instead. Notifications alone observes library additions and owns scope,
+type defaults, simulated examples and the safe text/image/font layout studio.
+
+Fresh latest-target discovery is recorded in
+`artifacts/notification-studio-current/targets.json`. Node 26.13.0 and hls.js 1.7.4
+are current; the read-only freshness check passes 96 declarations in
+`artifacts/notification-studio-dependency-freshness-r2.log`. Actionlint also passes.
+All 164 top-level JavaScript and 55 bell tests pass in
+`artifacts/notification-studio-all-js.log` and `artifacts/notification-studio-bell-final.log`.
+
+Six synthetic 0.0.18.0 Linux packages build in
+`artifacts/notification-studio-packages-r4`; all 324 affected backend/owner tests
+pass in `artifacts/notification-studio-native-label-fix.log`. This set includes
+library-selector ID normalization and removes Hub's unused library DLL/reference.
+
+Installed standalone Notifications acceptance PASSES on that set in
+`artifacts/notification-studio-standalone-r5.log`, without Hub or Bridge: library
+capture/scope/access/preferences, administration and native Web ownership, plus
+six dark/light × 320/390/1280px studio cases with drag/keyboard/fonts, saved
+defaults/layout, reload persistence, live bell rendering and no preview publication.
+The narrow dark screenshot was reviewed. No native-control JavaScript errors
+remain; earlier failing logs are retained. Actual external Discord delivery and
+native Security are not part of this fixture.
+
+Earlier all-six installed authorization, groups/invitations, library,
+restart/seven-database checks and storage recovery passed before the old studio
+gate. The 0.0.18.0 full-suite browser rerun then finds a separate inbox menu
+refresh race in the light desktop case. Source now retains open menu/focus only
+for rows that remain in the freshly authorized projection; all 56 bell tests,
+including a revoked-row regression, pass. The first fresh 0.0.21.0 installed run
+also passes, but a repeat run exposes a second queued-toggle race described below.
+The standalone 0.0.18.0 studio pass remains historical and scoped as above.
+
+The first consolidated run passed its .NET suites but failed frontend loading
+while dependency installation replaced node_modules. The next run in
+`artifacts/notification-studio-root-final.log` passes all 1,108 .NET cases (one
+optional external-service skip), but later packaging fails with MSB3030 on a
+missing DeletionQueue.Core build output while another package run overlaps.
+Neither attempt was a completed consolidated gate. The subsequent serial root and
+six-package 0.0.19.0 run completed in
+`artifacts/notification-studio-serial-final.log`. Both the 0.0.17.0 and 0.0.18.0
+no-Security matrices passed all 64 subsets; these predate the newest changes.
+
+External Seerr changes now have explicit read-only handling: verified direct
+deletion, pending-request decline or missing upstream records close unclaimed work
+as cancelled without a destructive send or invented FilesDeleted checkpoint.
+Missing records do not prove physical file deletion. Changed connections, server
+associations and media/quality mismatches fail closed. Claimed/uncertain work is
+never automatically cancelled, reopened or resent. Final dispatch rechecks Seerr
+state and live native permissions; current review also adds a personal-preference
+revision guard during the final network read and stale-notification-action tests.
+
+`artifacts/commands-studio-seerr-tests-package.log` passes **260 Deletion Queue,
+66 Discord Bridge and 138 shared Notifications tests**, plus six validated
+0.0.20.0 Linux packages. The subsequent serial run in
+`artifacts/commands-studio-seerr-final-root-package.log` passes **1,129 .NET tests**
+(one optional external-service skip), all aggregate root gates, six validated
+**0.0.21.0 Linux packages** and the native external consumer build. This includes
+264 Queue cases with preference-during-read and stale-action regressions.
+Fresh **0.0.21.0** installed/browser checks PASS in
+`artifacts/commands-studio-seerr-standalone.log` and
+`artifacts/commands-studio-seerr-installed.log`: standalone library/access/preferences
+and six studio cases without Hub/Bridge; all-six authorization/wiring, invitation/
+group flows, restart/seven-database integrity, missing-state recovery, **30 workspace,
+18 responsive and six studio cases** with persistence/live bell/no preview sends.
+Narrow dark and wide light studio screenshots were reviewed. Tall element captures
+include the native fixed header; freeform test drags deliberately move layers.
+The nine-action permission editor passed, but its report incorrectly labelled the
+count as twelve; the harness now records its measured count. The corrected-report
+browser repeat (`artifacts/commands-studio-seerr-browser-r2.log`) then exposes a
+second real menu race: a native details toggle queued on a detached old row can
+close its authorized replacement after refresh. A deterministic regression fails
+before the fix in `artifacts/commands-studio-menu-detached-toggle-before-fix.log`.
+Only connected menus may now close peers; **57 bell tests pass** after that guard.
+Browser fixture timestamps are also frozen and controls target an exact row ID,
+not a moving first row. Fresh serial root acceptance PASSES in
+`artifacts/commands-studio-menu-final-root-package.log`: **1,129 .NET/310 JavaScript
+cases**, one optional external-service skip, six validated **0.0.22.0 Linux packages**
+and the external consumer build. Current-package standalone/full browser, native
+SyncPlay/Seerr, extended Security and 128-case wiring acceptance are now running.
+The 0.0.21.0 passes do not certify this latest fix. Earlier report files remain unchanged.
+
+Native SyncPlay's
+first run found an obsolete consumer test still calling the removed Activity
+endpoint; the failed log is retained in
+`artifacts/commands-studio-seerr-syncplay-installed.log`. Only that obsolete block
+was removed; native media and invitation/management consumer tests remain. The
+fresh rerun PASSES in `artifacts/commands-studio-seerr-syncplay-installed-r2.log`,
+with the exact final ZIP/checksum in its filtered catalog: real HLS/captions/burn-in,
+native stream reuse, isolation, encoder limits/failure containment, moderation/
+revocation and the external .NET consumer. **64/64 unique no-Security subsets PASS**
+in `artifacts/commands-studio-seerr-combinations/results.json`.
+
+Late-stage native Security extended reset/proof/recovery/storage acceptance PASSES
+in `artifacts/commands-studio-seerr-security.log`: exact same-account native-session
+reset verdict and negative cases, preserved factors, fresh TOTP/recovery consumption
+and replay denial, trusted-device revocation, native session termination, signed
+ingress/replay/tamper checks, restart/seven-database integrity and missing-state
+recovery. This does not certify native-origin outbound webhook transport or every
+fault/proxy boundary. Its 128-case with/without-Security wiring matrix PASSES in
+`artifacts/commands-studio-seerr-security-combinations/results.json`; the later
+0.0.22.0 matrix also passes all 128 cases in
+`artifacts/commands-studio-menu-final-combinations/results.json`. Both are earlier
+package evidence, not certification of the new frontend/poster source.
+A separate real-Seerr
+fixture failed before setup on startup socket/readiness races; failed evidence is
+retained in `artifacts/commands-studio-seerr-real-seerr-failure.md` and the `-r2.log`.
+The fixture now polls read-only setup readiness and avoids stale socket reuse,
+without retrying mutations. Its fresh run PASSES in
+`artifacts/commands-studio-seerr-real-seerr-r3.log`: real Seerr 3.5.1 public API,
+native import/immutable lookup/quotas/permissions/request paging, installed Hub
+provisioning/drift and native-account deletion follow-up. This is not real media
+removal or independent physical-file verification; those queue edge cases remain
+scoped gateway/core regressions, not production deletion certification.
+
+The real `/invite` and `/watchparty` handlers have actionable privacy-safe guidance
+for missing native devices/providers, invalid recipients and native policy/limit
+failures. The unstarted `--human-invitations` fixture requires actual command
+outcomes, exact native linking, bounded two-use/60-minute issuance and two native
+signup completions; third-use denial, party redemption and recipient privacy still
+require explicit human confirmation. The handoff now rejects pre-existing readiness
+or confirmation files before live setup and preserves them; pure local focused
+acceptance/studio/docs/route/isolation tests pass 19 cases. All **170 top-level
+JavaScript tests** and **56 bell regressions** pass in
+`artifacts/commands-studio-seerr-all-js-final.log` and
+`artifacts/commands-studio-seerr-bell-final-r2.log`. The first standalone bell
+command used the wrong working directory and failed before loading tests; its log
+is retained, and the module-scoped rerun passes. Final read-only freshness passes
+96 declarations; Actionlint and whitespace checks pass. **The owner requires Discord human tests last and will explicitly announce
+readiness. No human server, tunnel or live bot tests may start before that.**
+No commit, tag or publication occurred; `.env` remains unchanged and undisclosed.
+
+### Confirmed v1 scope and current dependency/Discord work
+
+- Invitations remain integrated in Account Hub. A standalone Invitations plugin
+  and mandatory shared connection registry are removed requirements; plugins retain
+  independent settings and optional feature dependencies.
+- Discord uses native invitation links only; embedded video/Activities are removed.
+  Signup options and party defaults retain independent Bridge settings.
+- The permission UI is Discord-only: native-user defaults/Allow/Deny/Inherit, not
+  guild-role grants. Native media access, Hub invitation delegation/recovery,
+  SyncPlay guest enablement and channel disclosure checks remain mandatory.
+- Local acceptance targets Linux. GitHub owns Windows/ARM/platform jobs. Native
+  Security's final recovery/transport/cleanup suite is intentionally late-stage.
+  Seerr's deletion report is trusted; independent physical-file verification is
+  not required. Queue consent, approvals, delay and uncertain-effect guards remain.
+- The direct dependency set is fixed; versions, locks, Actions and image refs must
+  remain current. **Preview dependency bump** and `scripts/update-dependencies.mjs`
+  share the manual local/Actions update engine, with protected Renovate automation
+  retained. No new direct dependency or replacement was introduced.
+
+The first local bump inspected 130 declarations and refreshed manifests/locks/refs.
+The final fixed-direct-scope repeat inspected **128 declarations**, made **no
+changes**, and recorded `verified:true` in
+`artifacts/v1-direct-bump-verification/report.json`. The separate read-only audit now
+passes **98 unique declarations**, including current Node, in
+`artifacts/v1-dependency-freshness.log`. Host-provided SkiaSharp is derived from the
+current Jellyfin source manifest (3.119.4 for this run), not independently bumped
+to incompatible 4.x. Native EF/SQLite retain the same reviewed-source policy.
+
+Before Activities removal, its then-current embedded Discord SDK brought an upstream
+Zod memory-exhaustion advisory: `artifacts/dependency-bump-npm-audit.json` reported two
+high findings through one transitive issue, with no compatible advertised fix. That
+SDK/dependency tree is now removed. Per the owner's direction,
+upstream transitive advisories are informational, **not project blockers**; direct
+dependencies stay current. Existing pre-SDK message budgets remain; no forced major
+override/removal was made. Final Linux root acceptance passes **1,098 .NET / 314 JavaScript
+tests**, with the optional real-Arr test skipped, in
+`artifacts/v1-linux-root-and-package-final.log`. Six coordinated Linux x64 packages
+validate in `artifacts/v1-linux-packages-final` (synthetic fixture version 0.0.11.0,
+not a created/pushed tag). Final installed/browser and native SyncPlay checks pass
+on fresh disposable fixtures, as does the final **64/64 no-Security matrix** in
+`artifacts/v1-combinations-final/results.json` (64 unique subsets, zero failures).
+Earlier failed attempts remain under `artifacts/v1-linux-root-tests*.log`. Do not treat freshness,
+static route tracing or UI unit tests as final installed/human acceptance.
+
+The earlier v1 route inventory traced **213 MVC actions/catch-all adapters/minimal
+templates**. The current [route review](route-authorization-review.md) traces **216**,
+with eight inactive legacy lifecycle files excluded, in
+`artifacts/commands-studio-menu-final-routes.json`. These are source traces and
+runtime-test maps, not counts of individual passing authorization tests. Focused docs/policy/permission
+checks passed 36 cases in `artifacts/v1-focused-tests.log`; actionlint and whitespace
+checks pass. All work remains uncommitted/unpublished.
+
+An initial installed/matrix attempt exposed a real guard-ordering regression:
+link-confirmation permission denial masked the existing wrong-reviewed-account 409.
+The first matrix passed 48/64; all 16 failures were Hub+Bridge subsets with that
+same error (`artifacts/v1-combinations/results.json`). The native identity guard is
+now evaluated first. Persistent user policy is also independent of bot connectivity,
+while feature/user denials and send-time policy rechecks remain enforced. A failed
+initial live attempt did not establish Discord acceptance; its details remain
+sanitized. The corrected 0.0.10.0 matrix passed **64/64 without native Security**
+(`artifacts/v1-combinations-r2/results.json`). Its installed API/storage and 18
+responsive cases passed, but full browser acceptance found a shared help-tooltip
+overflow: transformed bubbles fit visually while their original boxes expanded
+document scrolling (`artifacts/v1-installed-r3.log`). Physical box positioning now
+passes six real Chromium LTR/RTL cases at 320/390/1280px
+(`artifacts/v1-help-layout-final.log`) and a unit regression. Final-package installed
+acceptance and the 64-case matrix now pass, separately from the earlier packages.
+
+Final 0.0.11.0 installed acceptance passes in `artifacts/v1-installed-final.log`:
+all-six authorization/API-key/stale-session checks, Discord policy persistence and
+link ceiling, invitation/group flows, library notices, abrupt restart/seven-database
+integrity and missing-state recovery. Browser evidence in
+`artifacts/v1-installed-final/theme-results.json` and
+`artifacts/v1-installed-final/account-responsive-results.json` records **36 workspace,
+18 responsive and four Discord permission-editor cases**, plus all six administrator
+pages at 320/1280px without help overflow. The Account Hub 320px screenshot and four
+dark/light × 320/1280px Discord editor screenshots were reviewed for wrapping,
+native controls and theme contrast. Element screenshots include the native fixed
+header intersecting the tall captured region; they are not full-page screenshots.
+This run deliberately omits native Security and external Discord credentials.
+
+Authorized real Discord gateway connection, guild/channel slash-command registration,
+synthetic episode/movie cards and Notifications-to-Bridge approved-channel delivery
+passed with 0.0.10.0 packages in `artifacts/v1-discord-live-r2.log`. Fixture-owned
+messages and credential-bearing state were cleaned. This does **not** certify human
+slash-command use, private DMs, watch-party redemption or embedded Activity video.
+The final shared-resource change is tooltip positioning, not Discord transport.
+
+Final 0.0.11.0 Private SyncPlay catalog/consumer/media acceptance passes in
+`artifacts/v1-syncplay-installed-final.log`: native repository installation/restart,
+HTTPS isolated guests, real HLS/segments/captions and styled burn-in, native member
+stream reuse, bounded bitrate/encoders, failure containment, owner moderation,
+revocation/no resurrection, external .NET consumer permissions and SQLite integrity.
+The filtered catalog in `artifacts/v1-syncplay-catalog-final` preserves the exact
+final ZIP bytes/checksum; the consumer was built separately against the current
+host in `artifacts/v1-syncplay-consumer-build-final.log`. This is native SyncPlay
+acceptance, **not** embedded Discord Activity playback or human watch-party acceptance.
+
+Final read-only direct freshness passes **98 unique declarations** in
+`artifacts/v1-dependency-freshness-final.log`; all **162** root script tests pass in
+`artifacts/v1-all-script-tests-final.log`. Actionlint 1.7.12 passes in
+`artifacts/v1-actionlint-final.log`. No remote workflow was launched.
+
+### Documentation consolidation — local checks passed
+
+Merged still-relevant safety/permissions, storage recovery, Security ingress,
+producer/adapter contracts and scoped verification milestones into the current
+guides, then removed **21 superseded audits, plans, handoffs and recovery/release
+documents**. Useful SDK/domain contracts remain current developer references, not
+old standalone installation instructions. Root, component and module guides link
+to the canonical documentation index; obsolete catalog/version-edit instructions
+and stale authorization claims were removed or corrected.
+
+Documentation link checks now include module READMEs, retained contracts and
+component fixture guides. Both documentation tests and all 26 selected dependency/
+target-policy regressions pass (28 total); diff whitespace checks pass. These are
+local documentation/policy checks, not upgraded-dependency, hosted-release or live
+service acceptance. Original runtime logs/screenshots/state remain untouched, and
+all changes remain uncommitted/unpublished. See the [guide index](README.md),
+[safety boundaries](safety-and-permissions.md) and [evidence register](verification.md).
+
+### Initial latest-only workflow audit — historical stale-dependency baseline
+
+The bump workflow previously discovered many updates but did not guarantee every
+manual release was current: test/browser tooling and Actions remained old, suite
+manual releases omitted full external/matrix gates, and jobs resolved independent
+targets. All CI/release graphs now share `latest-targets.yml` evidence, including
+current Node/SDK and pulled upstream image digests; build/test jobs bind and verify
+the actual toolchain. Suite releases require the full root Windows/Linux and
+installed/browser/matrix/external gates. Independent providers add external-only
+acceptance without running the unrelated full matrix. Both engines recheck
+dependency/release/source/image freshness immediately before publication.
+
+Before the current bump, the new read-only freshness audit **failed loudly**:
+`artifacts/latest-only-final-freshness-audit.log` lists outdated Actions, Playwright,
+test SDK/runners, SkiaSharp, jsdom/hls.js and tool images in that earlier source.
+The current bump/freshness results are recorded above, separately from full
+acceptance; no remote workflow/merge/release was launched. Historical IDE versions, migration
+examples, existing catalogs and upstream-aligned native database ABI packages are
+not indiscriminately rewritten. Manual Compose fixtures now require an explicit
+current-run image rather than retaining Jellyfin 12.2/12.3 defaults.
+
+All **38 focused policy/automation regressions** pass in
+`artifacts/latest-only-final-policy-tests.log`; latest Actionlint **1.7.12** passes
+in `artifacts/latest-only-final-actionlint.log`. The missing-target CI build guard
+was also exercised and correctly failed (`artifacts/latest-only-missing-target-guard.log`).
+The complete new GitHub workflow graph and upgraded dependency acceptance have
+not been executed remotely; older local tests do not certify the current bump.
+Local Renovate configuration validation passed with package/toolchain
+deprecation warnings; it does not certify a remote run or successful upgrades.
+See [dependency maintenance](dependency-maintenance.md) for the policy and unchanged
+bot/branch-protection/release-approval prerequisites.
+
+### Personal notification categories, consent swipes and skin defaults — local acceptance passed
+
+All signed-in users can now configure their own per-app/category importance in an
+Android-style expandable list; server-wide routes/layouts remain administrator-only.
+Watchlisted media uses native `Likes` (Enhanced's watchlist convention), separately
+from native Favorites and verified Requested media. New library notices retain
+recipient-scoped interest groups and frozen retry IDs; all private membership
+arrays are stripped/rejected at the shared Discord boundary. Critical severity,
+current media access, device opt-in and blocked-history/no-replay safeguards remain.
+
+The final pre-swipe root regression passes (including muted existing-row behavior):
+`artifacts/notification-categories-verified-tests.log`. Inbox swipes/desktop drags
+reveal Mark read on the right and Hide notification on the left, with a confirming
+selection and Cancel. For eligible Deletion Queue consent requests only, a deliberate
+right gesture submits the live projected Allow consent, then hides the notification
+after success; current native revision/snapshot, permissions, approvals and delays
+still apply. A preview explains the pending gesture. Failed consent does not hide;
+failed hiding can be retried without reconsenting. Physical touch-device behavior
+remains unverified. Focused bell regressions are recorded in
+`artifacts/notification-consent-swipes-tests.log` (**55 passing cases**, including
+duplicate-command/session-change guards). An additional 36 documentation/web
+contract tests pass in `artifacts/notification-consent-contract-tests.log`.
+
+Six fresh packages pass inventory/validation in
+`artifacts/notification-categories/skin-packages`; packaging evidence is
+`artifacts/notification-skin-package.log`. Final installed acceptance passes in
+`artifacts/notification-skin-installed.log`: six-plugin authorization/audit wiring,
+ordinary-user preference isolation, native watchlist/Favorites filtering and library
+access checks, 18 responsive cases and 36 workspace/theme cases. Final browser results
+in `artifacts/notification-categories/skin-installed/theme-results.json` additionally
+record four category/keyboard/touch-target cases, four native notification palette
+cases, and four dark/light × 320/1280px swipe/consent/skin cases. Touch/mouse pointer
+events submit projected Allow before dismissal; mocked command endpoints prevent
+real removal. Custom-skin foreground, accent, font inheritance and shape overrides
+pass. Screenshots in that run's `admin-screenshots` were reviewed.
+
+Earlier failures remain retained: autosave radio-selection flicker, a test-only
+nested-details toggle, the ordinary-to-consent fixture refresh, and a real late-CSS
+skin-shape cascade issue. Swipe defaults now use `:where()` scoping so ordinary skin
+CSS wins without `!important`; accents also support Jellyfin's native palette.
+These bounded checks are not certification of every third-party skin, physical
+touch hardware, live removal or native Security recovery with this final package
+set (the final installed run had no native Security).
+The older passing package sets below do **not** certify these new changes. See
+[notification categories](notification-channels.md) for user controls and defaults.
+
+Test orchestration is consolidated in `scripts/run-tests.ps1`; the root and
+selected-plugin commands are thin wrappers. Selected release gates retain their
+plugin/dependency scope. Notifications now includes its Push-settings regressions.
+
+Normal test/package commands automatically discover current stable Jellyfin and
+Security, generate matching SDK/EF/SQLite properties, and propagate a dated run
+snapshot. Installed Jellyfin, Seerr, Sonarr/Radarr and Enhanced fixtures resolve
+current releases, refresh images and record concrete versions/digests. Neither a
+manual version edit nor an opt-in update command is required. See [testing](testing.md).
+
+Native database and Security compatibility remain fail-closed: automatic build
+approval requires source-contract equivalence to the reviewed baselines, not just
+a matching release number. Actual contract changes require investigation, not an
+older-server fallback. Reset still requires the same browser's same-account
+Security-verified/unblocked session, including native-approved bypasses.
+
+## Latest-target verification
+
+Current-run discovery selected Jellyfin **12.4**, Security **2.6.5** (verified
+asset assembly **2.6.5.1**), Enhanced **12.14.0.0**, Seerr **3.5.1**, Sonarr
+**4.0.20.3014** and Radarr **6.4.4.10685**. These are observations, not new pins;
+the next independent run discovers current stable releases again.
+
+- Consolidated root run passes **1,077 .NET / 274 JavaScript tests**, with one
+  optional real-Arr case skipped: `artifacts/latest-auto-final-root-tests.log`.
+  Twenty-one focused discovery/automation/isolation/documentation checks also pass,
+  including the final action-digest and upstream-trigger regressions. These overlap the
+  root checks and are not added to its count.
+- Six fresh Linux amd64 packages pass validation/inventory:
+  `artifacts/latest-auto-final-packages`, `artifacts/latest-auto-final-package.log`.
+- Final-package native Security, same-session reset, factor/trust/recovery-code,
+  permissions, audit routing, library, onboarding, restart and seven-database
+  safety acceptance passes: `artifacts/latest-auto-final-installed-security.log`.
+- Real latest Seerr API acceptance passes (`artifacts/latest-auto-seerr-final.log`).
+  Owned latest Sonarr/Radarr provider acceptance passes, including the real-Arr
+  test skipped by the offline root run (`artifacts/latest-auto-arr-verified.log`).
+- Final-package latest Jellyfin/Enhanced browser acceptance passes: 36 workspace,
+  18 responsive and four notification-palette cases, with installed permissions
+  and audit routing (`artifacts/latest-auto-final-installed-browser.log`). Earlier
+  pre-correction package evidence remains separately scoped.
+- Actionlint, local Renovate configuration validation, link checks and diff
+  whitespace checks pass. The Renovate validator reported local Node/optional-RE2
+  warnings; no dependency bot, GitHub merge or publication was executed.
+
+The current 128-case matrix, full native SyncPlay consumer/upgrade acceptance,
+Windows checks and three-platform suite release gates have **not** all been rerun
+locally. They remain mandatory in dependency automation before promotion/release.
+Do not reuse historical passes to close them. The initial Security check correctly
+rejected a filename/source-vs-binary revision mismatch; bootstrap now derives the
+exact version from checksum-verified PE metadata, without executing the assembly.
+
+Dependency maintenance workflows now group stable updates, require all automated
+gates, generate itemized direct/transitive dependency commit messages, then merge
+the tested head and dispatch an immutable patch release. This is local
+configuration only; bot credentials, strict branch protection and existing release
+approvals must be configured as documented in [dependency maintenance](dependency-maintenance.md).
+
+## Preserved historical evidence
+
+The six-plugin Jellyfin **12.3 / Linux amd64** wiring audit passed 1,075 .NET and
+259 JavaScript tests, all 128 subsets with/without then-targeted Security, native
+session recovery, restart/storage checks, 36 workspace + 18 responsive cases and
+four notification-palette cases. One optional real-Arr test was skipped.
+
+- [Consolidated evidence register, historical milestones and failed-attempt limits](verification.md)
+- [Current safety and permission boundaries](safety-and-permissions.md)
+
+These results certify only their recorded software/package set, not latest
+upstream releases, arbitrary package skew or the owner's live server.
+
+## Remaining product and live-service limits
+
+- Embedded Discord video/OAuth/admission/media transport remains planned; invitations
+  stay in Hub and a common connection registry is not a requirement.
+- Remaining latest-source/package matrix, native consumer and platform acceptance
+  must pass before full current-release compatibility is claimed.
+- Human delegated `/invite`, multiplayer hosting, physical-device Push and
+  the complete owner plugin/skin set remain uncertified. Seerr-authoritative deletion
+  is the accepted boundary; no independent physical-file-removal gate is imposed.
+  Cross-publishing is not native Windows/physical ARM testing; those platform jobs
+  belong on GitHub rather than blocking this local Linux testing phase.
+- Deletion Queue retains consent, approval, delay, history and destructive Seerr
+  authority; automation submits only. Arr metadata reads remain GET-only.
+- No `.env`, native identities, credentials, keys, history, consent or generated
+  historical evidence is removed by this cleanup. Live human/Discord checks need
+  explicit authorized destinations and readiness.
+
+See [release gates](v1-release-gates.md), [dependencies](dependencies.md) and
+[product requirements](product-requirements.md). No commit, push, tag or release
+is authorized merely by passing local tests. The requested dependency workflow
+is separately scoped recurring automation; it does not publish unrelated local
+working-tree changes outside its protected process.

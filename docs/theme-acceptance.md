@@ -1,14 +1,74 @@
-# Local installed-theme acceptance
+# Installed browser and theme acceptance
 
-`scripts/theme-acceptance.cjs` runs real Chromium against a disposable installed Jellyfin fixture, never a production server. It does not load `.env` or retain browser credentials/screenshots.
+## Dependencies and setup
 
-1. Package a new candidate using `scripts/package.ps1` into a new directory (never replace an existing ZIP).
-2. Run `scripts/integration.mjs --packages=<candidate> --plugins=hub,discord,deletion,syncplay --v1-flows --keep`. Keep the printed container name and temporary URL.
-3. Run `mcr.microsoft.com/playwright:v1.56.1-noble` with the repository's `scripts` directory mounted read-only at `/checks`, `DISPOSABLE_THEME_TEST=true`, and `THEME_TEST_BASE_URL=http://host.docker.internal:<printed-port>/suite`. Add `--add-host=host.docker.internal:host-gateway`. Invoke `/bin/sh /checks/run-theme-acceptance.sh`.
-4. Preserve the aggregate result JSON, then remove only the owned fixture container with `docker rm -f <printed-container>`.
+Use the declared .NET SDK, current stable Node.js, PowerShell 7+ and Docker. Create
+fresh immutable packages with the root wrappers before running browser acceptance.
+The suite fixture needs all six plugins; it owns disposable accounts/media and
+never mounts production state. See [testing setup](testing.md).
 
-The fixture uses known disposable setup credentials. Its allowlisted local URL is relayed through container loopback so Web Crypto has a normal browser secure context; no browser security flags are disabled. This relay is not TLS/proxy acceptance.
+## Run and coverage
 
-Coverage: ten workspace tabs × native dark/light CSS × 320/390/1280px (60 cases), panel overflow, associated control labels, native checkbox hooks, keyboard Home/End/ArrowRight navigation and a scoped custom-theme button foreground override. Native transitions must settle before computed-color assertions. Plugin CSS remains scoped layout, not an alternate palette.
+Use the normal disposable integration runner after creating fresh packages:
 
-Not covered: Security/Audit acceptance, expanded editors/dialogs, standalone plugin settings, actual media/player rendering, full custom theme distributions, contrast, physical mobile devices, native Modern/Legacy switching or trusted TLS. Audit was attempted separately and reported an authorization failure during iteration; its cause is not established and it is not a pass.
+```powershell
+node scripts/integration.mjs --packages=artifacts/current-candidate --wiring-check --permissions-check --theme-check --account-responsive
+```
+
+The runner starts current stable Jellyfin, runs Chromium in the owned server's
+network namespace and removes the container on completion. It never loads `.env`
+or production data. A loopback relay provides a normal secure context without
+disabling browser security; this is not trusted-TLS/proxy acceptance.
+
+Coverage targets 30 workspace/native-theme cases, 18 account/Discord/reset
+responsive cases at 320/390/1280px, standalone settings, keyboard/focus behavior,
+notification scrolling/menu actions, four dark/light × mobile/desktop native
+palette and skin-override cases. Current-source passes are recorded separately.
+Swipe/drag consent previews and action trays also check custom-skin foreground,
+accent, typography and CSS shape overrides in dark/light narrow/wide browser cases.
+These are bounded skin-contract tests, not certification of every third-party
+skin or physical touch device.
+
+Personal notification categories additionally exercise Watchlisted/Favorited
+toggles, Important/Silent choices, native radio-keyboard focus and narrow/wide
+layouts in both themes. These use only the disposable user's preferences.
+Discord's administrator permission editor adds four dark/light × 320/1280px cases
+for nine native-user actions, inheritance/reset and unsaved drafts. Shared help
+bubbles must fit visually **and** avoid expanding document scroll width; the isolated
+`scripts/help-layout-acceptance.cjs` regression also covers LTR/RTL and Escape at
+320/390/1280px using the declared Playwright tool.
+Enhanced
+calendar rendering uses this run's latest stable upstream sources with synthetic
+data, not production Arr/Seerr calls. Actions wait for actual post-invalidation
+DOM replacement, not retries of the action.
+
+Results and screenshots remain in the printed disposable evidence directory:
+`theme-results.json`, `account-responsive-results.json`, `admin-screenshots/`
+and `account-screenshots/`. Fixture-only credentials must not be uploaded as
+evidence. `--keep` is diagnostic opt-in; remove only its printed owned container.
+
+This does not certify all skins, physical mobile/Push devices, human multiplayer
+hosting, Modern/Legacy combinations, trusted TLS or every permission and
+fault path. See [testing](testing.md) and [current evidence](review-status.md).
+
+## Native-page and fault checks
+
+Test administrator page registration/discovery separately from ordinary-user entry
+points. Static embedded resources must contain no secrets; live admin APIs must
+reject anonymous, ordinary-user and API-key callers, including a retained session
+after demotion/disable. Never relax the native dashboard administrator route to
+make ordinary controls reachable. Hosted-Web injection must not persistently rewrite
+Web files or weaken CSP, and unsupported markup should fail without replacing commands.
+
+Component smoke/proxy/fault scripts are developer fixtures, not standalone deployment
+instructions. Resolve this run's latest image explicitly for Compose; old 12.2/12.3
+defaults are removed. Fault checks must verify the exact owned project, network,
+mounts and server identity before corrupting only its disposable plugin seal.
+Native Jellyfin health must survive while the plugin fails closed without repairing
+that seal. Never point these tools at retained/operator instances or production data.
+
+## References
+
+- [Testing](testing.md) · [Latest-only dependency gates](dependency-maintenance.md)
+- [Notification controls and gestures](notification-channels.md)
+- [Current evidence and screenshots](review-status.md)

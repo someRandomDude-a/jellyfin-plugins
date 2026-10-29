@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { target, verifyLatest } from '../scripts/jellyfin-target.mjs';
+import { verifyLatest } from '../scripts/jellyfin-target.mjs';
 
-test('the only supported server matches its SDK, ABI and Docker image',()=>{
-    assert.equal(verifyLatest({tag_name:`v${target.tag}`}),target);
-    assert.equal(target.abi,`${target.version}.0`);
-    assert.equal(target.image,`jellyfin/jellyfin:${target.tag}`);
+test('new stable Jellyfin releases automatically select the corresponding SDK, ABI and image', () => {
+    for (const tag of ['v12.4', 'v25.7.2']) {
+        const target = verifyLatest({ tag_name: tag });
+        assert.equal(target.tag, tag.slice(1));
+        assert.equal(target.abi, target.version + '.0');
+        assert.equal(target.image, 'jellyfin/jellyfin:' + target.tag);
+    }
 });
-test('new releases fail clearly instead of silently falling back to an older stable server',()=>{
-    assert.throws(()=>verifyLatest({tag_name:'v99.0'}),/Update Jellyfin.Target.props/);
-    assert.throws(()=>verifyLatest({tag_name:`v${target.tag}`,prerelease:true}));
-    assert.throws(()=>verifyLatest({tag_name:`v${target.tag}`,draft:true}));
+test('draft and prerelease servers cannot silently become stable test targets', () => {
+    assert.throws(() => verifyLatest({ tag_name: 'v99.0', prerelease: true }));
+    assert.throws(() => verifyLatest({ tag_name: 'v99.0', draft: true }));
 });

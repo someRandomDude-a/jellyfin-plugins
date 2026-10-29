@@ -8,6 +8,26 @@ namespace Notifications.Tests;
 public sealed class ProducerRoutingTests
 {
     [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void StandaloneDiscoveryDoesNotMistakeTheLegacyHubAdapterForTheOwner(bool owner, bool api, bool expected)
+    {
+        var services = new ServiceCollection();
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(Contract.ServiceKey, (_, _) => (_, _) => Task.FromResult("{}"));
+        services.AddKeyedSingleton<Func<bool>>(NotificationIntegration.OwnerKey, (_, _) => () => owner);
+        if (api) services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(NotificationIntegration.ServiceKey, (_, _) => (_, _) => Task.FromResult("{}"));
+        using var provider = services.BuildServiceProvider();
+        Assert.True(new AccountHubClient(provider).IsAvailable);
+        Assert.Equal(expected, NotificationIntegration.IsStandaloneInstalled(provider));
+    }
+    [Fact] public void UnreadableOwnerDiscoveryIsUnavailableRatherThanAnImplicitGrant()
+    {
+        using var provider = new ServiceCollection().AddKeyedSingleton<Func<bool>>(NotificationIntegration.OwnerKey, (_, _) => () => throw new IOException()).BuildServiceProvider();
+        Assert.False(NotificationIntegration.IsStandaloneInstalled(provider));
+    }
+    [Theory]
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]
     [InlineData(true, true, true)]

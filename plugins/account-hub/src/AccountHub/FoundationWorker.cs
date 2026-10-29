@@ -8,7 +8,9 @@ public sealed class FoundationWorker(HubStore store, ILogger<FoundationWorker> l
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        try { await store.InitializeAsync(cancellationToken); }
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(TimeSpan.FromSeconds(30));
+        try { await store.InitializeAsync(budget.Token); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception)
         {

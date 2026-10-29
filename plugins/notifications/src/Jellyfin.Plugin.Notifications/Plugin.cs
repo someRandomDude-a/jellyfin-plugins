@@ -44,11 +44,29 @@ public sealed class Registrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection services, IServerApplicationHost applicationHost)
     {
+        Jellyfin.PluginSupport.SuiteDiagnostics.Register(services,"notifications");
         AccountHub.Api.NotificationIntegration.RegisterNotificationTypes(services, new("notifications", "1", [
-            new("notifications.*", "Notification alerts", "Delivery or notification configuration needs review", "administrators", new(), [])
-        ]));
+            new("notifications.*", "Notification alerts", "Delivery or notification configuration needs review", "administrators", new(), []) { Defaults=new(Importance:"high"), Example=new("Delivery needs attention","A notification could not be delivered. Review delivery health.","warning") },
+            new("library.movie.added", "New movies", "A new physical movie is added to a selected library", "explicit-users", new(), []) { Defaults=new(), Example=new("Example Movie (2026)","A new movie is available in your library.",Image:true) },
+            new("library.episode.added", "New episodes", "A new physical episode is added to a selected library", "explicit-users", new(), []) { Defaults=new(), Example=new("Example Series · S01E02 · A new adventure","Season 1, episode 2 is now available.",Image:true) }
+        ]) { Grouping=new("groupId","Show or movie","groupLabel") });
         services.AddSingleton<Storage>();
-        services.AddKeyedSingleton<Func<bool>>("Notifications.Owner.1", (_, _) => () => true);
+        services.AddSingleton<Jellyfin.LibraryNotifications.LibraryNoticeStore>(sp => {
+            var storage=sp.GetRequiredService<Storage>(); var library=new Jellyfin.LibraryNotifications.LibraryNoticeStore(storage.Database);
+            var paths=sp.GetRequiredService<IApplicationPaths>();
+            library.Import(Path.Combine(paths.PluginConfigurationsPath,"AccountHub","account-hub.db"),true);
+            library.Import(Path.Combine(paths.PluginConfigurationsPath,"DiscordBridge","discord-bridge.db"),false);
+            return library;
+        });
+        services.AddSingleton<LibraryNotifications>();
+        services.AddHostedService<NotificationLibraryWorker>();
+        services.AddKeyedSingleton<Func<string,CancellationToken,Task<string>>>("Notifications.LibrarySettings.1",(sp,_) => (json,ct) => {
+            var library=sp.GetRequiredService<Jellyfin.LibraryNotifications.LibraryNoticeStore>();
+            if(json!="read") { var settings=System.Text.Json.JsonSerializer.Deserialize<Jellyfin.LibraryNotifications.LibraryNoticeSettings>(json,AccountHub.Api.Contract.Json)??throw new ArgumentException("Missing library settings."); library.SaveSettings(settings); }
+            var folders=sp.GetRequiredService<MediaBrowser.Controller.Library.ILibraryManager>().GetVirtualFolders().Select(f=>new{id=Guid.TryParse(f.ItemId,out var id)?id.ToString("D"):null,name=f.Name}).Where(f=>f.id is not null);
+            return Task.FromResult(AccountHub.Api.Contract.Serialize(new{settings=library.Settings(),health=library.Health(),libraries=folders}));
+        });
+        services.AddKeyedSingleton<Func<bool>>(AccountHub.Api.NotificationIntegration.OwnerKey, (_, _) => () => true);
         services.RemoveAll<NotificationOptions>();
         services.RemoveAll<NotificationStore>();
         services.RemoveAll<INotificationHost>();
@@ -60,7 +78,7 @@ public sealed class Registrator : IPluginServiceRegistrator
         services.TryAddSingleton<DiscordBridge.Api.DiscordBridgeClient>();
         services.AddAccountHubNotifications(sp => new() { DatabasePath=sp.GetRequiredService<Storage>().Database }, startWorker:false, registerProducer:false);
         services.AddHostedService<NotificationWorker>();
-        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>("Notifications.Api.1", (sp, _) => (json,ct)=>sp.GetRequiredService<NotificationService>().DispatchAsync(json,ct));
+        services.AddKeyedSingleton<Func<string, CancellationToken, Task<string>>>(AccountHub.Api.NotificationIntegration.ServiceKey, (sp, _) => (json,ct)=>sp.GetRequiredService<NotificationService>().DispatchAsync(json,ct));
         services.AddSingleton<EndpointAdapter>();
         services.AddSingleton<IStartupFilter, WebInjection>();
     }

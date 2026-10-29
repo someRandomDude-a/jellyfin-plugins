@@ -5,9 +5,13 @@ namespace Jellyfin.Plugin.UserManager.Services;
 /// <summary>Serializes reset effects with recovery. Password effects are never replayed.</summary>
 public sealed class ResetOperations(PluginStore store)
 {
-    public async Task CompleteAsync(string hash, Func<Task> changePassword, Func<Task> revokeSessions, CancellationToken ct = default)
+    public async Task CompleteAsync(string hash, Func<Task> changePassword, Func<Task> revokeSessions, CancellationToken ct = default, Func<CancellationToken, Task>? authorize = null)
     {
         using var fence = await store.AcquireResetEffectsAsync(ct).ConfigureAwait(false);
+        var current = await store.GetResetTokenAsync(hash, ct).ConfigureAwait(false);
+        if (current is null || current.UsedAt is not null || current.ExpiresAt <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            throw new UserManagerException(400, "This reset link is invalid or has expired.");
+        if (authorize is not null) await authorize(ct).ConfigureAwait(false);
         var consumed = await store.ConsumeResetTokenAsync(hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ct).ConfigureAwait(false);
         if (consumed is null) throw new UserManagerException(400, "This reset link has already been used.");
 

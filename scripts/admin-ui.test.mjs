@@ -21,6 +21,18 @@ test('Help supports hover, keyboard, touch and Escape without toggling settings'
     button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); assert(tip.hidden);
     assert(!document.querySelector('input').checked); dom.window.close();
 });
+test('Help clamps the positioned box instead of relying on scroll-overflowing transforms', () => {
+    const dom = fixture('<div data-help="A bounded description">Setting</div>');
+    try {
+        Object.defineProperty(dom.window, 'innerWidth', { value: 320 });
+        const tip = dom.window.document.querySelector('.suiteHelpText');
+        tip.getBoundingClientRect = () => ({ left: 280, width: 208 });
+        dom.window.document.querySelector('.suiteHelpButton').focus();
+        assert.equal(tip.style.left, '-176px');
+        assert.equal(tip.style.transform, '');
+        assert.equal(tip.style.insetInlineStart, 'auto');
+    } finally { dom.window.close(); }
+});
 test('Late fields and diagnostic updates enhance once and retain text safely', async () => {
     const dom = fixture('<pre id="details">{"text":"&lt;img src=x onerror=bad()&gt;"}</pre>');
     const { document } = dom.window, root = document.querySelector('main'), pre = document.querySelector('pre');

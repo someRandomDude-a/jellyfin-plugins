@@ -16,7 +16,10 @@ Never reference the main implementation DLL, reflect into its internals, mutate 
 
 ## Reference and register the client
 
-Requires the supported latest stable Jellyfin (currently 12.2) and .NET 10. Install Private SyncPlay normally on the server. Use `PrivateSyncPlay.Api-1.1.0.zip` from the matching plugin release (or this checkout's build artifacts while 0.1.3 is an unpublished preview), and add the DLL/XML to your development references:
+Requires the current supported stable Jellyfin and its matching reviewed SDK/runtime.
+Install Private SyncPlay using the [combined platform catalog](../../../README.md#installation-and-upgrades).
+Use `PrivateSyncPlay.Api-1.1.0.zip` from the matching plugin release (or matching local
+build artifacts for disposable testing), and add the DLL/XML to your development references:
 
 ```xml
 <Reference Include="Jellyfin.Plugin.PrivateSyncPlay.Api">

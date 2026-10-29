@@ -1,10 +1,12 @@
 name: jellyfin-user-manager
 
-# Integration sandbox for manual testing against the versions this plugin targets.
+# Manual sandbox only; automated acceptance uses owned disposable containers.
+# Resolve current stable image digests with scripts/prepare-test-targets.mjs --pull.
 # The plugin is mounted from dist/plugin, so run ./scripts/package.ps1 first.
 services:
   jellyfin:
-    image: jellyfin/jellyfin:12.3
+    image: ${JELLYFIN_TEST_IMAGE:?Set JELLYFIN_TEST_IMAGE to this run's resolved latest Jellyfin image digest}
+    pull_policy: always
     container_name: jellyfin-usermanager
     restart: unless-stopped
     environment:
@@ -20,7 +22,8 @@ services:
       - usermanager
 
   seerr:
-    image: seerr/seerr:v3.5.1
+    image: ${SEERR_TEST_IMAGE:?Set SEERR_TEST_IMAGE to this run's resolved latest Seerr image digest}
+    pull_policy: always
     container_name: seerr-usermanager
     restart: unless-stopped
     init: true

@@ -1,13 +1,37 @@
 # Jellyfin plugins
 
-> **Architecture update:** Notifications now has its own installable plugin, storage, inbox API, settings and delivery worker. Existing notification data has a checkpointed one-time migration out of Account Hub. Account Hub → Account Invitations extraction and the shared connection registry remain unfinished. See [authoritative requirements](docs/product-requirements.md), [Notifications upgrade instructions](plugins/notifications/README.md) and the [owner compatibility profile](test-profiles/owner-server.json). Historical four-plugin evidence does not certify the expanded set.
+Six independently installable plugins for account management, notifications,
+Discord integration, consent-driven media removal and private watch parties.
 
-## Install plugins
+> **Integration previews—not a completed v1 release.** Some features and live-service
+> acceptance remain unfinished. Catalog entries exist only after approved publication.
 
-**Current build/test target: Jellyfin 12.3 (SDK 12.3.0).** Upstream stable-release discovery must agree with `Jellyfin.Target.props`; a newer stable version blocks CI until the SDK/server compatibility is updated. Packages are integration previews, not a completed v1 release. Repository URLs below become available after a release is published; if they return 404, no corresponding release catalog is available yet.
+## Dependencies
 
-1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add one repository named **Jellyfin plugins**.
-2. Choose the combined catalog for your server architecture. Each lists all plugins published for that platform:
+Use packages matching your **Jellyfin server version and server architecture**.
+Build/test workflows resolve the latest stable relevant software; incompatible or
+stale targets block release rather than falling back to an older server. This is
+not a promise of compatibility with every installed plugin or skin.
+
+| Plugin | Required for its main features | Optional integrations |
+|---|---|---|
+| **Account Hub** | Notifications for the shared notification center; compatible native Jellyfin Security for supported factor/recovery workflows | Discord Bridge for Discord delivery and self-service; Seerr for account lifecycle integration |
+| **Notifications** | Jellyfin; no other suite plugin is needed for the standalone inbox | Discord Bridge for Discord delivery; Account Hub for verified personal-DM identity links and central audit |
+| **Discord Bridge** | A Discord application/bot for Discord features | Account Hub for verified identity/recovery commands; Hub + Private SyncPlay for watch-party creation commands |
+| **Deletion Queue** | Standalone Notifications for **new** requests; Seerr for supported destructive media operations | Account Hub audit, Discord delivery and Enhanced views; existing consent, Undo and history remain available if Notifications is unavailable |
+| **Automatic Deletion Requests** | Deletion Queue and Notifications for new removal requests | Seerr/native Jellyfin metadata and GET-only Sonarr/Radarr evidence for supported rules; no separate Seerr credentials |
+| **Private SyncPlay** | Jellyfin; core parties do not require another suite plugin | Notifications for shared notices; Account Hub for identity/audit; Discord Bridge for Discord commands and delivery |
+
+Install only the plugins you need. Missing optional integrations disable their
+dependent features, not unrelated functions. **Do not install the legacy User
+Manager alongside Account Hub.** Invitations remain integrated in Account Hub.
+Each plugin owns its connection settings; a shared registry is not required.
+
+## Installation and upgrades
+
+1. Back up Jellyfin's configuration and plugin data before installing or upgrading previews.
+2. Open **Dashboard → Plugins → Repositories** and add a repository named **Jellyfin plugins**.
+3. Select the combined catalog for your **server**, not your browser/client device:
 
    | Server platform | Repository URL |
    |---|---|
@@ -15,92 +39,146 @@
    | Linux ARM64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-linux-arm64.json> |
    | Windows x64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-win-x64.json> |
 
-3. Open the plugin **Catalog**, select the plugins you want, and install them.
-4. **Restart Jellyfin**, then open each installed plugin's settings in the Dashboard.
+4. Open the plugin **Catalog** and install your chosen plugins and required dependencies.
+5. **Restart Jellyfin**, then configure each plugin through its Dashboard settings.
+6. Enable optional integrations only after configuring their providers and permissions.
 
-Choose the server platform, not the device running your browser. Jellyfin does not automatically select architecture-specific packages from a single catalog. Back up your Jellyfin configuration and plugin data before installing or upgrading previews. Never upload `.env`, bot tokens or other credentials to GitHub.
+A catalog returning **404** has not been published yet; local source or packages
+do not imply availability. Jellyfin does not automatically choose architecture-specific
+packages from one universal catalog. Published catalogs preserve earlier versions
+and reference immutable release ZIPs.
 
-## Available plugins
+**Upgrading from embedded Hub notifications:** install standalone Notifications
+and update its consumers together. Its checkpointed migration moves existing
+notification data out of Hub; follow the Notifications upgrade guide before
+changing an existing installation. Arbitrary mixed-version combinations are not
+certified. Keep credentials private—never upload `.env`, bot tokens or keys.
 
-**Account Hub scope:** onboarding, user/group administration, creation ownership, verified identities, Security integration and notifications. It is no longer the unified administration screen for the suite: manage Discord transport, Deletion Queue and Private SyncPlay in their own plugin settings. Existing backend integration contracts and stored configuration are preserved; the Seerr administration tab is also removed from Hub's navigation.
+## What the plugins offer
 
-| Plugin | What it does | Optional integrations |
-|---|---|---|
-| **Account Hub** | Account workspace: onboarding invitations, group/policy management, verified account links, recovery and Seerr lifecycle integration through its HTTP API. Security remains an integration module. | Notifications for the shared inbox/delivery; Discord Bridge for Discord delivery/self-service; compatible native Security for supported factor workflows. |
-| **Notifications** | Owns the shared inbox, read/dismiss state, preferences, server delivery settings, Web bell and worker. Migrates existing notification data into its own database and key ring. | Discord Bridge for delivery; Account Hub for verified DM identity links and its audit provider. Neither is needed for the standalone inbox. |
-| **Discord Bridge** | Owns the bot and encrypted Discord credentials. Delivers scoped media announcements and provides self-service commands and explicitly targeted watch-party invitations. Includes an SDK companion Activity that opens Jellyfin externally—**not video playback inside Discord**. | Account Hub for verified identity/link/recovery commands; Account Hub + Private SyncPlay for watch-party creation commands. Basic transport works independently. |
-| **Deletion Queue** | Consent-driven media deletion workflow with reviewable queue state and authenticated evidence. Configure it in its own plugin settings. | Account Hub backend lifecycle/notification integration; Discord Bridge for supported Discord delivery. |
-| **Automatic Deletion Requests** | Disabled-by-default administrator rules submit ordinary removal requests. No consent, approval or deletion execution. | Deletion Queue and Notifications are required for new requests; no separate Seerr credentials. |
-| **Private SyncPlay** | Private watch parties, native account invitations and isolated anonymous guest playback with owner-controlled permissions. Configure it in its own plugin settings. | Account Hub backend identity/lifecycle integration; Discord Bridge for Discord watch-party commands/delivery. |
+### Account Hub
 
-Install the six plugins independently or combine them. For the initial Notifications extraction, update existing consumers together as described in its upgrade instructions. Missing optional integrations disable only dependent features. Do **not** install the legacy User Manager alongside Account Hub. See [dependencies](docs/dependencies.md) and [remaining release gates](docs/v1-release-gates.md).
+- Account onboarding and invitations, user/group administration and policy management.
+- Verified account links, supported native Security integration and session-bound recovery.
+- Seerr account lifecycle integration through its HTTP API and a central audit provider.
+- Opt-in future library-addition notifications through Notifications.
 
-Main source repository: **someRandomDude-a/jellyfin-plugins**. Jellyfin 12.3 / .NET 10. Owner compatibility target: Linux x86_64/amd64.
+Hub is an **account workspace**, not the suite's universal administration screen.
+Configure Discord transport, Deletion Queue and Private SyncPlay in their own settings.
+Native Security remains a separate upstream integration, not a replacement authentication system.
 
-## Layout and status
+### Notifications
 
-- `shared/AccountHub.Api`: single v1 producer SDK used by all projects.
-- `plugins/account-hub`: integration preview with the native workspace, embedded Security/Notifications and lifecycle/recovery services; not yet the complete planned control plane.
-- `plugins/deletion-queue`, `plugins/private-syncplay`: independent domain plugins.
-- `plugins/discord-bridge`: independently packaged single bot, Discord delivery, self-service/watch-party commands and an Embedded App SDK companion frontend. Hub owns verified links and recovery. The companion opens playback in Jellyfin outside Discord; in-Discord video playback is not implemented. See [Activity development and temporary HTTPS testing](docs/discord-activity-development.md).
-- `modules/security`: shared Security integration; `modules/notifications`: shared notification backend library, not a second runtime plugin. `plugins/notifications` owns the standalone lifecycle.
-- `modules/user-management`: owner-authorized MIT lifecycle source compiled as `AccountHub.Lifecycle`; legacy controllers, plugin entry, bot and File Transformation hooks are excluded. Do not install the old plugin alongside Hub.
+- A shared notification bell/inbox with read, dismiss, History and Blocked views.
+- Personal Android-style app/category switches and **Important, Alerting, Silent and Low** choices.
+- Separate **Watchlisted** and **Favorited** filters for future accessible library additions.
+- Browser Push enrollment and optional Discord delivery, with server routing controlled by administrators.
+- Mobile swipes and desktop dragging: ordinary notices reveal read/hide actions;
+  eligible deletion-consent requests accept a deliberate right gesture to consent,
+  then dismiss only after success.
 
-Consolidation does not certify the complete plan. See [review status](docs/review-status.md) for remaining blockers.
+The UI follows Jellyfin theme colors and fonts and supports skin overrides.
+Critical alerts and current authorization remain protected; physical-device and
+every-third-party-skin compatibility are not universally certified. Watchlisted
+uses native `Likes` (also used by Enhanced); Favorited uses independent `IsFavorite`.
+Notifications do not change either list or viewing history.
 
-All six installable plugins support independent installation and combinations. Missing optional providers disable only their dependent controls. See the [feature dependency matrix](docs/dependencies.md).
+### Discord Bridge
 
-## Development
+- One bot/transport with encrypted Discord credentials and scoped library announcements.
+- Optional verified account linking, self-service/recovery commands and targeted watch-party invitations.
+- `/invite` signup uses/expiry with administrator limits, and `/watchparty [user]` native links with approved-channel or DM delivery.
 
-Requires .NET SDK 10.0.402, Node 22+, PowerShell **7+**; Docker for live fixtures.
+Discord Activities and embedded video are removed. Shared library announcements
+require Notifications, explicit library/channel selection and disclosure consent.
+Basic Bridge transport works independently of Hub.
+
+### Deletion Queue
+
+- Reviewable removal requests with recipient consent, administrator approval where required,
+  safety delays, Undo and preserved history.
+- Fresh access, playback, policy and target checks before advancement or deletion.
+- Optional collections and reversible portrait/landscape artwork overlays with native editors.
+- Native scheduled tasks for maintenance, due-deletion checks and artwork generation/restoration.
+
+Deletion Queue alone owns destructive Seerr operations. A due date, notification
+gesture or automated rule never bypasses its consent, approval or safety checks.
+
+### Automatic Deletion Requests
+
+- Disabled-by-default administrator rules using Jellyfin/Seerr metadata and supported Arr evidence.
+- Native scope pickers, rule cards and match previews.
+- Submission of ordinary removal requests to Deletion Queue.
+
+It **does not grant consent, approve requests or execute deletion**. Arr metadata
+reads remain GET-only. This is a focused rule-evaluation preview, not complete
+Maintainerr feature parity.
+
+### Private SyncPlay
+
+- Private watch parties and invitations for native Jellyfin accounts.
+- Isolated anonymous guest playback with owner-controlled permissions.
+- Optional shared notifications, central identity/audit and Discord invitations.
+- A separately versioned developer SDK and consumer example.
+
+Core parties work without Hub or Bridge. Human multiplayer hosting and
+the complete owner plugin/skin combination still have acceptance limits.
+
+## Development and release policy
+
+Use the SDK declared in `global.json`, current stable Node.js and PowerShell **7+**;
+Docker is required for disposable installed/browser/external fixtures.
 
 ```powershell
 npm ci --ignore-scripts --prefix plugins/private-syncplay
 pwsh -File scripts/test.ps1
+# Or test one plugin and its shared contracts:
+pwsh -File scripts/test-plugin.ps1 -Plugin notifications
 ```
 
-The root solution covers the .NET suites, including Automatic Deletion Requests. The test script also runs JavaScript/UI suites and existing offline release-tool tests. Generated artifacts, databases and test credentials are ignored.
+Normal test/package entry points discover current stable Jellyfin/Security and
+generate matching SDK/ABI/database settings. CI shares a concrete target/toolchain
+snapshot across jobs and fails if evidence is missing or incompatible.
 
-To test only one plugin and its common/dependency contracts, use `pwsh -File scripts/test-plugin.ps1 -Plugin private-syncplay` (also accepts `account-hub`, `discord-bridge`, `deletion-queue`, `notifications`, `automatic-deletion-requests`). Install `plugins/discord-bridge/activity` npm dependencies for Discord tests; Hub UI tests use the jsdom dependency in `plugins/private-syncplay`. See [independent release gates](docs/independent-plugin-releases.md).
+Dependency maintenance discovers updates hourly, groups them into a tested PR and
+can dispatch a patch release after protected acceptance. Every release path
+requires latest-only freshness checks; suite releases also require full
+root/browser/matrix/external acceptance. Publication rechecks upstream freshness.
+**The current local freshness audit reports outdated dependencies: adding these
+gates does not mean all upgrades or remote workflows have passed.** Existing branch
+rules and `plugin-release` approvals remain mandatory. Ordinary pushes do not publish releases.
 
-## Releases and Jellyfin repository
+## References
 
-Root workflows:
+### Installation, configuration and feature guides
 
-- `tests.yml` / `plugin-checks.yml`: independent Windows/Linux plugin tests plus their common/dependency checks and standalone installed tests, with fail-fast disabled. Installed all-plugin browser checks are separate interoperability evidence. No Discord credentials or public tunnels are used by default.
-- `integration.yml`: scheduled/manual interoperability and 64-combination testing, not an unrelated-plugin release gate or full product certification.
-- `release.yml`: existing **plugin-prefixed** tags such as `private-syncplay/v0.2.0`, automatically or by manual dispatch. Only that plugin's checks gate its three-platform packages and independent catalog feeds. Existing releases are never overwritten. Configure required reviewers on the **plugin-release** environment before enabling production publishing.
+- [Documentation index](docs/README.md)
+- [Dependency and feature matrix](docs/dependencies.md)
+- [Notifications installation, upgrades and migration](plugins/notifications/README.md)
+- [Notification categories, importance and consent gestures](docs/notification-channels.md)
+- [Library additions, privacy and delivery](docs/library-notifications.md)
+- [Browser Push](docs/web-push.md)
+- [Account management](docs/account-management.md) · [Security and recovery](docs/security-recovery-integration.md)
+- [Discord integration](docs/discord-suite-integration.md)
+- [Automatic Deletion Requests](plugins/automatic-deletion-requests/README.md)
 
-Each release validates only its selected plugin's merged three-platform artifact set before release writes; another optional plugin's failed tests or combination checks do not block it. Shared contracts and actual compile-time dependencies still apply. See [independent release gates](docs/independent-plugin-releases.md). Ordinary source uploads/pushes run tests; they do not create a release.
+### Verification, development and releases
 
-Installation URLs and steps are at the top of this README. Every release catalog preserves previous published versions and links directly to immutable ZIPs in this repository. The checked-in `manifest.json` starts empty: it does not advertise packages that have not been published. The generated release catalog is authoritative; the workflow does not push generated files into `main`.
+- [Current review status and blockers](docs/review-status.md) · [Evidence register](docs/verification.md)
+- [Safety and permissions](docs/safety-and-permissions.md) · [Notification producer API](docs/notification-producer-api.md)
+- [Testing commands](docs/testing.md) · [Theme/browser acceptance](docs/theme-acceptance.md)
+- [Independent and suite releases](docs/independent-plugin-releases.md) · [Dependency maintenance and latest-only gates](docs/dependency-maintenance.md)
+- [Product requirements](docs/product-requirements.md) · [Remaining release gates](docs/v1-release-gates.md)
+- [Owner compatibility profile](test-profiles/owner-server.json) — an observed profile, not blanket certification
 
-Local packaging (does not publish):
+### Upstream projects and credits
 
-```powershell
-pwsh -File scripts/package.ps1 -Tag v0.2.0 -Plugin private-syncplay -ReleaseTag private-syncplay/v0.2.0 -Runtime linux-x64
-```
-
-Packages are **integration previews**. See the explicit remaining gates in [review status](docs/review-status.md); a green build is not full product certification. Source changes here have not been committed or pushed.
-
-To test locally generated Linux x64 packages on a new disposable Jellyfin server:
-
-```powershell
-node scripts/integration.mjs --packages=artifacts/release/v0.2.0/linux-x64
-```
-
-Optional `--security=<path-to-pinned-jf12-zip>` verifies the Security package SHA-256 before installing it. Add `--proof` to self-enroll the disposable administrator and test real TOTP success/denial/replay without reading Security private records. No existing server data is mounted. Only `--keep` retains the random test container; otherwise the container is removed and its isolated evidence directory remains.
-
-## Library additions
-
-New episode/movie notifications can be enabled separately in **Account Hub → Library** and **Discord Bridge** settings. Inbox delivery respects current Jellyfin access; shared Discord channels require explicit library/channel selection and disclosure consent. Bridge works independently and remains the only Discord transport when Hub is installed. See [configuration, privacy and delivery limits](docs/library-notifications.md).
-
-## Automatic deletion requests (in development)
-
-[Automatic Deletion Requests](plugins/automatic-deletion-requests/README.md) adds a disabled-by-default Jellyfin/Seerr rule-evaluation preview. It submits ordinary requests; Deletion Queue owns all media operations, opt-in collections and reversible artwork overlays/editor. Sixth-plugin packaging and installed checks are now wired; see [current verification and limits](docs/review-status.md). Local packages do not imply publication, and older five-plugin evidence does not certify this preview.
-
-Native **Scheduled Tasks → Deletion Queue** jobs run daily by default: rules/collections at 02:00, fresh safety checks and due deletions at 03:00, and artwork generation/restoration at 04:00. Edit their triggers or run them manually in Jellyfin. The redesigned editors provide native scope pickers, rule cards, match previews and portrait/landscape artwork controls. Current playback, consent, policy, target and originating-rule conditions are checked again before advancement and deletion; an elapsed date never grants authorization.
-
-## Credits
-
-The automatic-rule and planned collection/overlay features are inspired by [Maintainerr](https://github.com/Maintainerr/Maintainerr), copyright © 2026 Maintainerr, MIT-licensed. The focused implementation targets Jellyfin and Seerr rather than complete Maintainerr parity.
+- [Jellyfin](https://github.com/jellyfin/jellyfin)
+- [Jellyfin Security](https://github.com/ZL154/JellyfinSecurity)
+- [Jellyfin Enhanced](https://github.com/n00bcodr/Jellyfin-Enhanced)
+- [Seerr](https://github.com/seerr-team/seerr) · [Sonarr](https://github.com/Sonarr/Sonarr) · [Radarr](https://github.com/Radarr/Radarr)
+- [Discord Embedded App SDK](https://github.com/discord/embedded-app-sdk)
+- [Maintainerr](https://github.com/Maintainerr/Maintainerr) inspired the automatic-rule
+  and collection/overlay work (copyright © 2026 Maintainerr, MIT). This implementation
+  targets Jellyfin and Seerr rather than complete Maintainerr parity.
+- [Repository license](LICENSE)

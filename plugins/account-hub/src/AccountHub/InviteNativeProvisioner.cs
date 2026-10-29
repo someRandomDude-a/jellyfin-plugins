@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using AccountHub.Core;
 using AccountHub.Api;
 using Jellyfin.Data;
@@ -11,12 +10,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AccountHub;
 
-/// <summary>Pinned 12.2 native schema adapter. CreateUserAsync cannot safely create an incomplete account.</summary>
+/// <summary>Reviewed native schema adapter. CreateUserAsync cannot safely create an incomplete account.</summary>
 public sealed class InviteNativeProvisioner(IUserManager users, MediaBrowser.Controller.Events.IEventManager events, AccountHub.Groups.GroupPolicyService groups, NativeUserWrites writes) : IInviteNativeProvisioner
 {
     public async Task CreateDisabledAsync(Guid userId, string username, CancellationToken ct)
     {
-        if (username is "." or ".." || !Regex.IsMatch(username, @"^(?!\s)[\w\ \-'._@+]+(?<!\s)$", RegexOptions.None, TimeSpan.FromMilliseconds(100))) throw new HubException("invalid_request", "Invalid Jellyfin username");
+        InviteOnboardingService.ValidateUsername(username);
         var auth = users.GetAuthenticationProviders().SingleOrDefault(x => x.Id == "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider")?.Id;
         var reset = users.GetPasswordResetProviders().SingleOrDefault(x => x.Id == "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider")?.Id;
         if (auth is null || reset is null) throw new HubException("unavailable", "Native local authentication is unavailable", true);
@@ -39,10 +38,13 @@ public sealed class InviteNativeProvisioner(IUserManager users, MediaBrowser.Con
     }
     public static void RequireSupportedDatabase(Version? version, string? provider)
     {
-        // 12.3 database/user sources are blob-identical to the reviewed 12.2
-        // contract; see docs/native-database-12.3-review.md. No version ranges.
-        if ((version != new Version(12, 2, 0, 0) && version != new Version(12, 3, 0, 0)) || provider != "Microsoft.EntityFrameworkCore.Sqlite")
-            throw new HubException("native_database_unsupported", "Disabled-first onboarding requires the reviewed Jellyfin 12.2 SQLite schema", true);
+        // New release ABIs are admitted only when bootstrap proves every native
+        // database/user source blob unchanged from the reviewed contract.
+        var reviewed = typeof(InviteNativeProvisioner).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "ReviewedNativeDatabaseAbi")?.Value;
+        var current = Version.TryParse(reviewed, out var abi) && version == abi;
+        if ((!current && version != new Version(12, 2, 0, 0) && version != new Version(12, 3, 0, 0)) || provider != "Microsoft.EntityFrameworkCore.Sqlite")
+            throw new HubException("native_database_unsupported", "Disabled-first onboarding requires a reviewed Jellyfin SQLite schema", true);
     }
     private User Disabled(Guid id)
     {

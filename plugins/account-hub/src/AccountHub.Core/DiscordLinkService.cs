@@ -29,13 +29,15 @@ public sealed class DiscordLinkService(HubStore store, TimeProvider clock)
         }, ct);
         return token;
     }
-    public Task ConfirmAsync(Guid actor, string token, CancellationToken ct) => store.WriteAsync(async (db, cancellation) =>
+    public Task ConfirmAsync(Guid actor, string token, CancellationToken ct,string? discordUsername=null) => store.WriteAsync(async (db, cancellation) =>
     {
         var challenge = await db.DiscordChallenges.FindAsync([Hash(token)], cancellation);
         if (challenge is null || challenge.ConsumedBy is not null || challenge.ExpiresAtUnixMs <= clock.GetUtcNow().ToUnixTimeMilliseconds()) throw new HubException("rejected", "Link expired or consumed");
         var userId = actor.ToString("N"); var discord = challenge.DiscordId; var now = clock.GetUtcNow().ToUnixTimeMilliseconds();
+        if(discordUsername is {Length:>80}||discordUsername?.Any(char.IsControl)==true)throw new HubException("invalid_request","Invalid Discord username");
+        var username=string.IsNullOrEmpty(discordUsername)?discord:discordUsername;
         // No silent reassignment: unique constraints reject an identity already owned by someone else.
-        try { await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO linked_accounts(JellyfinUserId,DiscordUserId,DiscordUsername,LinkedAt) VALUES({userId},{discord},{discord},{now})", cancellation); }
+        try { await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO linked_accounts(JellyfinUserId,DiscordUserId,DiscordUsername,LinkedAt) VALUES({userId},{discord},{username},{now})", cancellation); }
         catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 19) { throw new HubException("rejected", "A Discord or Jellyfin identity is already linked; unlink it explicitly first."); }
         challenge.ConsumedBy = actor;
         await AuditLedger.AppendAsync(db, new AuditEvent { EventId = Guid.NewGuid(), Source = "account-hub", EventType = "discord.linked", ActorUserId = actor, SubjectType = "user", SubjectId = actor.ToString("D"), OccurredAt = clock.GetUtcNow() }, clock, cancellation);

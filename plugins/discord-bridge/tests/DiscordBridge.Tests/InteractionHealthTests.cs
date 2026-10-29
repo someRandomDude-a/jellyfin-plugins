@@ -15,4 +15,8 @@ public sealed class InteractionHealthTests
         Assert.Throws<ArgumentException>(() => metrics.Record("help", "private-message-body"));
         Assert.Single(metrics.Snapshot());
     }
+    [Fact]public void DelegatedInvitationsHaveBoundedSuccessAndFailureCounters(){
+        var metrics=new InteractionHealth();metrics.Record("invite.create","completed");metrics.Record("invite.create","unavailable");
+        Assert.Equal(1,metrics.Snapshot()["invite.create:completed"]);Assert.Equal(1,metrics.Snapshot()["invite.create:unavailable"]);
+    }
 }

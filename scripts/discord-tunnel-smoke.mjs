@@ -3,18 +3,19 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { startDiscordTunnel, probeDiscordTunnel } from './discord-tunnel.mjs';
+import { freshDockerArguments } from './latest-releases.mjs';
 assert(process.argv.includes('--allow-public-disposable-tunnel'), 'Explicit public disposable tunnel permission required');
 const name = 'jellyfin-suite-test-' + randomUUID().slice(0, 8);
 const sentinel = randomUUID();
 function docker(...args) {
-    const result = spawnSync('docker', args, { encoding: 'utf8', timeout: 180000, maxBuffer: 1024 * 1024 });
+    const result = spawnSync('docker', freshDockerArguments(args), { encoding: 'utf8', timeout: 180000, maxBuffer: 1024 * 1024 });
     assert.equal(result.status, 0, 'Disposable Docker operation failed (details withheld)');
     return (result.stdout + (args[0] === 'logs' ? result.stderr : '')).trim();
 }
 let tunnel, started = false;
 try {
     docker('run', '-d', '--name', name, '--label', 'jellyfin.suite.tunnel-test=true', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--entrypoint', 'node',
-        'mcr.microsoft.com/playwright:v1.56.1-noble', '-e',
+        'mcr.microsoft.com/playwright:v1.64.1-noble', '-e',
         `require('http').createServer((req,res)=>{res.setHeader('Cache-Control','no-store');res.end(${JSON.stringify(sentinel)})}).listen(8096,'0.0.0.0')`);
     started = true;
     tunnel = await startDiscordTunnel(name, docker);

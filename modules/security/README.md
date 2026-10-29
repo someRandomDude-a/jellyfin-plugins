@@ -1,32 +1,29 @@
-# Account Hub — Jellyfin Security integration
+# Account Hub Security integration library
 
-Optional **Account Hub module**, not an installable Jellyfin plugin or a replacement 2FA provider. Implements handoff `05-jellyfin-security.md`. MIT.
+## Dependencies and ownership
 
-## Implemented
+This is an optional Hub implementation module, not an installable replacement for
+native Jellyfin Security. Install/configure its native provider using the
+[current guide](../../docs/security-recovery-integration.md). Supported versions
+are discovered and bound to reviewed source contracts and official asset/binary
+metadata; an old fixed version in a handoff is not an authorization allowlist.
 
-- Running-plugin GUID/enabled/version gate; exactly `2.6.4` / `2.6.4.0`. Missing, disabled, incompatible or unknown blocks every Security API call.
-- Safe status/device projections, bounded short-lived display cache, pagination, BaseUrl links and an embeddable admin Security panel.
-- Current-caller HTTP authentication only; no cookies, redirects, standing token, factor reset, audit import, private files or cross-plugin assembly reference.
-- Manual step-up mirror, fresh `StepUp/Verify`, explicit confirmation, old-level authorization when weakening settings, no failed-proof downgrade.
-- Exact-byte HMAC validation and redacted event mapping for the **shared Notifications receiver**; quarantine and durable acceptance interfaces.
+## Responsibilities
 
-## Build and test
+- Current-caller, bounded native status/device operations with no standing token,
+  private factor access, TLS bypass, automatic mutation retry or no-factor guessing.
+- Live administrator/target protections and applicable fresh authorization for
+  security-sensitive actions; lowering settings uses the old policy.
+- Exact-token existing-session verdicts for recovery, separate from admin proof.
+- Redacted exact-byte signed ingress with durable host-owned receipt/quarantine state.
 
-Requires .NET SDK `10.0.402` and Node 22.
+Use root test/package wrappers; do not install this DLL separately or create another
+database, receiver, bot, factor store or permissive host implementation. Native
+Security remains installed/enforcing during module failure or rollback.
 
-```powershell
-dotnet test AccountHub.Security.slnx -c Release
-node --test web/security-client.test.mjs
-node --check web/security-panel.mjs
-./scripts/verify-security-baseline.ps1
-```
+## References
 
-Compiled against Jellyfin.Common `12.2.0` / `net10.0`. Security source: tag `v2.6.4`, commit `2c02686fcec8b15ea56235de8d196460711befaa`. See [handoff](docs/implementation-status.md) for actual evidence and remaining release gates.
-
-## Integration required
-
-This repository started with only a license. Account Hub core P0/P1 and the Notifications durable receiver are **not present**. This module deliberately does not create a competing plugin identity, database, audit writer, receiver controller or bot.
-
-The Hub owner must implement the mandatory host interfaces and bind this module to its existing foundation before deployment. No production fallback implementations are supplied. Unit-test doubles are not durable storage.
-
-See [host integration](docs/host-integration.md) and the [operator validation runbook](docs/runbook.md). Live Jellyfin loading, real TOTP/recovery, webhook transport, browser rendering and deletion cleanup are **unverified**. Do not install the library DLL by itself or mark the program release-ready.
+- [Developer host contract](docs/host-integration.md)
+- [Recovery, ingress setup and validation](../../docs/security-recovery-integration.md)
+- [Storage recovery](../../docs/plugin-storage-recovery.md)
+- [Testing](../../docs/testing.md) · [Current status](../../docs/review-status.md)

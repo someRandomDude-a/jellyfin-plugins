@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { target } from './jellyfin-target.mjs';
+import { resolveTarget } from './jellyfin-target.mjs';
+const target = await resolveTarget();
 
 const folder=process.argv[2] || 'artifacts';
 const catalog=JSON.parse(await readFile(join(folder,'manifest.json'),'utf8'));

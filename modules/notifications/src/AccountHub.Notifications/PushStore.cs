@@ -8,11 +8,11 @@ public sealed partial class NotificationStore
     public PushConfiguration PushSettings()=>Run(c=>{
         var json=Scalar(c,"SELECT json FROM nh_push_settings WHERE id=1");return json is null?new(0,false,"",""):Decrypt<PushConfiguration>(json);
     });
-    public void ConfigurePush(long revision,bool enabled,string? subject=null)=>Run(c=>{
+    public void ConfigurePush(long revision,bool enabled,string? subject=null,bool? defaultOn=null)=>Run(c=>{
         using var tx=c.BeginTransaction(deferred:false);var json=Scalar(c,"SELECT json FROM nh_push_settings WHERE id=1");var current=json is null?WebPush.Create(0,false):Decrypt<PushConfiguration>(json);
         Validation.Require(current.Revision==revision,"Push configuration changed");subject??=current.Subject;
         Validation.Require(!enabled||subject is {Length:>0 and <=512}&&!subject.Any(char.IsControl)&&Uri.TryCreate(subject,UriKind.Absolute,out var contact)&&(contact.Scheme=="https"&&contact.UserInfo.Length==0||contact.Scheme=="mailto"&&System.Net.Mail.MailAddress.TryCreate(subject[7..],out _)),"A mailto: or HTTPS administrator contact is required for Web Push");
-        var saved=current with{Revision=revision+1,Enabled=enabled,Subject=subject};Execute(c,"INSERT OR REPLACE INTO nh_push_settings VALUES(1,$0)",Encrypt(saved));
+        var saved=current with{Revision=revision+1,Enabled=enabled,Subject=subject,DefaultOn=defaultOn??current.DefaultOn};Execute(c,"INSERT OR REPLACE INTO nh_push_settings VALUES(1,$0)",Encrypt(saved));
         if(!enabled){Execute(c,"DELETE FROM nh_push_jobs");Execute(c,"DELETE FROM nh_push_subscriptions");}tx.Commit();return 0;
     });
     public string SavePush(Guid user,PushSubscription subscription){WebPush.Validate(subscription);return Run(c=>{

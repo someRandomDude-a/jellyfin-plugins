@@ -23,6 +23,9 @@ public sealed class NotificationsController(EndpointAdapter adapter) : Controlle
     [AllowAnonymous, HttpGet("Notifications/assets/bell.js")]
     [HttpGet("Notifications/assets/bell.css")]
     [HttpGet("Notifications/assets/settings.js")]
+    [HttpGet("Notifications/assets/notification-card.js")]
+    [HttpGet("Notifications/assets/notification-studio.js")]
+    [HttpGet("Notifications/assets/notification-studio.css")]
     public Task Assets() => adapter.ExecuteAsync(HttpContext);
 }
 public sealed class EndpointAdapter(IServiceProvider services)

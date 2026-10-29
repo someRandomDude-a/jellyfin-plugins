@@ -13,6 +13,7 @@ namespace Jellyfin.Plugin.Notifications;
 
 public sealed class NativeHost(IServiceProvider services, Storage storage) : INotificationHost
 {
+    public string? PublicServerUrl(HttpContext context) => services.GetService<MediaBrowser.Controller.IServerApplicationHost>()?.GetSmartApiUrl(context.Request);
     public IReadOnlyList<NotificationRegistration> NotificationRegistrations {
         get {
             var registrations = new Dictionary<string, NotificationRegistration>(StringComparer.Ordinal);
@@ -57,6 +58,10 @@ public sealed class NativeHost(IServiceProvider services, Storage storage) : INo
     public Task<IReadOnlyList<Guid>> AdministratorsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<Guid>>(Users.GetUsers().Where(u=>u.HasPermission(PermissionKind.IsAdministrator)&&!u.HasPermission(PermissionKind.IsDisabled)).Select(u=>u.Id).Take(1001).ToArray());
     public Task<bool> CanAccessNotificationAsync(Guid id, NotificationEvent entry, CancellationToken ct)
     {
+        if (entry.Source is "notifications" or "account-hub" && entry.Type is "library.movie.added" or "library.episode.added") {
+            if (entry.Metadata is null || !entry.Metadata.TryGetValue("itemId",out var rawItem) || !Guid.TryParse(rawItem,out var libraryItem)) return Task.FromResult(false);
+            try { var user=Users.GetUserById(id); var item=services.GetRequiredService<ILibraryManager>().GetItemById(libraryItem); return Task.FromResult(user is not null && !user.HasPermission(PermissionKind.IsDisabled) && item?.IsVisibleStandalone(user)==true); } catch { return Task.FromResult(false); }
+        }
         var scopedAccess = services.GetKeyedService<Func<Guid, string, CancellationToken, Task<bool>>>(NotificationIntegration.AccessPrefix + entry.Source);
         if (scopedAccess is not null && !entry.AdminOnly) return CheckAccess(scopedAccess, id, entry, ct);
         if (!entry.AdminOnly && entry.Metadata?.GetValueOrDefault("notificationAccess") == "required") return Task.FromResult(false);
@@ -85,8 +90,17 @@ public sealed class NativeHost(IServiceProvider services, Storage storage) : INo
     public Task<string?> DiscordLinkAsync(Guid id,CancellationToken ct) => services.GetKeyedService<Func<Guid,CancellationToken,Task<string?>>>("Notifications.DiscordLink.1")?.Invoke(id,ct) ?? Task.FromResult<string?>(null);
     public async Task<object> AppendAuditAsync(AuditEvent entry,CancellationToken ct)
     {
-        var upstream=services.GetKeyedService<Func<AuditEvent,CancellationToken,Task<object>>>("Notifications.HubAudit.1");
-        if(upstream is not null && !entry.EventType.StartsWith("notifications.",StringComparison.Ordinal)) return await upstream(entry,ct);
+        var upstream=services.GetKeyedService<Func<string,CancellationToken,Task<string>>>(NotificationIntegration.HubAuditKey);
+        if(upstream is not null && !entry.EventType.StartsWith("notifications.",StringComparison.Ordinal)) {
+            // Only framework JSON crosses the optional plugin boundary. A failed
+            // configured owner is not replaced by a second local audit ledger.
+            var reply=await upstream(Contract.Serialize(entry),ct);
+            if(System.Text.Encoding.UTF8.GetByteCount(reply)>8192)throw new NotificationException("unavailable","Audit owner unavailable",503);
+            using var result=System.Text.Json.JsonDocument.Parse(reply,new(){MaxDepth=8});
+            if(result.RootElement.ValueKind!=System.Text.Json.JsonValueKind.Object || !result.RootElement.TryGetProperty("status",out var status) || status.ValueKind!=System.Text.Json.JsonValueKind.String || status.GetString() is not ("accepted" or "duplicate"))
+                throw new NotificationException("unavailable","Audit owner did not acknowledge the event",503);
+            return result.RootElement.Clone();
+        }
         Directory.CreateDirectory(storage.DirectoryPath);
         using var db=new SqliteConnection(new SqliteConnectionStringBuilder { DataSource=Path.Combine(storage.DirectoryPath,"audit.db") }.ToString());
         await db.OpenAsync(ct);
@@ -117,6 +131,9 @@ public sealed class BridgeTransport(DiscordBridge.Api.DiscordBridgeClient bridge
     public async Task<SendResult> SendAsync(string destination,bool directMessage,string text,string deliveryId,CancellationToken ct)
     {
         var result=await bridge.CallAsync("send",new { destination,directMessage,text,deliveryId },ct);
-        return result is { } value && value.GetProperty("ok").GetBoolean() ? new(true) : new(false,true,"discord_bridge_unavailable");
+        if(result is not {} value)return new(false,true,"discord_bridge_unavailable");
+        if(value.TryGetProperty("ok",out var ok)&&ok.ValueKind==System.Text.Json.JsonValueKind.True)return new(true);
+        var retryable=value.TryGetProperty("error",out var error)&&error.TryGetProperty("retryable",out var retry)&&retry.ValueKind==System.Text.Json.JsonValueKind.True;
+        return new(false,retryable,"discord_bridge_unavailable");
     }
 }

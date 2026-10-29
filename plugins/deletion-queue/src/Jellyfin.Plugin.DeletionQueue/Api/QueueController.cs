@@ -52,6 +52,14 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         return Ok(QueueRules.Project(state, p, caller.Id, clock.GetUtcNow()));
     }
 
+    [HttpGet("admin/approvals")]
+    public IActionResult Approvals([FromQuery]int skip=0,[FromQuery]int take=50){
+        var caller=identity.Caller(User,administrator:true);if(skip<0||take is <1 or >100)throw new QueueException("InvalidPagination");var state=runtime.Read();var now=clock.GetUtcNow();
+        foreach(var p in state.Proposals)QueueRules.Expire(state,p,now);
+        return Ok(state.Proposals.Where(p=>!p.Terminal&&p.Claim is null&&state.Policy.RequireAdministratorApproval&&p.Reason=="AdministratorApprovalRequired"&&!QueueRules.AdministratorApprovalCurrent(state,p)&&targets.Accessible(caller.Id,p)).OrderBy(p=>p.ApprovalDeadline).ThenBy(p=>p.CreatedAt).Skip(skip).Take(take)
+            .Select(p=>QueueRules.Project(state,p,caller.Id,now) with{CanApprove=true,CanConsent=false,CanUndo=false,AdministratorApprovalSnapshot=QueueRules.AdministratorSnapshot(state,p),RequesterLabel=p.RequiresAutomaticRuleValidation&&p.RequesterId is null?"Automation · requester unknown":users.GetUserById(p.RequesterId??p.OwnerId)?.Username??"Requester unavailable"}).ToArray());
+    }
+
     [HttpPost("targets/preview")]
     public async Task<IActionResult> Preview(TargetSelection selection, CancellationToken ct)
     {
@@ -70,7 +78,9 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         var p = Visible(runtime.Read(), id, caller.Id);
         if (!p.Terminal && p.Claim is null) {
             try {
-                var check = await gateway.PreflightAsync(p, HttpContext.RequestAborted);
+                using var verificationBudget = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+                verificationBudget.CancelAfter(TimeSpan.FromSeconds(45));
+                var check = await gateway.PreflightAsync(p, verificationBudget.Token);
                 runtime.Write(Guid.NewGuid(), "status-check", "EligibilityEvaluated", state => {
                     var current = Visible(state, id, identity.Caller(User).Id);
                     if (current.Revision != check.ProposalRevision) throw new QueueException("RevisionChanged");
@@ -80,6 +90,17 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
                     return true;
                 });
             } catch (QueueException e) when (e.Code == "RevisionChanged") { /* A concurrent domain change wins. */ }
+            catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { throw; }
+            catch (Exception) {
+                if (!runtime.Available) throw;
+                runtime.Write(Guid.NewGuid(), "status-check", "VerificationUnavailable", state => {
+                    var current = Visible(state, id, identity.Caller(User).Id);
+                    if (current.Revision == p.Revision && !current.Terminal && current.Claim is null) {
+                        QueueRules.VerificationUnavailable(state, current, clock.GetUtcNow()); current.Revision++;
+                    }
+                    return true;
+                });
+            }
         }
         return Detail(id);
     }
@@ -260,13 +281,14 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
         {
             StorageAvailable = true, ExecutionAvailable = true, Mode = QueueRuntime.ReleaseMode, NotificationsReady = notificationsReady,
             state.Policy, state.CoverageSince, state.LastHeartbeat, state.CoverageHealthy, state.ClockHealthy,
-            state.CoverageProblem, CollectorHealthy = runtime.CollectorHealthy, LocalIntegrityVerified = true, IndependentRollbackProtection = false,
+             state.CoverageProblem, CollectorHealthy = runtime.CollectorHealthy,CollectorRunning=runtime.CollectorRunning, LocalIntegrityVerified = true, IndependentRollbackProtection = false,
             ContinuousWindowCollected = QueueRules.CoverageComplete(state, clock.GetUtcNow()),
             PerProposalInventoryChecksEnabled = true, SeerrDelegationTrusted = true,
             state.NoticeDeliveryIncomplete,
              Integration = new { Pending = state.Outbox.Count(e => e.Status is "pending" or "delivering"),
                 DeadLetters = state.Outbox.Count(e => e.Status == "dead_letter"), LocalFallbacks = state.Outbox.Count(e => e.Status == "local_fallback"),
-                state.HubDeliveryMetadataRolledOff },
+                 state.HubDeliveryMetadataRolledOff },
+             ReevaluationPending=runtime.ReevaluationPending,
              Seerr = new { state.Seerr.BaseUrl, state.Seerr.Revision, KeyConfigured = state.Seerr.ApiKey.Length > 0, JellyfinServerId = host.SystemId },
              Enhanced = new { ConnectionAvailable = enhanced.Discover() is not null },
             Accounts = users.GetUsers().OrderBy(u => u.Username, StringComparer.OrdinalIgnoreCase).Take(500).Select(u => new { u.Id, u.Username, EffectiveAuthority = QueueRules.Authority(state, u.Id), Account = identity.Account(u.Id),

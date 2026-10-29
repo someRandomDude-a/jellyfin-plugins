@@ -1,20 +1,33 @@
 # New episodes and movies
 
+## Dependencies and setup
+
+Use the [installation guide](../README.md#installation-and-upgrades) first. For
+in-app library notices, install **Notifications** and enable capture
+in **Dashboard → Plugins → Notifications → Library events**. For shared Discord
+announcements, add/configure **Discord Bridge**; Hub is optional. Personal Discord DMs
+also need verified Hub identity links and an administrator-configured DM route.
+No existing library is announced merely by installing these plugins.
+
+## Overview
+
 Library notifications are opt-in and apply only to future native Jellyfin additions. Installing a plugin or enabling this feature does not scan the existing library for announcements. Series/season containers and virtual missing episodes are not announced.
 
-When both destinations are opted out, Hub does not retain library notices or recipient lists. Discord-only capture does not resolve or store a Jellyfin audience.
+Notifications is the sole library observer. When both destinations are opted out it retains no new library notices or recipient lists. Discord-only capture does not resolve or store a private audience. Hub owns neither library observation nor library settings; Bridge has no fallback observer.
 
 ## Notification center
 
-Install Account Hub, then open **Account Hub → Library**. Enable notifications and choose episodes, movies, or both. Saving uses the same elevated, audited configuration command gate as other Hub settings.
+Open **Dashboard → Plugins → Notifications → Library events**. Enable future additions, choose episodes/movies and native libraries (no selection means all). Settings use native administrator authorization, audit and revision checks. Below, each registered type has a simulated example, administrator defaults for in-app/Discord delivery and priority, and **Notification Studio** for text/image placement, fonts, alignment and safe placeholders. Drag layers or use arrow keys/geometry fields, undo/redo and save the layout. Simulated previews never publish events or send messages. Critical alerts remain mandatory/high priority and personal choices win over ordinary administrator defaults.
 
 Only enabled Jellyfin users with native access to the item are included. Access is checked again when publishing, reading the inbox/count, and delivering personal Discord DMs. Removing library access or deleting media hides its existing notification from subsequent inbox reads. Data already viewed or sent cannot be recalled.
 
-In the notification bell, expand **New episodes and movies: personal preferences** to enable/mute each kind separately for in-app or personal Discord delivery. Personal DMs additionally require a verified Discord link and an administrator-configured direct-message notification route. Personal settings do not control shared channel announcements.
+In the notification bell's **Settings → New episodes and movies**, enable/mute each kind separately for in-app or personal Discord delivery. **Library categories** adds independent **Watchlisted media**, **Favorited media**, Requested and All additions filters. Expand a personal in-app category to mark it Important, choose Alerting/Silent/Low or inherit its plugin default. All signed-in users can configure their own importance; server-wide administration stays protected. Personal DMs additionally require a verified Discord link and an administrator-configured direct-message route. Personal settings never control shared channel announcements. See [category behavior and defaults](notification-channels.md).
+
+Watchlisted reads native `Likes` (the flag Enhanced uses for its watchlist); Favorited reads native `IsFavorite`. For new episodes, an accessible parent series can supply either flag. The flags remain separate, are not modified by notifications and never grant library access. Classification is frozen for each newly captured notice; old publications and external deliveries are not replayed or reclassified.
 
 ## Discord channels
 
-Discord Bridge works without Hub for library announcements. In **Dashboard → Plugins → Discord Bridge**:
+Notifications + Discord Bridge work without Hub for library announcements. In **Dashboard → Plugins → Discord Bridge**:
 
 1. Configure the bot, guild, and approved channels.
 2. Explicitly select native Jellyfin libraries and announcement channels. Announcement channels must be a subset of approved channels.
@@ -27,19 +40,31 @@ Announcements use media-only Discord cards: a fixed episode/movie heading, bound
 
 This is identity minimization, not a promise of absolute anonymity: Discord still sees bot/guild/channel traffic, and library metadata or unusually identifying titles can themselves be sensitive. Only approve libraries whose titles are appropriate for every member of the chosen channel. Deleting a message later cannot undo disclosure to recipients or Discord.
 
-When both plugins are installed, Hub captures additions once and forwards audience-free notices over the framework-only bridge API. Bridge always owns Discord transport. Without Hub, Bridge observes native additions itself. Current native library membership is rechecked before channel delivery, so deleted/moved items cannot use stale scope.
+Notifications captures additions once and forwards audience-free notices over the framework-only Bridge API. Bridge owns Discord transport/outbox only. Current native library membership is rechecked before channel delivery, so deleted/moved items cannot use stale scope.
 
 ## Durability and limits
 
 - Each native item is deduplicated durably; repeated metadata updates and rescans do not create another notice within the retained intake window.
-- A 30-second delay lets initial metadata settle. A notice contains bounded display text, native item/library IDs, and (inside Hub only) recipient IDs, never media file paths or credentials.
+- A 30-second delay lets initial metadata settle. Notices contain bounded text, native item/library IDs, and (inside Notifications only) private recipient IDs, never paths or credentials.
 - Intake is capped at 10,000 retained items per owning plugin. Completed entries can be pruned after 90 days on later capture; unfinished/exhausted entries remain visible in health. Retention is not an infinite deduplication guarantee.
-- Hub/local forwarding failures have a bounded retry budget. The native library remains usable if notification storage or dependencies fail.
+- Local forwarding failures have a bounded retry budget. Native library use does not depend on notification storage or optional integrations.
 - Bridge persists a claim before any direct channel send. Interrupted or failed sends become **uncertain**, are counted in health, and are never automatically replayed. A multi-channel send can therefore be partial; this deliberately favors avoiding duplicates over pretending Discord provides exactly-once delivery.
-- Inspect intake health in Hub's Library tab or Bridge settings. For failed/uncertain entries, check bot connectivity, scope, approved channels and storage, then inspect Discord before taking manual action. There is no automatic uncertain-send replay button.
+- Inspect capture health in Notifications or delivery health in Bridge settings. Legacy Hub/Bridge intake is read without deleting its tables, retaining IDs and terminal/uncertain states. Oversized imports fail closed without pruning history. Existing personal library choices remain effective after ownership moves. Inspect Discord before manual action on failed/uncertain work; no automatic uncertain-send replay exists.
 
 ## Verification
 
-`scripts/integration.mjs --library --packages=<linux-x64-package-directory>` creates only disposable accounts and tiny generated video fixtures. It checks episode/movie capture, opt-in/no backfill, native library discovery, rescan deduplication, and durable Bridge intake. With Hub it also checks personal kind preferences, inaccessible-user exclusion, and access revocation. Use `--plugins=discord` to check the independent observer. Add the pinned `--security=<zip> --proof` options for real native TOTP checks.
+`scripts/integration.mjs --library --packages=<linux-x64-package-directory>` uses disposable accounts/tiny generated videos to check capture, opt-in/no backfill, kind preferences, native series watchlist/Favorites, interest-only filtering/importance, access exclusion/revocation and optional Bridge intake. Use `--plugins=notifications --library` for standalone ownership. Add `--security=latest --proof` for separate native Security checks. Current implementation/test progress is recorded in [review status](review-status.md); pre-migration passes do not certify this source.
 
 External Discord delivery still requires disposable bot/guild credentials; successful intake tests do not certify gateway or message delivery.
+
+Add `--notification-studio` to the standalone Notifications fixture to exercise
+installed native dark/light layouts at 320/390/1280px, drag/keyboard/font edits,
+revisioned defaults/layout persistence, live bell rendering and preview no-send
+behavior. Only sanitized result JSON and synthetic screenshots are evidence;
+fixture databases, keys and native credentials are never upload artifacts.
+
+## References
+
+- [Personal categories and importance](notification-channels.md) · [Web Push](web-push.md)
+- [Discord setup and delivery semantics](discord-suite-integration.md)
+- [Dependency matrix](dependencies.md) · [Testing](testing.md) · [Current evidence](review-status.md)

@@ -39,7 +39,7 @@ public sealed class HubDispatcher(QueueRuntime runtime, AccountHubClient client,
                         var enabled = settings.HubIntegrationEnabled && (e.Kind == "audit" ? settings.PublishAudit :
                             settings.NotificationMode is NotificationMode.Auto or NotificationMode.Hub);
                         using var payload = System.Text.Json.JsonDocument.Parse(e.PayloadJson);
-                        var upsert = e.Kind == "notification" && payload.RootElement.TryGetProperty("adminOnly", out var adminOnly) && !adminOnly.GetBoolean();
+                        var upsert = e.Kind == "notification" && payload.RootElement.TryGetProperty("adminOnly", out var adminOnly) && (!adminOnly.GetBoolean()||payload.RootElement.TryGetProperty("type",out var type)&&type.GetString()=="proposal.approval_required");
                         var result = enabled && availability.Ready ? await client.PublishWithUpdateAsync(e.Kind, e.PayloadJson, stoppingToken, upsert) : "unavailable";
                         // Disabled/local changes abandon pending notifications locally, never republish local history.
                         if (!enabled && e.Kind == "notification") result = "rejected";

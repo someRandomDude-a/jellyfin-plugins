@@ -32,8 +32,11 @@ public sealed class GroupPolicyService(HubPaths paths, IGroupPolicyNative native
         Directory.CreateDirectory(paths.DataDirectory);
         await using var db = Open();
         var known = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
-        if ((await db.Database.GetAppliedMigrationsAsync(ct)).Any(x => !known.Contains(x))) throw new HubException("unavailable", "Policy schema requires a newer Hub", true);
-        await db.Database.MigrateAsync(ct);
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToHashSet(StringComparer.Ordinal);
+        if (applied.Any(x => !known.Contains(x))) throw new HubException("unavailable", "Policy schema requires a newer Hub", true);
+        // As with Foundation, an already-current schema does not need EF's
+        // migration lock. Never steal/delete a stale lock or skip pending work.
+        if (!known.SetEquals(applied)) await db.Database.MigrateAsync(ct);
         ready = true;
     }
     private async Task<T> Locked<T>(Func<GroupPolicyDbContext, Task<T>> action, CancellationToken ct)

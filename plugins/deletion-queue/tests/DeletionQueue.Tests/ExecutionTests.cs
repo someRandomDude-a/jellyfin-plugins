@@ -14,8 +14,9 @@ public sealed class ExecutionTests : IDisposable
         public bool Anchored = true;
         public bool Rechecked = true;
         public bool Proof = true;
+        public long? ActivityGeneration;
         public EvaluationEvidence Evidence = QueueRulesTests.Good;
-        public Task<ExecutionPreflight> PreflightAsync(Proposal p, CancellationToken ct) => Task.FromResult(new ExecutionPreflight(Evidence, p.Revision));
+        public Task<ExecutionPreflight> PreflightAsync(Proposal p, CancellationToken ct) => Task.FromResult(new ExecutionPreflight(Evidence, p.Revision) { ActivityGeneration = ActivityGeneration });
         public Task<bool> AnchorClaimAsync(ExecutionClaim c, CancellationToken ct) => Task.FromResult(Anchored);
         public Task<bool> RecheckBeforeDispatchAsync(Proposal p, CancellationToken ct) => Task.FromResult(Rechecked);
         public Task DeleteOnceAsync(Proposal p, CancellationToken ct) { Deletes++; if (Timeout) throw new TimeoutException(); return Task.CompletedTask; }
@@ -57,6 +58,21 @@ public sealed class ExecutionTests : IDisposable
         var recovered = new ExecutionCoordinator(reopened, gateway, new Clock(QueueRulesTests.Now.AddHours(48)));
         recovered.RecoverClaims(); await Assert.ThrowsAsync<QueueException>(() => recovered.ExecuteAsync(id, default));
         Assert.Equal(1, gateway.Deletes);
+    }
+
+    [Theory] [InlineData(null)] [InlineData(42L)]
+    public async Task ClaimRetainsItsPreflightGenerationAcrossRestart(long? generation)
+    {
+        var gateway = new Gateway { Anchored = false, ActivityGeneration = generation }; Guid id;
+        using (var store = new AuthenticatedStore(directory))
+        {
+            id = Seed(store);
+            await new ExecutionCoordinator(store, gateway, new Clock(QueueRulesTests.Now.AddHours(48))).ExecuteAsync(id, default);
+            Assert.Equal(generation, QueueRules.Find(store.Read(), id).Claim!.ActivityGeneration);
+        }
+        using var reopened = new AuthenticatedStore(directory);
+        Assert.Equal(generation, QueueRules.Find(reopened.Read(), id).Claim!.ActivityGeneration);
+        Assert.Equal(0, gateway.Deletes);
     }
 
     [Theory] [InlineData(false, true)] [InlineData(true, false)]

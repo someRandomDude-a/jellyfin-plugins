@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Shared server-wide, secret-safe plugin diagnostic storage.</Description></PropertyGroup>
+  <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite.Core" Version="$(JellyfinDatabasePackageVersion)" ExcludeAssets="runtime" /></ItemGroup>
+</Project>

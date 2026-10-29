@@ -74,7 +74,7 @@ for(const label of ['Create','Join','Join by code']) {
         const p=await setup();try {
             p.state.ready=false;p.button(label).click();await tick();
             assert.equal(p.calls.filter(c=>c.type==='POST').length,0);
-            assert(p.d.querySelector('[data-psp-status]').textContent.includes('No group action was sent'));
+            assert(p.d.querySelector('[data-psp-status]').textContent.includes('Your device is still connecting'));
             const input=[...p.d.querySelectorAll('input')].find(i=>i.maxLength===8);input.value='ABCD1234';
             p.state.ready=true;p.state.navigate=true;p.button(label).click();await tick();await tick();
             const posts=p.calls.filter(c=>c.type==='POST');assert.equal(posts.length,1);
