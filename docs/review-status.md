@@ -63,6 +63,13 @@ local documentation links and workflow lint pass in
 or new plugin-package certification. See the [workflow map](../.github/README.md)
 for entry points and branch-protection migration notes.
 
+Latest hosted-run fixture fixes initialize missing temp parents, align Queue's
+strict archive allowlist with its diagnostics dependency, and permit narrowly
+scoped offline state moves when Docker owns Linux fixture directories. Local
+script regressions pass **229** cases; a clean Linux container passes **15**
+focused cases in `artifacts/ci-fixture-fixes-linux-r1.log`. Full hosted package
+and recovery jobs must be rerun; these focused checks do not certify those jobs.
+
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys
 and histories. Use [testing](testing.md), [dependency maintenance](dependency-maintenance.md)

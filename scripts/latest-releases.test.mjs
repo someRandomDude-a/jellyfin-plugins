@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { describeRelease, discoverTargets, requireJellyfinSdk, downloadSecurity, jellyfinTarget, validateSnapshot, saveTargets, loadTargets, assertRuntimeVersion, freshDockerArguments } from './latest-releases.mjs';
 import { contractFingerprint } from './reviewed-contracts.mjs';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -46,6 +46,7 @@ test('expired, future and legacy snapshots cannot turn a previous target into la
     validateSnapshot({ ...base, resolvedAt: new Date(now).toISOString() }, now);
 });
 test('children use the same run snapshot without rediscovering or falling back', async () => {
+    await mkdir(join(tmpdir(), 'opencode'), { recursive: true });
     const directory = await mkdtemp(join(tmpdir(), 'opencode', 'targets-test-'));
     try {
         const file = join(directory, 'targets.json');
@@ -56,6 +57,7 @@ test('children use the same run snapshot without rediscovering or falling back',
     } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test('child snapshot rewrites preserve the exact recorded build toolchain', async () => {
+    await mkdir(join(tmpdir(), 'opencode'), { recursive: true });
     const directory = await mkdtemp(join(tmpdir(), 'opencode', 'tools-test-'));
     try {
         const file = join(directory, 'targets.json'), tools = { node: '35.1.2', dotnet: '35.0.101' };

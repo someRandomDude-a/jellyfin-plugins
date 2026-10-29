@@ -252,7 +252,7 @@ function Test-ReleasePackage {
     }
     $native = if ($d.runtime -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so' }
     $expected = @('Jellyfin.Plugin.DeletionQueue.dll', 'Jellyfin.Plugin.DeletionQueue.deps.json',
-        'DeletionQueue.Core.dll', 'DeletionQueue.Infrastructure.dll', 'AccountHub.Api.dll', 'Microsoft.Data.Sqlite.dll',
+        'DeletionQueue.Core.dll', 'DeletionQueue.Infrastructure.dll', 'AccountHub.Api.dll', 'Jellyfin.Diagnostics.dll', 'Microsoft.Data.Sqlite.dll',
         'SQLitePCLRaw.core.dll', 'SQLitePCLRaw.provider.e_sqlite3.dll', 'SQLitePCLRaw.batteries_v2.dll', 'meta.json', 'LICENSE', $native)
     $archive = [IO.Compression.ZipFile]::OpenRead($zip)
     $temporary = Join-Path ([IO.Path]::GetTempPath()) ("dq-release-check-" + [guid]::NewGuid().ToString('N'))

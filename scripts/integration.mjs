@@ -1,6 +1,6 @@
 // Installs locally generated packages into a NEW disposable Jellyfin; never mounts user data.
 import { spawnSync } from 'node:child_process';
-import { mkdir, readFile, writeFile, rm, rename, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { randomUUID, randomBytes, createHash, createHmac } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
@@ -9,6 +9,7 @@ import { ensureTargets, jellyfinTarget, downloadSecurity, assertRuntimeVersion, 
 import { interactionsCompleted, accountInteractionsCompleted, accountResetCompleted, ownedInvitation, invitationInteractionsCompleted, invitationRedemptionCompleted, invitationHumanConfirmed } from './discord-acceptance.mjs';
 import { startDiscordTunnel, probeDiscordTunnel, probeTrustedProxyAuth } from './discord-tunnel.mjs';
 import { requireFixturePowerShell } from './fixture-tools.mjs';
+import { moveFixtureState } from './fixture-state-files.mjs';
 
 const option = name => process.argv.find(value => value.startsWith('--' + name + '='))?.split('=').slice(1).join('=');
 const liveDiscord = process.argv.includes('--live-discord');
@@ -1044,11 +1045,12 @@ try {
     }
     if (storageRecovery) {
         docker('stop', '--time=30', name);
+        const move=(source,destination)=>moveFixtureState(join(root,'config'),source,destination,{container:name,docker});
         const database = join(root, 'config', 'plugins', 'configurations', 'AccountHub', 'account-hub.db');
         const moved = [];
         const exists = async path => { try { await stat(path); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
         try {
-            for (const suffix of ['', '-wal', '-shm', '-journal']) if (await exists(database + suffix)) { await rename(database + suffix, database + suffix + '.preserved'); moved.push(suffix); }
+            for (const suffix of ['', '-wal', '-shm', '-journal']) if (await exists(database + suffix)) { await move(database + suffix, database + suffix + '.preserved'); moved.push(suffix); }
             assert(moved.includes(''), 'Expected an initialized owned Hub database');
             docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
             await until(async () => { try { return (await request('System/Info/Public', { auth: null, expected: null })).status === 200; } catch { return false; } }, 'native startup with missing Hub database');
@@ -1057,8 +1059,8 @@ try {
             assert(!await exists(database), 'No module may silently create a replacement Hub database');
         } finally {
             docker('stop', '--time=30', name);
-            for (const suffix of ['', '-wal', '-shm', '-journal']) if (await exists(database + suffix)) await rename(database + suffix, database + suffix + '.unexpected');
-            for (const suffix of moved) await rename(database + suffix + '.preserved', database + suffix);
+            for (const suffix of ['', '-wal', '-shm', '-journal']) if (await exists(database + suffix)) await move(database + suffix, database + suffix + '.unexpected');
+            for (const suffix of moved) await move(database + suffix + '.preserved', database + suffix);
         }
         docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
         await until(async () => { try { return (await request('AccountHub/api/v1/health', { expected: null })).status === 200; } catch { return false; } }, 'Hub recovery after original database restore');
@@ -1070,7 +1072,7 @@ try {
             const file = join(root, 'config', 'data', 'automatic-deletion-requests', 'rules.json');
             assert(await exists(file + '.installed'), 'Rule state must retain its installation marker');
             docker('stop', '--time=30', name);
-            await rename(file, file + '.preserved');
+            await move(file, file + '.preserved');
             try {
                 docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
                 await until(async () => { try { return (await request('System/Info/Public', { auth: null, expected: null })).status === 200; } catch { return false; } }, 'native startup with missing rule state');
@@ -1079,8 +1081,8 @@ try {
                 assert(!await exists(file), 'Missing rule state must not silently reset configuration or receipts');
             } finally {
                 docker('stop', '--time=30', name);
-                if (await exists(file)) await rename(file, file + '.unexpected');
-                await rename(file + '.preserved', file);
+                if (await exists(file)) await move(file, file + '.unexpected');
+                await move(file + '.preserved', file);
             }
             docker('start', name); base = `http://127.0.0.1:${docker('port', name, '8096/tcp').split(':').at(-1)}/suite`;
             await until(async () => { try { return (await request(endpoint, { expected: null })).status === 200; } catch { return false; } }, 'rule state recovery after original restoration');
