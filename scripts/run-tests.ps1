@@ -59,6 +59,7 @@ switch ($selectedPlugin) {
         Run 'modules/notifications' node @('--test','tests/web/bell.test.cjs')
         Run '.' node @('--test','scripts/push-settings.test.mjs')
         Run '.' node @('--test','scripts/notification-studio.test.mjs')
+        Run '.' node @('--test','scripts/live-poster-measurement.test.mjs')
         Run '.' node @('--test','scripts/notification-studio-snapping.test.mjs')
         Run '.' node @('--test','scripts/notification-catalog.test.mjs')
         Run '.' node @('--test','--test-name-pattern=[Nn]otification','scripts/web-ui.test.mjs')

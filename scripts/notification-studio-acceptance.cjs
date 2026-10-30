@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { openBrowserRelay } = require('./browser-relay.cjs');
+const { measureLivePoster } = require('./live-poster-measurement.cjs');
 (async () => {
     assert.equal(process.env.DISPOSABLE_THEME_TEST, 'true');
     const upstream = new URL(process.env.THEME_TEST_BASE_URL);
@@ -155,13 +156,12 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
         await page.locator('[data-account-hub-bell]').click();
         await page.locator('#account-hub-inbox .notificationCanvas').first().waitFor();
         assert(await page.locator('#account-hub-inbox .notificationCanvas [data-layer=title]').first().evaluate(node=>node.style.fontFamily==='serif'));
-        phase='live-poster';const live=page.locator('#account-hub-inbox .notificationMainCanvas').first();
-        await live.locator('.notificationCanvasImage img').waitFor();
-        await page.waitForFunction(()=>{const image=document.querySelector('#account-hub-inbox .notificationMainCanvas .notificationCanvasImage img');return image?.complete&&image.naturalWidth>0;});
-        const placement=await live.evaluate(main=>{
-            const canvas=main.querySelector('.notificationCanvas'),poster=canvas.querySelector('.notificationCanvasImage'),image=poster.querySelector('img'),text=[...canvas.querySelectorAll('.notificationCanvasLayer:not(.notificationCanvasImage)')].map(node=>node.getBoundingClientRect()),box=poster.getBoundingClientRect(),card=canvas.getBoundingClientRect(),time=main.querySelector('time').getBoundingClientRect(),style=getComputedStyle(image);
-            return{posterLeft:Math.abs(box.left-card.left)<1,noOverlap:text.every(rect=>box.right<rect.left),fillsPoster:Math.abs(image.getBoundingClientRect().width-box.width)<1,fit:style.objectFit,float:style.float,timestampBelow:time.top>=card.bottom-.5};
-        });
+        phase='live-poster';
+        // Retry only structural readiness (connected, loaded, non-zero boxes).
+        // A real overlap or wrong CSS returns a measurement immediately and
+        // still fails the strict assertion below; it is never waited away.
+        const sample=await page.waitForFunction(measureLivePoster);
+        let placement;try{placement=await sample.jsonValue();}finally{await sample.dispose();}
         assert.deepEqual(placement,{posterLeft:true,noOverlap:true,fillsPoster:true,fit:'contain',float:'none',timestampBelow:true});
         assert.deepEqual(errors,[],'Uncaught page errors: '+JSON.stringify({errors,failedRequests}));
         // Inbox refreshes may replace a row while Playwright waits for an element

@@ -70,6 +70,15 @@ script regressions pass **229** cases; a clean Linux container passes **15**
 focused cases in `artifacts/ci-fixture-fixes-linux-r1.log`. Full hosted package
 and recovery jobs must be rerun; these focused checks do not certify those jobs.
 
+Poster-layout CI regression: Chromium reproduces empty computed styles on an
+inbox row detached by refresh. The acceptance sampler now queries and measures
+the current connected, loaded card atomically; genuine overlap and incorrect CSS
+still return immediately and fail the unchanged layout assertion. **235 script
+tests** pass on Windows and Linux in `artifacts/live-poster-script-tests-r1.log`
+and `artifacts/live-poster-linux-scripts-r1.log`; real Chromium refresh, overlap
+and wrong-CSS coverage passes in `artifacts/live-poster-chromium-r3.log`.
+These harness checks do not certify newer backend or factor-return changes.
+
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys
 and histories. Use [testing](testing.md), [dependency maintenance](dependency-maintenance.md)
