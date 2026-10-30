@@ -6,6 +6,12 @@ Discord integration, consent-driven media removal and private watch parties.
 > **Integration previews—not a completed v1 release.** Some features and live-service
 > acceptance remain unfinished. Catalog entries exist only after approved publication.
 
+**Published release: [v0.3.7](https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.7)**
+(plugin version **0.3.7.0**, target Jellyfin ABI **12.4.0.0**).
+All six plugins are available in the Linux x64, Linux ARM64 and Windows x64
+catalogs below. Release publication and the catalog-update job succeeded;
+publication is not a claim of completed v1 or universal platform/skin acceptance.
+
 ## Dependencies
 
 Use packages matching your **Jellyfin server version and server architecture**.
@@ -29,9 +35,20 @@ Each plugin owns its connection settings; a shared registry is not required.
 
 ## Installation and upgrades
 
-1. Back up Jellyfin's configuration and plugin data before installing or upgrading previews.
-2. Open **Dashboard → Plugins → Repositories** and add a repository named **Jellyfin plugins**.
-3. Select the combined catalog for your **server**, not your browser/client device:
+### Install from the Jellyfin catalog (recommended)
+
+You do **not** need to build from source or install development tools. You need
+administrator access to Jellyfin and a server compatible with the package's target
+ABI. The published **0.3.7.0** packages target **Jellyfin 12.4.0.0**; do not force
+them onto an incompatible server.
+
+1. Back up Jellyfin's configuration and plugin data before installing these previews.
+2. Check your **server's** architecture, not your browser/client device. On Linux,
+   `uname -m` reports `x86_64` for x64 or `aarch64` for ARM64. With Docker, check the
+   Jellyfin container's architecture. Windows packages are x64 only; these feeds
+   do not provide ARM32 or macOS packages.
+3. Sign in as an administrator. Open **Dashboard → Plugins → Repositories**, add
+   a repository named **Jellyfin plugins**, paste the appropriate URL and save:
 
    | Server platform | Repository URL |
    |---|---|
@@ -39,14 +56,41 @@ Each plugin owns its connection settings; a shared registry is not required.
    | Linux ARM64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-linux-arm64.json> |
    | Windows x64 | <https://raw.githubusercontent.com/someRandomDude-a/jellyfin-plugins/catalog/manifest-win-x64.json> |
 
-4. Open the plugin **Catalog** and install your chosen plugins and required dependencies.
-5. **Restart Jellyfin**, then configure each plugin through its Dashboard settings.
-6. Enable optional integrations only after configuring their providers and permissions.
+4. Open **Dashboard → Plugins → Catalog**. Install your chosen plugins at
+   **0.3.7.0**, together with their required dependencies from the table above.
+   You do not need all six:
+   - **Shared inbox:** Notifications alone.
+   - **Private parties:** Private SyncPlay alone; Hub/Bridge are optional integrations.
+   - **Account management:** Account Hub; add Notifications for its notification
+     center and compatible upstream Jellyfin Security for factor/recovery workflows.
+   - **Removal requests:** Notifications + Deletion Queue, with Seerr configured
+     before supported removal operations. Add Automatic Deletion Requests only
+     if you want administrator-defined rules.
+   - **Discord:** Discord Bridge plus your own Discord bot. Add the integrations
+     listed above for account commands, library announcements or watch parties.
+5. **Restart Jellyfin** after installing the selected plugins and dependencies.
+   Confirm their installed versions under **Dashboard → Plugins → My Plugins**.
+6. Open each plugin's Dashboard settings and configure its own connections,
+   permissions and delivery preferences. Review consent/safety settings before
+   enabling removal or automatic rules; optional integrations are not enabled
+   merely by installing their plugins.
 
-A catalog returning **404** has not been published yet; local source or packages
-do not imply availability. Jellyfin does not automatically choose architecture-specific
-packages from one universal catalog. Published catalogs preserve earlier versions
-and reference immutable release ZIPs.
+The three URLs above are live, updateable feeds containing **0.3.7.0 for all six
+plugins**; keep the catalog URL rather than a version-specific release manifest
+to receive future updates. Jellyfin does not automatically choose architecture
+from one universal feed. If a URL returns 404 or a version is missing, check the
+URL, architecture and server compatibility; do not bypass compatibility checks.
+Published catalogs preserve earlier versions and reference immutable release ZIPs.
+
+### Upgrade an existing installation
+
+1. Back up configuration and plugin data, and verify server/architecture compatibility.
+2. Keep the matching combined repository URL above. Run Jellyfin's **Update Plugins**
+   scheduled task from **Dashboard → Scheduled Tasks** to check for available updates.
+3. **Restart Jellyfin** to load the updated assemblies, then verify **0.3.7.0** in
+   My Plugins and review each plugin's dependency/connection status.
+4. Upgrade interacting suite plugins together. Do not mix DLLs from different
+   releases, overwrite retained databases/keys or assume downgrades can reverse migrations.
 
 **Upgrading from embedded Hub notifications:** install standalone Notifications
 and update its consumers together. Its checkpointed migration moves existing
