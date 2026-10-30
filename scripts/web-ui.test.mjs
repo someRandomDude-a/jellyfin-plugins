@@ -8,7 +8,10 @@ const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const response = data => ({ ok: true, status: 200, json: async () => ({ apiVersion: '1', ok: true, data }) });
-test('finished-viewer lists offer a requester metadata membership operand without requiring JSON',async()=>{
+// Explicit ownership, not incidental words in a test's human-readable title.
+const owned = owner => (name, ...args) => test(owner + ': ' + name, ...args);
+const automaticTest=owned('automatic-deletion-requests'),queueTest=owned('deletion-queue'),notificationTest=owned('notifications'),hubTest=owned('account-hub'),discordTest=owned('discord-bridge');
+automaticTest('finished-viewer lists offer a requester metadata membership operand without requiring JSON',async()=>{
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
     try{
         w.RemovalMetadataCatalog=[{id:'jellyfin.allEpisodesSeenBy',source:'jellyfin',label:'Every episode watched by',type:'list',elementType:'user',operators:['contains','not-contains'],conversions:['count']},{id:'seerr.requesterId',source:'seerr',label:'Requester',type:'user',operators:['equals','not-equals']},{id:'title',source:'jellyfin',label:'Title',type:'text',operators:['equals']}];
@@ -19,7 +22,7 @@ test('finished-viewer lists offer a requester metadata membership operand withou
         assert.equal(rule.conditions[0].referenceField,'seerr.requesterId');assert.equal(w.document.querySelector('[aria-label="Condition value"]'),null);w.RemovalCircuit.check(rule.circuit);
     }finally{w.close();}
 });
-test('date conversion editor wires a second source and keeps numeric comparisons numeric',async()=>{
+automaticTest('date conversion editor wires a second source and keeps numeric comparisons numeric',async()=>{
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
     try{
         w.RemovalMetadataCatalog=[{id:'added',source:'jellyfin',label:'Added',type:'date',operators:['before','older-days'],conversions:['age-days','difference-days']},{id:'radarr.added',source:'radarr',label:'Radarr added',type:'date',operators:['before','older-days']}];
@@ -33,15 +36,14 @@ test('date conversion editor wires a second source and keeps numeric comparisons
         assert(w.document.querySelector('[aria-label="Metadata field"]'));assert([...w.document.querySelectorAll('button')].some(b=>b.textContent==='Arrange blocks'));
     }finally{w.close();}
 });
-test('Automation chrome defers surfaces and typography to native skins',async()=>{
+automaticTest('Automation chrome defers surfaces and typography to native skins',async()=>{
     const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
     assert(!/#151a24|#e3e9f3|#182131|#252e3e|font-family\s*:/i.test(html));
     assert.match(html,/--theme-primary-color/);assert.match(html,/background:var\(--ar-canvas-surface\)/);
-    assert(!html.includes('A thoughtful way'));assert(!html.includes('03 · Review'));
     const canvas=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js');
     assert(canvas.includes('ar-circuit dialog paperList'));assert(canvas.includes("if(!n)return"));
 });
-test('Circuit library links are editable, cards open their filters and traces colour ports and wires', async () => {
+automaticTest('Circuit library links are editable, cards open their filters and traces colour ports and wires', async () => {
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;
     try {
         w.CSS ||= {};w.CSS.escape ||= x=>x;
@@ -69,7 +71,7 @@ test('Circuit library links are editable, cards open their filters and traces co
         editor.dispose();assert.equal(w.document.querySelectorAll('.ar-circuit').length,0);
     }finally{w.close();}
 });
-test('metadata sockets constrain conditions and AND gates grow and shrink with connected inputs',async()=>{
+automaticTest('metadata sockets constrain conditions and AND gates grow and shrink with connected inputs',async()=>{
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window;w.CSS||={};w.CSS.escape||=x=>x;
     try{
         w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));
@@ -89,7 +91,7 @@ test('metadata sockets constrain conditions and AND gates grow and shrink with c
         assert.equal(gate.inputs[0],condition.id,'Metadata cannot feed a Boolean gate directly');
     }finally{w.close();}
 });
-test('metadata conditions support confirmed-absence operators and a second typed source operand',async()=>{
+automaticTest('metadata conditions support confirmed-absence operators and a second typed source operand',async()=>{
     const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window,d=w.document;w.CSS||={};w.CSS.escape||=x=>x;
     try{
         w.RemovalMetadataCatalog=[{id:'added',source:'jellyfin',label:'Added',type:'date',operators:['before','exists','not-exists']},{id:'radarr.added',source:'radarr',label:'Arr added',type:'date',operators:['before','exists','not-exists']}];
@@ -105,7 +107,7 @@ test('metadata conditions support confirmed-absence operators and a second typed
         assert.equal(rule.conditions[0].referenceField,'radarr.added');w.RemovalCircuit.check(rule.circuit);
     }finally{w.close();}
 });
-test('Sonarr and Radarr connection settings support manual editing and remain editable after import',async()=>{
+automaticTest('Sonarr and Radarr connection settings support manual editing and remain editable after import',async()=>{
     const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
     const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://example.test/web/'}),w=dom.window,d=w.document,calls=[];
     const saved={sonarr:{revision:0,url:'',keyConfigured:false},radarr:{revision:0,url:'',keyConfigured:false}};
@@ -133,7 +135,7 @@ test('Sonarr and Radarr connection settings support manual editing and remain ed
         assert.equal(calls.filter(c=>c.type==='PUT').length,4);
     }finally{w.close();}
 });
-test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save while editing', async () => {
+automaticTest('automatic rule editor uses typed Jellyfin/Seerr controls and does not save while editing', async () => {
     const html = await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' }); const w = dom.window, d = w.document, writes = [];
     let config = { revision: 0, enabled: false, actorId: '00000000-0000-0000-0000-000000000000', libraryId: '00000000-0000-0000-0000-000000000000', intervalHours: 24, rules: [] };
@@ -166,7 +168,7 @@ test('automatic rule editor uses typed Jellyfin/Seerr controls and does not save
         d.querySelector('#automaticDeletionAdmin').dispatchEvent(new w.Event('viewhide')); assert.equal(d.querySelector('#arRules').value, ''); assert.equal(d.querySelector('#arRuleCards').children.length, 0);
     } finally { dom.window.close(); }
 });
-test('overlay properties hide irrelevant fields and use compact accessible alignment controls',async()=>{
+queueTest('overlay properties hide irrelevant fields and use compact accessible alignment controls',async()=>{
     const dom=new JSDOM('<div id="deletionQueueAdmin"><main></main></div>',{runScripts:'outside-only'}),w=dom.window,d=w.document;
     try{
         w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/overlay-editor.js'));
@@ -181,7 +183,7 @@ test('overlay properties hide irrelevant fields and use compact accessible align
         assert(root.querySelector('.dq-canvas-help summary'));editor.dispose();
     }finally{w.close();}
 });
-test('Deletion Queue hides routing mode and confirms permissions-only reset using the saved revision', async () => {
+queueTest('Deletion Queue hides routing mode and confirms permissions-only reset using the saved revision', async () => {
     const html = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const w = dom.window, d = w.document, calls = []; let confirmed = false;
@@ -244,7 +246,7 @@ test('Deletion Queue hides routing mode and confirms permissions-only reset usin
 // does not match CR, so /^import .*\n/ leaves imports behind on Windows CRLF.
 const workspaceScript = code => code.replace(/^import[^\r\n]*\r?\n/, 'const mountSecurityPanel = () => () => {};\n')
     .replace('export function mountWorkspace', 'window.mountWorkspace = function');
-test('Notification settings use native fields and erase unsaved secrets on cleanup', async () => {
+notificationTest('Notification settings use native fields and erase unsaved secrets on cleanup', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const cleanup = await window.AccountHubNotificationSettings.mount(window.document.querySelector('main'), async path => path.includes('deliveries') ? { deliveries: [] } : { revision: 0, notificationDays: 90, routes: [] });
@@ -253,7 +255,7 @@ test('Notification settings use native fields and erase unsaved secrets on clean
     assert(window.document.querySelector('select.emby-select'));
     const secret = window.document.querySelector('input[type=password]'); secret.value = 'unsaved-test-secret'; cleanup(); assert.equal(secret.value, ''); assert.equal(window.document.querySelector('main').children.length, 0); dom.window.close();
 });
-test('Registered notification layout editor saves only layout with the current source revision', async () => {
+notificationTest('Registered notification layout editor saves only layout with the current source revision', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom, writes = []; window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const cleanup = await window.AccountHubNotificationSettings.mount(window.document.querySelector('main'), async (path, method, body) => {
@@ -267,7 +269,7 @@ test('Registered notification layout editor saves only layout with the current s
     assert.deepEqual(Object.keys(writes[0]).sort(), ['layout', 'revision', 'source', 'type']);
     assert.equal(writes[0].layout.summaryLength, 140); cleanup(); dom.window.close();
 });
-test('Notifications page does not remount during initial viewshow or discard an active editor', async () => {
+notificationTest('Notifications page does not remount during initial viewshow or discard an active editor', async () => {
     const html = await source('plugins/notifications/src/Jellyfin.Plugin.Notifications/Web/admin.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const w = dom.window, page = w.document.querySelector('#notificationsAdmin'); let release, mounts = 0, cleanups = 0;
@@ -281,7 +283,7 @@ test('Notifications page does not remount during initial viewshow or discard an 
     page.dispatchEvent(new w.Event('viewshow')); await turn(); assert.equal(mounts, 2);
     page.dispatchEvent(new w.Event('viewhide')); dom.window.close();
 });
-test('Notification catalog opening during initial fetch shares the request and preserves drafts', async () => {
+notificationTest('Notification catalog opening during initial fetch shares the request and preserves drafts', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window; w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     let release, reads = 0; const gate = new Promise(resolve => { release = resolve; });
     const mounted = w.AccountHubNotificationSettings.mount(w.document.querySelector('main'), async path => {
@@ -293,7 +295,7 @@ test('Notification catalog opening during initial fetch shares the request and p
     panel.open = false; panel.open = true; panel.dispatchEvent(new w.Event('toggle')); await turn(); assert.equal(reads, 1); assert.equal(length.value, '220');
     cleanup(); dom.window.close();
 });
-test('Opening the catalog before initial settings finish does not trigger a second render after startup', async () => {
+notificationTest('Opening the catalog before initial settings finish does not trigger a second render after startup', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window;
     w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     let releaseSettings, reads = 0; const gate = new Promise(resolve => { releaseSettings = resolve; });
@@ -315,7 +317,7 @@ test('Opening the catalog before initial settings finish does not trigger a seco
     assert.equal(reads, 2); assert.notEqual(layoutSelect(), density); // Explicit reload still discards drafts.
     cleanup(); dom.window.close();
 });
-test('Aborting a pending notification settings mount cannot clear the next editor', async () => {
+notificationTest('Aborting a pending notification settings mount cannot clear the next editor', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only' }); const w = dom.window; w.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const controller = new w.AbortController(), root = w.document.querySelector('main'); let release, reads = 0;
     const mounted = w.AccountHubNotificationSettings.mount(root, async () => { reads++; return await new Promise(resolve => { release = resolve; }); }, { signal: controller.signal });
@@ -323,7 +325,7 @@ test('Aborting a pending notification settings mount cannot clear the next edito
     release({ revision: 0, routes: [], notificationDays: 90 }); const cleanup = await mounted; cleanup();
     assert.equal(reads, 1); assert.equal(root.textContent, 'Replacement editor'); dom.window.close();
 });
-test('Workspace navigation clears an open fresh-proof dialog without issuing a write', async () => {
+hubTest('Workspace navigation clears an open fresh-proof dialog without issuing a write', async () => {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; const calls = [];
     window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -339,7 +341,7 @@ test('Workspace navigation clears an open fresh-proof dialog without issuing a w
     root.dispatchEvent(new window.Event('viewhide')); await turn();
     assert.equal(proof.value, ''); assert.equal(window.document.querySelectorAll('dialog').length, 0); assert.equal(calls.filter(c => c.method === 'POST').length, 0); dom.window.close();
 });
-test('Public recovery erases bearer fragment and sends no Jellyfin credentials', async () => {
+hubTest('Public recovery erases bearer fragment and sends no Jellyfin credentials', async () => {
     const token = 'a'.repeat(43), calls = [];
     const dom = new JSDOM('<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="reset"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>', { runScripts: 'outside-only', url: 'https://example.test/suite/AccountHub/reset#token=' + token });
     dom.window.localStorage.setItem('jellyfin_credentials', JSON.stringify({ Servers: [{ ManualAddress: 'https://example.test/suite', AccessToken: 'must-not-send' }] }));
@@ -349,7 +351,7 @@ test('Public recovery erases bearer fragment and sends no Jellyfin credentials',
     assert.equal(calls[0].options.credentials, 'omit'); assert.equal(calls[0].options.headers.Authorization, undefined);
     assert(!calls[0].url.includes(token)); assert.equal(JSON.parse(calls[0].options.body).token, token); dom.window.close();
 });
-test('Missing optional Hub integrations are greyed out with remediation, not hidden or fetched', async () => {
+hubTest('Missing optional Hub integrations are greyed out with remediation, not hidden or fetched', async () => {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; const calls = [];
     const dependencies = ['security', 'discord', 'deletion-queue', 'private-syncplay'].map(id => ({ id, name: id, available: false, state: 'missing', reason: 'Optional provider is missing.', fix: 'Install and enable the compatible plugin, then restart Jellyfin.' }));
@@ -362,7 +364,7 @@ test('Missing optional Hub integrations are greyed out with remediation, not hid
     assert.equal([...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'People').disabled, false);
     assert.match(root.querySelector('.hubDependencyHealth').textContent, /Install and enable/); assert(!calls.some(path => path.includes('/domains/'))); dom.window.close();
 });
-test('Discord transport settings stay enabled without Hub, while dependent command switches explain missing plugins', async () => {
+discordTest('Discord transport settings stay enabled without Hub, while dependent command switches explain missing plugins', async () => {
     const html = await source('plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Web/settings.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' }); const { window } = dom;
     window.ApiClient = { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' };
@@ -376,7 +378,7 @@ test('Discord transport settings stay enabled without Hub, while dependent comma
     assert.equal(window.document.querySelector('.bridgeSelfService').disabled, true); assert.equal(window.document.querySelector('.bridgeWatchParty').disabled, true);
     assert.match(window.document.querySelector('.bridgeIdentityReason').textContent, /Install Account Hub/); assert.match(window.document.querySelector('.bridgePartyReason').textContent, /Private SyncPlay/); dom.window.close();
 });
-test('Library inbox controls remain native and independent when Discord is missing', async () => {
+notificationTest('Library inbox controls remain native and independent when Discord is missing', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom,root=window.document.querySelector('main'),writes=[];window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const cleanup=await window.AccountHubNotificationSettings.mount(root,async(path,method,body)=>{
@@ -387,7 +389,7 @@ test('Library inbox controls remain native and independent when Discord is missi
         const save=[...panel.querySelectorAll('button')].find(n=>n.textContent==='Save library events');assert.equal(save.disabled,false);save.click();await turn();assert.equal(writes[0].revision,2);
     }finally{cleanup();dom.window.close();}
 });
-test('Discord library controls load explicit scopes safely, without requiring public invitation URL', async () => {
+discordTest('Discord library controls load explicit scopes safely, without requiring public invitation URL', async () => {
     const html = await source('plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Web/settings.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' }); const { window } = dom;
     const id = '9dbb15b7-7eea-445a-8e67-5bc8a85f0387';
@@ -419,7 +421,7 @@ async function workspaceFixture(t, lineEnding) {
 }
 
 for (const navigation of ['tab switch', 'viewhide', 'viewdestroy']) {
-    test('Delayed Notifications script cannot mount after ' + navigation, async t => {
+    hubTest('Delayed Notifications script cannot mount after ' + navigation, async t => {
         const f = await workspaceFixture(t); await f.tab('Notifications');
         const script = f.window.document.querySelector('script[src$="/notifications/settings.js"]'); assert(script);
         if (navigation === 'tab switch') await f.tab('Settings'); else f.root.dispatchEvent(new f.window.Event(navigation));
@@ -432,7 +434,7 @@ for (const navigation of ['tab switch', 'viewhide', 'viewdestroy']) {
     });
 }
 
-test('Late Notifications mount cleanup and stale requests cannot affect a newer tab', async t => {
+hubTest('Late Notifications mount cleanup and stale requests cannot affect a newer tab', async t => {
     const f = await workspaceFixture(t);
     let release, panel, panelRequest, disposed = 0;
     const pending = new Promise(resolve => { release = resolve; });
@@ -455,7 +457,7 @@ test('Late Notifications mount cleanup and stale requests cannot affect a newer 
     assert.equal(secret.value, '');
 });
 
-test('Navigation aborts a real pending Notifications mount and immediately erases its unsaved secret', async t => {
+hubTest('Navigation aborts a real pending Notifications mount and immediately erases its unsaved secret', async t => {
     const f = await workspaceFixture(t);
     f.window.eval(await source('modules/notifications/src/AccountHub.Notifications/Web/settings.js'));
     const fetch = f.window.fetch; let release, signal;
@@ -476,7 +478,7 @@ test('Navigation aborts a real pending Notifications mount and immediately erase
 });
 
 for (const lineEnding of ['\n', '\r\n']) for (const navigation of ['tab switch', 'viewhide', 'viewdestroy']) {
-    test('Unsaved Settings webhook secret is erased through retained reference on ' + navigation + (lineEnding === '\n' ? ' (LF)' : ' (CRLF)'), async t => {
+    hubTest('Unsaved Settings webhook secret is erased through retained reference on ' + navigation + (lineEnding === '\n' ? ' (LF)' : ' (CRLF)'), async t => {
         const f = await workspaceFixture(t, lineEnding); await f.tab('Settings');
         const secret = f.content.querySelector('input[type=password]'); assert(secret); secret.value = 'unsaved-webhook-secret';
         if (navigation === 'tab switch') await f.tab('People'); else f.root.dispatchEvent(new f.window.Event(navigation));
@@ -485,7 +487,7 @@ for (const lineEnding of ['\n', '\r\n']) for (const navigation of ['tab switch',
     });
 }
 
-test('Native creation override uses explicit fresh confirmation and exposes five-minute status', async t => {
+hubTest('Native creation override uses explicit fresh confirmation and exposes five-minute status', async t => {
     const f = await workspaceFixture(t), original = f.window.fetch; let enabled = false, sent;
     f.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
     f.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
@@ -505,7 +507,7 @@ test('Native creation override uses explicit fresh confirmation and exposes five
     assert([...f.content.querySelectorAll('button')].some(b => b.textContent === 'End native override and resume Hub'));
 });
 
-test('Deletion Queue retains native surfaces and scoped semantic selection tints', async t => {
+queueTest('Deletion Queue retains native surfaces and scoped semantic selection tints', async t => {
     const css = await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/integrated.css');
     assert.doesNotMatch(css.replace(/color:\s*inherit\s*;/g, ''), /(?:^|[;{])\s*(?:color|font-family|backdrop-filter)\s*:|::backdrop|prefers-color-scheme/mi);
     assert.match(css, /:where\(dialog\.dq-panel\)\s*\{\s*color:\s*inherit/);

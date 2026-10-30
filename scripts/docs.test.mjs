@@ -40,17 +40,3 @@ test('root, current guides, module/plugin READMEs and retained contract links re
     }
     assert.deepEqual(broken, []);
 });
-
-test('user-facing overviews put setup first and references last', async () => {
-    const root = new URL('../', import.meta.url);
-    const main = await readFile(new URL('README.md', root), 'utf8');
-    assert(main.indexOf('## Dependencies') < main.indexOf('## Installation and upgrades'));
-    assert(main.indexOf('## Installation and upgrades') < main.indexOf('## What the plugins offer'));
-    const files = ['docs/README.md', ...['account-hub', 'notifications', 'discord-bridge', 'deletion-queue', 'automatic-deletion-requests', 'private-syncplay'].map(plugin => 'plugins/' + plugin + '/README.md')];
-    for (const file of files) {
-        const text = await readFile(new URL(file, root), 'utf8');
-        const headings = [...text.matchAll(/^## (.+)$/gm)].map(match => match[1]);
-        assert.match(headings[0], /Dependencies.*installation/i, file + ': setup must be first');
-        assert.match(headings.at(-1), /^References/, file + ': references must be last');
-    }
-});

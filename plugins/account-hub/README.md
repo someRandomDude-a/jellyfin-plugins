@@ -64,7 +64,7 @@ PowerShell 7+. Install the shared frontend harness, then run:
 
 ```powershell
 npm ci --ignore-scripts --prefix plugins/private-syncplay
-pwsh -File scripts/test-plugin.ps1 -Plugin account-hub
+pwsh -File scripts/test.ps1 -Plugin account-hub
 ```
 
 Normal entry points resolve current stable upstream targets automatically. CI/release

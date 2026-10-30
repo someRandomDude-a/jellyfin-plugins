@@ -133,7 +133,7 @@ Docker is required for disposable installed/browser/external fixtures.
 npm ci --ignore-scripts --prefix plugins/private-syncplay
 pwsh -File scripts/test.ps1
 # Or test one plugin and its shared contracts:
-pwsh -File scripts/test-plugin.ps1 -Plugin notifications
+pwsh -File scripts/test.ps1 -Plugin notifications
 ```
 
 Normal test/package entry points discover current stable Jellyfin/Security and
@@ -144,8 +144,8 @@ Dependency maintenance discovers updates hourly, groups them into a tested PR an
 can dispatch a patch release after protected acceptance. Every release path
 requires latest-only freshness checks; suite releases also require full
 root/browser/matrix/external acceptance. Publication rechecks upstream freshness.
-**The current local freshness audit reports outdated dependencies: adding these
-gates does not mean all upgrades or remote workflows have passed.** Existing branch
+**A local freshness pass does not certify upgrades or hosted workflows.** See
+[current evidence](docs/review-status.md) for actual acceptance and gaps. Existing branch
 rules and `plugin-release` approvals remain mandatory. Ordinary pushes do not publish releases.
 
 ## References

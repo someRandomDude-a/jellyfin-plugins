@@ -14,9 +14,9 @@ been committed, pushed or published by preparing these instructions. See
 
 ## Release all six plugins
 
-Run **Actions → Release all plugins → Run workflow** on the intended branch and
-enter `vX.Y.Z`. The engine creates/reuses an immutable suite tag, runs the shared
-latest-only gate, full Windows/Linux root tests and installed/browser/matrix/native
+Run **Actions → Release plugins → Run workflow** on the intended branch, select
+`plugin=all` and enter `vX.Y.Z`. The shared latest-only gate runs before the
+engine creates/reuses an immutable suite tag. Full Windows/Linux root tests and installed/browser/matrix/native
 Security/external-service acceptance, then builds 18 packages across `linux-x64`,
 `linux-arm64` and `win-x64`. Validation covers all six identities, inventories,
 encoded immutable URLs and exact checksums before protected publication.
@@ -28,20 +28,19 @@ tag, not a published release. Existing tags are never moved.
 
 ## Release one plugin
 
-Use **Release Account Hub**, **Release Notifications**, **Release Discord Bridge**,
-**Release Deletion Queue**, **Release Automatic Deletion Requests** or
-**Release Private SyncPlay**. Select the branch and enter `vX.Y.Z`.
+Use the same **Release plugins** workflow and choose the plugin, branch and
+`vX.Y.Z`. There are no separate per-plugin workflow files.
 
-The shared engine selects the latest relevant commit touching that plugin, its
-compile-time dependencies or common build/test/workflow paths. It creates
+The shared engine uses the exact selected source commit (optional `ref` and
+`expected_commit` inputs), not an older relevant ancestor. It creates
 `<plugin>/vX.Y.Z`, tests that exact source and builds only its three runtime packages.
-An existing tag is reused only when it belongs to the branch's history; it is never
+An existing tag is reused only when it matches that selected commit exactly; it is never
 moved to a newly resolved commit. Direct plugin-prefixed tag pushes also use this
 engine. Ordinary source pushes/PRs do not publish releases.
 
 ## Gate ownership
 
-- Every selected plugin runs `scripts/test-plugin.ps1 -Plugin <id>` on Windows/Linux,
+- Every selected plugin runs `scripts/test.ps1 -Plugin <id>` on Windows/Linux,
   common contracts, package/inventory validation and disposable latest Linux amd64
   installation with/without this run's checksum-verified native Security package.
 - Notifications runs its storage/migration/routing and shared backend/frontend

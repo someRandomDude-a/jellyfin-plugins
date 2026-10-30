@@ -17,12 +17,32 @@ and patch release; see [dependency maintenance](dependency-maintenance.md).
 
 ```powershell
 pwsh -File scripts/test.ps1
-pwsh -File scripts/test-plugin.ps1 -Plugin notifications
+pwsh -File scripts/test.ps1 -Plugin notifications
+pwsh -File scripts/test.ps1 -Plugin notifications -List
 ```
 
-Both use `scripts/run-tests.ps1`. Aggregate runs execute the solution once and
-deduplicate common frontend/tooling checks. Selected-plugin gates compile only
-that plugin and its actual dependencies; interoperability remains separate.
+One entry point uses `scripts/test-plan.mjs` through `scripts/run-tests.ps1`.
+`-List` prints an offline JSON plan without bootstrap, builds or fixtures.
+Aggregate runs execute the solution once and batch shared/frontend tests once.
+Selected-plugin gates compile only that plugin and its actual dependencies;
+interoperability remains separate. The old `test-plugin.ps1` alias is removed.
+
+### What belongs in each gate
+
+| Layer | Current coverage |
+|---|---|
+| Common unit contracts | Safe diagnostics/errors, source/target freshness, immutable packages/catalogs, dependency maintenance, fixture safety and current CI wiring. |
+| Owner/dependency units | All nine current .NET test projects plus owner-scoped frontend suites. Mixed UI cases use explicit owner prefixes, never incidental words in titles. |
+| Installed/browser | Standalone plugins with/without native Security; suite themes, navigation, studio geometry and native accounts/permissions. |
+| Integration | All 128 plugin/Security combinations, native recovery/restart/storage loss, read-only database checker, SyncPlay/media/SDK and external-service APIs. |
+| Migration/history | Supported schemas, retained keys/identities, prior catalogs/archives and old-format rejection. Old fixture versions here are deliberate inputs, not stale software defaults. |
+
+Overlapping workflow assertions are consolidated in `scripts/workflows.test.mjs`.
+Tests that only enforced deleted dispatch wrappers, a retired consumer endpoint's
+source spelling, marketing text or document heading/line-count conventions are
+removed. Live runtime and upgrade regressions remain. The test-plan tests reject
+unassigned/missing root `.test.mjs` files and ensure every solution test project is
+registered, so consolidation cannot silently drop an owner or a new test file.
 
 Every normal test/package run automatically discovers the latest **stable**
 Jellyfin and Security releases. The bootstrap generates build properties with
@@ -93,7 +113,7 @@ but CI and releases now reject stale versions: they cannot quietly stay on an
 older toolchain just because the server target is current. The shared
 `latest-targets.yml` gate records the current Node/SDK, reviewed upstream releases
 and immutable pulled image digests once for the workflow graph. Children use the
-same artifact; build/test jobs verify their installed Node/SDK. Both release engines
+same artifact; build/test jobs verify their installed Node/SDK. The release engine
 recheck registry/source/image freshness before publication. See
 [latest-only gates](dependency-maintenance.md#latest-only-gates-on-every-testrelease-graph).
 

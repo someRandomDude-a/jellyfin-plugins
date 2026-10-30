@@ -14,7 +14,7 @@ Current monorepo commands, run from the repository root:
 
 ```powershell
 npm ci --ignore-scripts --prefix plugins/private-syncplay
-pwsh -File scripts/test-plugin.ps1 -Plugin private-syncplay
+pwsh -File scripts/test.ps1 -Plugin private-syncplay
 ```
 
 Use the SDK in `global.json`, current stable Node.js and PowerShell 7+. Test/package

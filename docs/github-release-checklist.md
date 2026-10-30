@@ -13,10 +13,10 @@ requires an already published release and never rebuilds its immutable assets.
 
 An ordinary source push or pull request runs independent plugin/common checks on Ubuntu/Windows, workflow lint and separate installed interoperability/browser checks. It does **not** create a release. Generated `bin`, `obj`, local artifacts and `.env` must not be uploaded. Each final staged package requires its own source/license inventory.
 
-Use **Release <plugin>** with a `vX.Y.Z` input for one plugin, or **Release all plugins** for the suite. Dedicated actions resolve the source and create/reuse immutable tags under the engine's checks. Plugin-prefixed tag pushes also use the independent engine. See [gate ownership and feeds](independent-plugin-releases.md).
+Use **Release plugins**, select one plugin or `all`, and enter `vX.Y.Z`. One engine uses the exact selected source and creates/reuses immutable tags under its checks. Plugin-prefixed tag pushes use the same engine. See [gate ownership and feeds](independent-plugin-releases.md).
 
 1. Verify the immutable tag resolves to the checked-out commit.
-   An existing suite tag must match the selected source exactly, not merely be
+   Any existing release tag must match the selected source exactly, not merely be
    its ancestor. Pushing fixes and rerunning an older version still selects that
    version's old source. Choose an unused version for the fixes; never move tags.
 2. Pass the shared latest-only dependency gate and bind tests/packages to its target/toolchain snapshot. Selected releases require their unit/common/installed checks and relevant external-provider fixtures; SyncPlay also checks native media/SDK consumers. Suite releases require full Windows/Linux root tests, browser acceptance, all 64 subsets (128 with/without native Security), native recovery and external-service gates. Failures block publication, not trigger older-version fallback.
@@ -42,6 +42,6 @@ Windows package generation is not installed Windows acceptance. ARM cross-packag
 
 - [Latest-only maintenance policy](dependency-maintenance.md)
 - [Workflow entry points and shared gate ownership](../.github/README.md)
-- [Independent/suite release engines](independent-plugin-releases.md)
+- [Independent/suite release selector](independent-plugin-releases.md)
 - [Testing](testing.md) · [Current evidence and blockers](review-status.md)
 - [Evidence register and historical scope](verification.md)

@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
-import { test } from 'node:test';
+import { test as nativeTest } from 'node:test';
 import assert from 'node:assert/strict';
+const test = (name, ...args) => nativeTest('account-hub: ' + name, ...args);
 const require = createRequire(new URL('../plugins/private-syncplay/package.json', import.meta.url));
 const { JSDOM } = require('jsdom');
 const source = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
@@ -81,7 +82,7 @@ test('removal and automation permissions link to their owning plugin without gra
     await click(w, 'Automatic request rules'); assert.equal(w.location.hash, '#/configurationpage?name=AutomaticDeletionRequests');
     assert(!calls.some(call => call.path.startsWith('commands/')));
 });
-test('party errors keep technical detail behind hover and keyboard-accessible help',async t=>{
+nativeTest('private-syncplay: party errors keep technical detail behind hover and keyboard-accessible help',async t=>{
     const w=environment(t,'<script src="https://example.test/PrivateSyncPlay/assets/ui.js"></script><p role="status"></p>');
     Object.defineProperty(w.document,'currentScript',{value:w.document.querySelector('script'),configurable:true});w.eval(await source(sync+'ui.js'));
     const status=w.document.querySelector('p');w.PrivateSyncPlayUI.message(status,'Check your party.',true,'The original request is not automatically repeated.');
@@ -269,7 +270,7 @@ test('Invite disposal erases retained one-time link and ignores late issuance', 
     signal.abort(); pending.resolve({ oneTimeLink: '/invite#late' }); await turn();
     assert.equal(w.document.querySelector('main').children.length, 0);
 });
-test('SyncPlay nested dialogs have unique names and navigation disposes every modal and retained secret', async t => {
+nativeTest('private-syncplay: SyncPlay nested dialogs have unique names and navigation disposes every modal and retained secret', async t => {
     const w = environment(t, '<script src="https://example.test/PrivateSyncPlay/assets/ui.js"></script>');
     Object.defineProperty(w.document, 'currentScript', { value: w.document.querySelector('script'), configurable: true });
     w.eval(await source(sync + 'ui.js'));
@@ -280,7 +281,7 @@ test('SyncPlay nested dialogs have unique names and navigation disposes every mo
     const epoch = ui.navigationEpoch; w.dispatchEvent(new w.Event('hashchange'));
     assert.equal(w.document.querySelectorAll('dialog').length, 0); assert.equal(input.value, ''); assert(ui.navigationEpoch > epoch);
 });
-test('Deletion Queue admin rejects late navigation responses and clears a retained API key', async t => {
+nativeTest('deletion-queue: Deletion Queue admin rejects late navigation responses and clears a retained API key', async t => {
     const w = environment(t, await source(dq + 'admin.html')), pending = deferred();
     w.ApiClient = { getUrl: path => path, ajax: () => pending.promise };
     w.eval(await source(dq + 'admin.js'));

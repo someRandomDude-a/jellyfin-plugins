@@ -62,7 +62,7 @@ From the repository root:
 
 ```powershell
 npm ci --ignore-scripts --prefix plugins/private-syncplay
-pwsh -File scripts/test-plugin.ps1 -Plugin deletion-queue
+pwsh -File scripts/test.ps1 -Plugin deletion-queue
 ```
 
 Use root packaging and the combined architecture catalogs. **Release Deletion Queue**

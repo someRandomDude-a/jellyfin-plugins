@@ -69,6 +69,8 @@ jobs:
           artifact: ${{ needs.targets.outputs.artifact }}
       - run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
+      - name: Verify the read-only database safety checker
+        run: docker run --rm --pull=always --network=none --read-only --tmpfs /tmp:rw,nosuid,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/scripts,target=/checks,readonly" python:alpine python -B /checks/check-fixture-databases.test.py
       - shell: pwsh
         env:
           PACKAGE_TAG: ${{ inputs.package_tag || 'v0.2.0' }}

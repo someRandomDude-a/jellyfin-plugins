@@ -45,7 +45,7 @@ deletion follow-up is not production media-removal certification.
 
 ## Remaining acceptance
 
-1. Fresh backend/package/native gates for the newer factor-return helper,
+1. Fresh coherent suite package/native gates for the newer factor-return helper,
    including a genuinely enrolled native factor challenge.
 2. Linux tool installation and actual hosted CI/release workflow execution.
 3. Renewed owner-approved human Discord testing: signup limits/third-use denial,
@@ -55,34 +55,26 @@ deletion follow-up is not production media-removal certification.
 
 ## Workflow and documentation cleanup
 
-The cleanup preserves test/release gates while consolidating tool installation
-and the duplicate dependency-validation root matrix. Its **226 script tests**,
-local documentation links and workflow lint pass in
-`artifacts/workflow-docs-cleanup-tests-r1.log` and
-`artifacts/workflow-docs-cleanup-actionlint-r1.log`. This is not a hosted-CI run
-or new plugin-package certification. See the [workflow map](../.github/README.md)
-for entry points and branch-protection migration notes.
+**16 → 7 workflows**, one suite/plugin release selector and one Windows/Linux
+unit matrix. `scripts/test.ps1 -Plugin <owner|all>` consumes one tested registry;
+mixed UI cases have explicit owners. Overlapping workflow assertions and retired
+source/document-style checks are removed, not migration or safety coverage.
 
-Latest hosted-run fixture fixes initialize missing temp parents, align Queue's
-strict archive allowlist with its diagnostics dependency, and permit narrowly
-scoped offline state moves when Docker owns Linux fixture directories. Local
-script regressions pass **229** cases; a clean Linux container passes **15**
-focused cases in `artifacts/ci-fixture-fixes-linux-r1.log`. Full hosted package
-and recovery jobs must be rerun; these focused checks do not certify those jobs.
+- Full root suite: **1,201 .NET passes**, one optional external-service skip,
+  frontend/package/upgrade gates and live freshness of **82 declarations** pass in
+  `artifacts/test-suite-consolidation-full-r1.log`. Nested gates reuse the same
+  source/run-bound audit without rediscovery; publication always rediscovers.
+- **236 root script tests** pass on Windows/Linux in
+  `artifacts/test-suite-consolidation-scripts-r3.log` and
+  `artifacts/test-suite-consolidation-linux-r2.log`.
+- Workflow lint and four read-only database-checker regressions pass in
+  `artifacts/test-suite-consolidation-actionlint-r2.log` and
+  `artifacts/test-suite-database-checker-r1.log`.
 
-Poster-layout CI regression: Chromium reproduces empty computed styles on an
-inbox row detached by refresh. The acceptance sampler now queries and measures
-the current connected, loaded card atomically; genuine overlap and incorrect CSS
-still return immediately and fail the unchanged layout assertion. **235 script
-tests** pass on Windows and Linux in `artifacts/live-poster-script-tests-r1.log`
-and `artifacts/live-poster-linux-scripts-r1.log`; real Chromium refresh, overlap
-and wrong-CSS coverage passes in `artifacts/live-poster-chromium-r3.log`.
-Fresh standalone Notifications **0.0.38.0** on Jellyfin **12.4** passes all six
-installed studio theme/width cases, live-poster geometry and page-error checks
-in `artifacts/live-poster-installed-r2.log` and its `studio-results.json`.
-The first installed attempt omitted `--library`, so no live card was seeded;
-its failed log remains preserved. This focused Notifications gate does not
-certify the full suite or newer factor-return changes; hosted CI needs rerunning.
+Hosted execution remains unverified; API/authentication failures still block
+release. See [test ownership](testing.md#what-belongs-in-each-gate) and the
+[workflow map](../.github/README.md) for branch-protection migration notes.
+Earlier workflow, Linux fixture and poster evidence is preserved in the history.
 
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys

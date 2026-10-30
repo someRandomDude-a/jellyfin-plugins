@@ -45,7 +45,7 @@ Hub/Bridge observers are retired before the new Notifications observer starts.
 
 ## Verification
 
-`pwsh -File scripts/test-plugin.ps1 -Plugin notifications` runs the notification backend, frontend and migration/common suites. `pwsh -File scripts/test-plugin-package.ps1 -Plugin notifications` checks all three platform packages. Notifications has its own release task and shares the combined architecture feeds with the other plugins.
+`pwsh -File scripts/test.ps1 -Plugin notifications` runs the notification backend, frontend and migration/common suites. `pwsh -File scripts/test-plugin-package.ps1 -Plugin notifications` checks all three platform packages. Select Notifications in the shared **Release plugins** workflow; it uses the same combined architecture feeds as the other plugins.
 
 ## Optional Web Push and live updates
 

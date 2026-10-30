@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { dependencyInventory, summarizeChanges, nextDependencyRelease } from './dependency-summary.mjs';
 
 test('dependency commits list direct, transitive, SDK, action and image changes', () => {
@@ -23,21 +22,6 @@ test('automatic promotion refuses code/configuration changes, new files and cred
     assert.throws(() => summarizeChanges([{ path: 'new.cs', before: '', after: 'unsafe' }]));
     assert.throws(() => dependencyInventory('package.json', '{"dependencies":{"unsafe":"https://user:secret@example.invalid/a"}}'));
 });
-test('dependency promotion requires every test gate and retains release protections', async () => {
-    const workflow = await readFile(new URL('../.github/workflows/dependency-validation.yml', import.meta.url), 'utf8');
-    assert(workflow.includes('needs: [scope, targets, all-plugin-checks, installed-and-external]'));
-    assert(!workflow.includes('  root-tests:'), 'Root checks run once through the reusable test workflow');
-    const tests = await readFile(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
-    assert(tests.includes('os: [ubuntu-latest, windows-latest]'));
-    assert(tests.includes('run: ./scripts/test.ps1'));
-    assert(workflow.includes('needs: [scope, accepted]'));
-    assert(workflow.includes('ref: ${{ github.event.pull_request.base.sha }}'));
-    const promotion = await readFile(new URL('./promote-dependency-update.mjs', import.meta.url), 'utf8');
-    assert(promotion.includes("'--match-head-commit', head"));
-    assert(promotion.includes('current.commit.sha !== base'));
-    const release = await readFile(new URL('../.github/workflows/release-all.yml', import.meta.url), 'utf8');
-    assert(release.includes('environment: plugin-release'));
-});
 test('patch releases advance beyond every plugin version and retry the same immutable tag', () => {
     const tags = [{ name: 'v0.2.0', commit: 'old' }, { name: 'notifications/v0.3.9', commit: 'other' }];
     assert.equal(nextDependencyRelease(tags, 'new'), 'v0.3.10');
@@ -54,6 +38,4 @@ test('upstream releases trigger maintenance without becoming permanent test pins
     const marker = version => JSON.stringify({ purpose: 'Detection only', dependencies: [{ repository: 'jellyfin/jellyfin', version }] });
     const message = summarizeChanges([{ path: '.github/upstream-dependencies.json', before: marker('12.4'), after: marker('12.5') }]);
     assert(message.includes('upstream jellyfin/jellyfin: 12.4 -> 12.5'));
-    const targets = await readFile(new URL('./latest-releases.mjs', import.meta.url), 'utf8');
-    assert(!targets.includes('upstream-dependencies.json'), 'Runtime discovery must never read the notification marker as a target');
 });

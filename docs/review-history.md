@@ -8,6 +8,36 @@ and failed attempts remain preserved; no historical result certifies later sourc
 
 ## Current work
 
+### Workflow and fixture checkpoints preceding suite consolidation
+
+These are earlier scoped results, not current suite or hosted-CI certification.
+
+- Initial workflow/documentation cleanup: **226 script tests**, links and lint in
+  `artifacts/workflow-docs-cleanup-tests-r1.log` and
+  `artifacts/workflow-docs-cleanup-actionlint-r1.log`.
+- Fresh-runner temp setup, Queue diagnostics archive allowlisting and narrowly
+  scoped stopped-fixture permission fallback: **229 local cases**, **15** clean
+  Linux focused cases in `artifacts/ci-fixture-fixes-linux-r1.log`. These checks
+  alone did not certify hosted packaging or storage recovery.
+- Poster race: Chromium reproduced empty computed styles/zero geometry on a
+  detached inbox row. Atomic current-DOM sampling retains strict CSS/overlap
+  assertions. **235 script tests** passed on Windows/Linux in
+  `artifacts/live-poster-script-tests-r1.log` and
+  `artifacts/live-poster-linux-scripts-r1.log`; real Chromium refresh, overlap and
+  wrong-CSS coverage passed in `artifacts/live-poster-chromium-r3.log`.
+- Focused Notifications **0.0.38.0** on Jellyfin **12.4** passed six installed
+  studio theme/width cases, live-poster geometry and page-error checks in
+  `artifacts/live-poster-installed-r2.log` and its `studio-results.json`. The first
+  attempt omitted `--library`, so no live card was seeded; its failed log remains
+  preserved. This was not full-suite or factor-return certification.
+- Before test-registry consolidation, the reduced workflow graph passed **241**
+  script cases on Windows/Linux in
+  `artifacts/workflow-simplification-scripts-r2.log` and
+  `artifacts/workflow-simplification-linux-r1.log`; an **81-declaration** live audit
+  passed in `artifacts/workflow-simplification-freshness-r1.log`. Later test cleanup
+  and adding the read-only checker job require their own evidence. No remote
+  workflows, tags or releases were started while implementing these changes.
+
 ### Latest verified outcome — 0.0.37.0, Linux x64
 
 **Newer source work is active:** factor continuation now carries only a five-minute

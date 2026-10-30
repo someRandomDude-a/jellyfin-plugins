@@ -4,4 +4,6 @@ runs:
   using: composite
   steps:
     - shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: ./scripts/bootstrap-tools.ps1

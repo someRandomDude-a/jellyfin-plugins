@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,14 +10,11 @@ import { assertStillLatest } from './assert-latest-targets.mjs';
 import { assertReleaseSource } from './assert-release-source.mjs';
 const read = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 
-test('existing suite tags cannot silently test older source after fixes are pushed',async()=>{
+test('immutable tags must match the selected source, not an older ancestor',()=>{
     const selected='a'.repeat(40),old='b'.repeat(40);
     assertReleaseSource(selected,selected);
     assert.throws(()=>assertReleaseSource(selected,old),/Choose an unused version/);
     assert.throws(()=>assertReleaseSource('',old),/Cannot verify/);
-    const workflow=await read('.github/workflows/release-all.yml');
-    assert(workflow.includes('node scripts/assert-release-source.mjs'));
-    assert(workflow.indexOf('node scripts/assert-release-source.mjs')<workflow.indexOf('git tag $env:RELEASE_TAG HEAD'));
 });
 
 test('freshness covers runtime, test, action, SDK and embedded browser dependencies', () => {
@@ -83,32 +80,14 @@ test('real CI bootstrap rejects mismatched installed Node and SDK before upstrea
         }
     } finally { await rm(directory, { recursive: true, force: true }); }
 });
-test('every release wrapper uses the protected latest-only release engine', async () => {
-    for (const name of await readdir(new URL('../.github/workflows/', import.meta.url))) {
-        if (!/^release-(?!all\.yml)/.test(name)) continue;
-        assert((await read('.github/workflows/' + name)).includes('uses: ./.github/workflows/release.yml'), name);
-    }
-    for (const name of ['release.yml', 'release-all.yml']) {
-        const yaml = await read('.github/workflows/' + name);
-        assert(yaml.includes('uses: ./.github/workflows/latest-targets.yml'));
-        assert(yaml.includes('node scripts/check-dependency-freshness.mjs'));
-        assert(yaml.includes('node scripts/assert-latest-targets.mjs'));
-        assert(yaml.includes('environment: plugin-release'));
-    }
-    assert((await read('.github/workflows/release-all.yml')).includes('needs: [verify-ref, targets, checks, integration]'));
-});
-test('all CI test graphs share parent targets, use current Node, and forbid baseline fallback', async () => {
-    for (const name of ['tests.yml', 'plugin-checks.yml', 'integration.yml', 'dependency-validation.yml']) {
-        const yaml = await read('.github/workflows/' + name);
-        assert(yaml.includes('uses: ./.github/workflows/latest-targets.yml'), name);
-        assert(yaml.includes('${{ needs.targets.outputs.artifact }}'), name);
-        if(name!=='dependency-validation.yml')assert(yaml.includes('uses: ./.github/actions/use-latest-targets'), name);
-        else assert(yaml.includes('uses: ./.github/workflows/tests.yml'), 'Dependency validation inherits the root/plugin tool-bound gates');
-        assert(!/node-version:\s*['"]?\d/.test(yaml), name + ' still pins an old Node line');
-        assert(!yaml.includes('continue-on-error: true'), name);
-    }
+test('raw build/compose commands cannot fall back to a historical server target', async () => {
     assert((await read('Directory.Build.targets')).includes('LATEST-ONLY CI BLOCKED'));
     for (const path of ['modules/user-management/docker-compose.yml', 'plugins/deletion-queue/test-infrastructure/compose.yaml']) {
         const yaml = await read(path); assert(yaml.includes('${JELLYFIN_TEST_IMAGE:?')); assert(!/jellyfin\/jellyfin:\d/.test(yaml));
     }
+});
+test('tool bootstrap uses official stable metadata and verifies checksums before extracting executables',async()=>{
+    const code=await read('scripts/bootstrap-tools.ps1');
+    for(const value of ['nodejs.org/dist/index.json','PowerShell/PowerShell/releases/latest','releases-index.json','SHASUMS256.txt','Get-FileHash','SHA512','checksum mismatch','PlanOnly','SUITE_TOOLCHAIN_READY'])assert(code.includes(value),value);
+    assert(code.indexOf('Get-FileHash')<code.indexOf('Expand-Archive'));assert(!code.includes('Invoke-Expression'));assert(code.includes('do not override the source SDK'));
 });

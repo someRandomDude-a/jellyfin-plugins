@@ -10,7 +10,7 @@ Hub's old routes remain compatibility adapters, not an embedding recipe for new 
 
 ## Development
 
-From the repository root, use `pwsh -File scripts/test-plugin.ps1 -Plugin notifications`.
+From the repository root, use `pwsh -File scripts/test.ps1 -Plugin notifications`.
 Current target/toolchain and native ABI gates apply. Producers use the framework-only
 shared SDK and current scoped/registered interface; preserve retry IDs and current
 recipient/domain authorization. Do not reactivate retired Hub bot or broad 2FA bypasses.

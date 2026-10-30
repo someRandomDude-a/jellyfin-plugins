@@ -18,6 +18,8 @@ on:
         value: ${{ jobs.resolve.outputs.node_version }}
 permissions:
   contents: read
+env:
+  GH_TOKEN: ${{ github.token }}
 jobs:
   resolve:
     runs-on: ubuntu-latest
@@ -45,7 +47,7 @@ jobs:
         if: inputs.targets_artifact == ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/check-dependency-freshness.mjs
+        run: node scripts/check-dependency-freshness.mjs --output=artifacts/workflow-targets/dependency-audit.json
       - name: Resolve and approve current stable software once for this workflow graph
         if: inputs.targets_artifact == ''
         env:
@@ -66,5 +68,5 @@ jobs:
         if: inputs.targets_artifact == ''
         with:
           name: ${{ steps.name.outputs.artifact }}
-          path: artifacts/workflow-targets/targets.json
+          path: artifacts/workflow-targets/*.json
           if-no-files-found: error

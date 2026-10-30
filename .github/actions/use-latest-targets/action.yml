@@ -17,8 +17,13 @@ runs:
         path: artifacts/workflow-targets
     - shell: pwsh
       env:
+        GH_TOKEN: ${{ github.token }}
         SUITE_TEST_TARGETS: ${{ github.workspace }}/artifacts/workflow-targets/targets.json
+        SUITE_DEPENDENCY_AUDIT: ${{ github.workspace }}/artifacts/workflow-targets/dependency-audit.json
         VERIFY_BUILD_SDK: ${{ inputs.verify_sdk }}
       run: |
+        "SUITE_DEPENDENCY_AUDIT=$env:SUITE_DEPENDENCY_AUDIT" >> $env:GITHUB_ENV
+        node scripts/check-dependency-freshness.mjs
+        if ($LASTEXITCODE) { throw 'Parent dependency audit does not match this source/run' }
         node scripts/prepare-test-targets.mjs --services=jellyfin "--output=$env:SUITE_TEST_TARGETS"
         if ($LASTEXITCODE) { throw 'Latest-only target binding failed; refusing an independent/fallback target' }

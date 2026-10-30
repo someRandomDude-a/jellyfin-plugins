@@ -1,4 +1,4 @@
-name: Independent plugin checks and interoperability
+name: Tests
 on:
   workflow_call:
     inputs:
@@ -8,16 +8,29 @@ on:
       targets_artifact:
         type: string
         default: ''
+      plugin:
+        type: string
+        default: all
+      package_tag:
+        type: string
+        default: v0.2.0
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      plugin:
+        description: Suite or independent plugin checks
+        type: choice
+        default: all
+        options: [all, account-hub, discord-bridge, private-syncplay, deletion-queue, notifications, automatic-deletion-requests]
 permissions:
   contents: read
 env:
   GH_TOKEN: ${{ github.token }}
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: tests-${{ github.workflow }}-${{ inputs.ref || github.ref }}-${{ inputs.plugin || 'all' }}
+  cancel-in-progress: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && !startsWith(github.ref, 'refs/tags/') }}
 jobs:
   targets:
     uses: ./.github/workflows/latest-targets.yml
@@ -35,19 +48,55 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
       - name: Validate workflow syntax, expressions and shell snippets
         run: docker run --rm --pull=always --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" --workdir /repo rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
-  plugin:
+  installed:
     needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        plugin: [account-hub, discord-bridge, private-syncplay, deletion-queue, notifications, automatic-deletion-requests]
-    uses: ./.github/workflows/plugin-checks.yml
-    with:
-      plugin: ${{ matrix.plugin }}
-      ref: ${{ inputs.ref || github.sha }}
-      targets_artifact: ${{ needs.targets.outputs.artifact }}
+        plugin: ${{ (inputs.plugin == 'all' || inputs.plugin == '') && fromJSON('["account-hub","discord-bridge","private-syncplay","deletion-queue","notifications","automatic-deletion-requests"]') || fromJSON(format('["{0}"]', inputs.plugin)) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
+      - if: matrix.plugin == 'private-syncplay'
+        run: npm ci --ignore-scripts
+        working-directory: plugins/private-syncplay
+      - name: Package only the selected plugin
+        shell: pwsh
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          PACKAGE_TAG: ${{ inputs.package_tag || 'v0.2.0' }}
+        run: ./scripts/package.ps1 -Tag $env:PACKAGE_TAG -Plugin $env:PLUGIN -OutputDirectory artifacts/plugin-packages
+      - name: Standalone installed plugin with and without native Security
+        shell: pwsh
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+        run: |
+          $keys = @{ 'account-hub'='hub'; 'discord-bridge'='discord'; 'private-syncplay'='syncplay'; 'deletion-queue'='deletion'; 'notifications'='notifications'; 'automatic-deletion-requests'='automatic' }
+          $library = if ($env:PLUGIN -eq 'notifications') { @('--library') } else { @() }
+          $studio = if ($env:PLUGIN -eq 'notifications') { @('--notification-studio') } else { @() }
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" --notifications-restart @library @studio
+          if ($LASTEXITCODE) { throw 'Standalone installed test failed' }
+          node scripts/integration.mjs --packages=artifacts/plugin-packages "--plugins=$($keys[$env:PLUGIN])" --security=latest --notifications-restart @library
+          if ($LASTEXITCODE) { throw 'Standalone Security compatibility failed' }
+      - name: Full native SyncPlay, guest media and SDK consumer integration
+        if: matrix.plugin == 'private-syncplay'
+        shell: pwsh
+        working-directory: plugins/private-syncplay
+        run: |
+          dotnet build examples/WatchPartyConsumer -c Release
+          if ($LASTEXITCODE) { throw 'Consumer build failed' }
+          ./scripts/package.ps1
+          node scripts/integration.mjs --with-consumer --install-from-catalog
+          if ($LASTEXITCODE) { throw 'Native SyncPlay integration failed' }
   installed-browser:
     needs: targets
+    if: inputs.plugin == 'all' || inputs.plugin == ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -90,6 +139,13 @@ jobs:
           artifact: ${{ needs.targets.outputs.artifact }}
       - run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
-      - name: Full consolidated test and upgrade gates on the same latest targets
+      - name: Unit and upgrade gates for the selected scope
         shell: pwsh
-        run: ./scripts/test.ps1
+        env:
+          PLUGIN: ${{ inputs.plugin || 'all' }}
+        run: ./scripts/test.ps1 -Plugin $env:PLUGIN
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: tests-${{ inputs.plugin || 'all' }}-${{ matrix.os }}
+          path: '**/TestResults/*.trx'

@@ -35,10 +35,20 @@ export function describeRelease(name, release, { jellyfinMajor = 12 } = {}) {
     return result;
 }
 export async function githubJson(path, request = fetch) {
-    const headers = { Accept: 'application/vnd.github+json' };
-    if (process.env.GH_TOKEN) headers.Authorization = 'Bearer ' + process.env.GH_TOKEN;
+    const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'jellyfin-plugin-ci' };
+    const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (token) headers.Authorization = 'Bearer ' + token;
+    if (process.env.GITHUB_ACTIONS === 'true' && !token) throw Error('GitHub discovery requires GH_TOKEN or GITHUB_TOKEN in CI; refusing anonymous rate limits');
     const response = await request('https://api.github.com/' + path, { headers, signal: AbortSignal.timeout(30000), redirect: 'error' });
-    if (!response.ok) throw Error('Upstream release discovery failed (HTTP ' + response.status + ')');
+    if (!response.ok) {
+        // Header-only diagnostics: never log tokens, upstream response prose or
+        // URLs containing private request data. No anonymous/stale fallback.
+        const limits = ['x-ratelimit-remaining', 'x-ratelimit-reset', 'retry-after'].flatMap(name => {
+            const value = response.headers?.get(name);
+            return /^\d+$/.test(value || '') ? [name + '=' + value] : [];
+        });
+        throw Error('Upstream release discovery failed (HTTP ' + response.status + (limits.length ? '; ' + limits.join(', ') : '') + '). Check GitHub API token/rate limits; discovery remains blocked');
+    }
     return response.json();
 }
 export async function discoverTargets(names, request = fetch, { jellyfin: existingJellyfin } = {}) {

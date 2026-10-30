@@ -1,9 +1,10 @@
 // Read-only release gate. Never rewrite an immutable release's manifests/locks.
 import { execFileSync } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { githubJson } from './latest-releases.mjs';
+import { dependencyFingerprint, assertDependencyEvidence } from './dependency-evidence.mjs';
 
 const version = value => String(value).replace(/^[v^~]/, '').split('.').map(Number);
 export const compare = (a, b) => {
@@ -156,13 +157,41 @@ export async function dependencyPaths() {
     }
     return existing;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export async function dependencyState() {
     const paths = await dependencyPaths();
     const rows = [{ path: '(running toolchain)', kind: 'node', name: 'Node.js', current: process.versions.node }];
     for (const path of new Set(paths)) if (/(?:package\.json|global\.json|Dockerfile|\.(?:csproj|props|targets|ya?ml|mjs|cjs|ps1|sh))$/.test(path)) rows.push(...declarations(path, await readFile(path, 'utf8')));
     const unique = [...new Map(rows.map(row => [JSON.stringify(row), row])).values()];
     if (!unique.some(row => row.path !== '(running toolchain)')) throw Error('No dependency declarations found; refusing empty release freshness approval');
-    await checkFreshness(unique, registryLookup());
-    await checkLocks([...new Set(paths)]);
-    console.log('PASS latest-only dependency freshness: ' + unique.length + ' declarations; no manifests or locks modified.');
+    const locks = await Promise.all(paths.filter(path => /(?:^|\/)package-lock\.json$/.test(path) && !/(?:^|\/)(?:node_modules|artifacts)\//.test(path)).map(async path => [path, await readFile(path, 'utf8')]));
+    const identity = {
+        source: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+        fingerprint: dependencyFingerprint(unique, locks),
+        run: process.env.GITHUB_RUN_ID || process.env.SUITE_TEST_RUN_ID,
+        attempt: process.env.GITHUB_RUN_ID ? process.env.GITHUB_RUN_ATTEMPT : '1'
+    };
+    return { paths, rows: unique, identity };
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    const args = process.argv.slice(2);
+    if (args.some(arg => arg !== '--refresh' && !arg.startsWith('--output='))) throw Error('Unsupported freshness option');
+    const output = args.find(arg => arg.startsWith('--output='))?.slice(9);
+    const { paths, rows, identity } = await dependencyState();
+    const inherited = process.env.SUITE_DEPENDENCY_AUDIT;
+    if (inherited && output) throw Error('A child may not replace the parent dependency audit');
+    if (inherited && !args.includes('--refresh')) {
+        assertDependencyEvidence(JSON.parse(await readFile(inherited, 'utf8')), identity);
+        await checkLocks(paths);
+        console.log('PASS current-run dependency audit: exact source, declarations, locks, Node and run attempt; no rediscovery.');
+    } else {
+        await checkFreshness(rows, registryLookup());
+        await checkLocks(paths);
+        if (output) {
+            const evidence = { schemaVersion: 1, policy: 'latest-stable', verified: true, resolvedAt: new Date().toISOString(), ...identity };
+            assertDependencyEvidence(evidence, identity);
+            await mkdir(dirname(output), { recursive: true });
+            await writeFile(output, JSON.stringify(evidence, null, 2) + '\n');
+        }
+        console.log('PASS latest-only dependency freshness: ' + rows.length + ' declarations; no manifests or locks modified.');
+    }
 }

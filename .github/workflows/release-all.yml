@@ -1,9 +1,16 @@
-name: Release all plugins
+name: Release plugins
 on:
+  push:
+    tags: ['account-hub/v*', 'discord-bridge/v*', 'private-syncplay/v*', 'deletion-queue/v*', 'notifications/v*', 'automatic-deletion-requests/v*']
   workflow_dispatch:
     inputs:
+      plugin:
+        description: Release the suite or one independent plugin
+        type: choice
+        default: all
+        options: [all, account-hub, discord-bridge, private-syncplay, deletion-queue, notifications, automatic-deletion-requests]
       version:
-        description: 'Immutable suite version (for example v0.3.0)'
+        description: 'Immutable version (for example v0.3.1); plugin prefix is automatic'
         required: true
         type: string
       ref:
@@ -19,34 +26,54 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
 concurrency:
-  group: suite-release-${{ inputs.version }}
+  group: release-${{ inputs.plugin || 'tag' }}-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 jobs:
+  targets:
+    uses: ./.github/workflows/latest-targets.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      key: release
   verify-ref:
+    needs: targets
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       tag: ${{ steps.ref.outputs.tag }}
+      version_tag: ${{ steps.ref.outputs.version_tag }}
+      plugin: ${{ steps.ref.outputs.plugin }}
       published: ${{ steps.ref.outputs.published }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
+      - uses: ./.github/actions/use-latest-targets
+        with:
+          artifact: ${{ needs.targets.outputs.artifact }}
       - id: ref
         # No tag or publication happens until current tools/source pass preflight.
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.version || github.ref_name }}
+          PLUGIN: ${{ inputs.plugin || 'all' }}
+          TAG_PUSH: ${{ github.event_name == 'push' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
-          ./scripts/bootstrap-tools.ps1
           node scripts/check-dependency-freshness.mjs
           if ($LASTEXITCODE) { throw 'Run and merge dependency maintenance before releasing this immutable source' }
-          if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Enter a version such as v0.3.0' }
+          if ($env:TAG_PUSH -eq 'true') {
+            if ($env:RELEASE_TAG -cnotmatch '^(account-hub|discord-bridge|private-syncplay|deletion-queue|notifications|automatic-deletion-requests)/(v\d+\.\d+\.\d+)$') { throw 'Expected plugin/vX.Y.Z tag' }
+            $env:PLUGIN = $Matches[1]; $versionTag = $Matches[2]
+          } else {
+            if ($env:PLUGIN -notin @('all','account-hub','discord-bridge','private-syncplay','deletion-queue','notifications','automatic-deletion-requests')) { throw 'Unknown plugin' }
+            if ($env:RELEASE_TAG -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Enter a version such as v0.3.1' }
+            $versionTag = $env:RELEASE_TAG
+            if ($env:PLUGIN -ne 'all') { $env:RELEASE_TAG = "$env:PLUGIN/$versionTag" }
+          }
           if ($env:EXPECTED_COMMIT -and ((git rev-parse HEAD) -cne $env:EXPECTED_COMMIT -or $env:EXPECTED_COMMIT -cnotmatch '^[a-f0-9]{40}$')) { throw 'Checkout differs from tested immutable source' }
           git fetch --tags
           if ($LASTEXITCODE) { throw 'Cannot read immutable tags' }
@@ -60,6 +87,7 @@ jobs:
             node scripts/assert-release-source.mjs "$selectedCommit" "$commit"
             if ($LASTEXITCODE) { throw 'Release source differs from the existing immutable tag; use a new version for the fixes' }
           } else {
+            if ($LASTEXITCODE -ne 1) { throw 'Cannot inspect immutable tag' }
             git tag $env:RELEASE_TAG HEAD
             if ($LASTEXITCODE) { throw 'Tag creation failed' }
             git push origin "refs/tags/$env:RELEASE_TAG"
@@ -68,14 +96,9 @@ jobs:
           $tags = @(gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq '.[] | select(.draft == false) | .tag_name')
           if ($LASTEXITCODE) { throw 'Cannot inspect published releases' }
           "tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+          "version_tag=$versionTag" >> $env:GITHUB_OUTPUT
+          "plugin=$env:PLUGIN" >> $env:GITHUB_OUTPUT
           "published=$(([bool]($tags -ccontains $env:RELEASE_TAG)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-  targets:
-    needs: verify-ref
-    if: needs.verify-ref.outputs.published != 'true'
-    uses: ./.github/workflows/latest-targets.yml
-    with:
-      ref: ${{ needs.verify-ref.outputs.tag }}
-      key: release-all
   checks:
     needs: [verify-ref, targets]
     if: needs.verify-ref.outputs.published != 'true'
@@ -83,17 +106,20 @@ jobs:
     with:
       ref: ${{ needs.verify-ref.outputs.tag }}
       targets_artifact: ${{ needs.targets.outputs.artifact }}
+      plugin: ${{ needs.verify-ref.outputs.plugin }}
+      package_tag: ${{ needs.verify-ref.outputs.version_tag }}
   integration:
     needs: [verify-ref, targets]
-    if: needs.verify-ref.outputs.published != 'true'
+    if: needs.verify-ref.outputs.published != 'true' && contains(fromJSON('["all","account-hub","deletion-queue","automatic-deletion-requests"]'), needs.verify-ref.outputs.plugin)
     uses: ./.github/workflows/integration.yml
     with:
       ref: ${{ needs.verify-ref.outputs.tag }}
-      package_tag: ${{ needs.verify-ref.outputs.tag }}
+      package_tag: ${{ needs.verify-ref.outputs.version_tag }}
       targets_artifact: ${{ needs.targets.outputs.artifact }}
+      external_only: ${{ needs.verify-ref.outputs.plugin != 'all' }}
   package:
     needs: [verify-ref, targets, checks, integration]
-    if: needs.verify-ref.outputs.published != 'true'
+    if: ${{ !cancelled() && needs.verify-ref.outputs.published != 'true' && needs.verify-ref.result == 'success' && needs.targets.result == 'success' && needs.checks.result == 'success' && (needs.integration.result == 'success' || (needs.integration.result == 'skipped' && !contains(fromJSON('["all","account-hub","deletion-queue","automatic-deletion-requests"]'), needs.verify-ref.outputs.plugin))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -107,16 +133,37 @@ jobs:
       - uses: ./.github/actions/use-latest-targets
         with:
           artifact: ${{ needs.targets.outputs.artifact }}
-      - run: npm ci --ignore-scripts
+      - if: needs.verify-ref.outputs.plugin == 'all' || needs.verify-ref.outputs.plugin == 'private-syncplay'
+        run: npm ci --ignore-scripts
         working-directory: plugins/private-syncplay
-      - name: Package all six plugins
+      - name: Preserve this plugin's published catalog history
+        if: needs.verify-ref.outputs.plugin != 'all'
+        shell: pwsh
+        env:
+          GH_REPO: ${{ github.repository }}
+          PLUGIN: ${{ needs.verify-ref.outputs.plugin }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          New-Item -ItemType Directory -Path previous | Out-Null
+          $tags = @(gh api "repos/$env:GH_REPO/releases?per_page=100" --paginate --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')
+          if ($LASTEXITCODE) { throw 'Cannot read release history' }
+          $releases = @($tags | Where-Object { $_ -match "^$([regex]::Escape($env:PLUGIN))/v\d+\.\d+\.\d+$" } | Sort-Object { [version]($_.Split('/')[-1].Substring(1)) } -Descending)
+          if (!$releases.Count) { $releases = @($tags | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]$_.Substring(1) } -Descending) }
+          if ($releases.Count) {
+            gh release download $releases[0] --pattern "manifest-$env:RUNTIME.json" --dir previous
+            if ($LASTEXITCODE) { throw 'Cannot download published history; refusing to discard it' }
+          } else { '[]' | Set-Content "previous/manifest-$env:RUNTIME.json" }
+      - name: Package selected plugins
         shell: pwsh
         env:
           RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          VERSION_TAG: ${{ needs.verify-ref.outputs.version_tag }}
+          PLUGIN: ${{ needs.verify-ref.outputs.plugin }}
           RELEASE_REPOSITORY: ${{ github.repository }}
           RUNTIME: ${{ matrix.runtime }}
         run: |
-          ./scripts/package.ps1 -Tag $env:RELEASE_TAG -Plugin all -Repository $env:RELEASE_REPOSITORY -Runtime $env:RUNTIME -OutputDirectory artifacts/suite-packages
+          $history = if ($env:PLUGIN -eq 'all') { @{} } else { @{ PreviousManifest = "previous/manifest-$env:RUNTIME.json" } }
+          ./scripts/package.ps1 -Tag $env:VERSION_TAG -ReleaseTag $env:RELEASE_TAG -Plugin $env:PLUGIN -Repository $env:RELEASE_REPOSITORY -Runtime $env:RUNTIME -OutputDirectory artifacts/suite-packages @history
           Copy-Item artifacts/suite-packages/manifest.json "artifacts/suite-packages/manifest-$env:RUNTIME.json"
       - uses: actions/upload-artifact@v7.0.2
         with:
@@ -129,9 +176,13 @@ jobs:
             artifacts/suite-packages/manifest-${{ matrix.runtime }}.json
   publish:
     needs: [verify-ref, targets, checks, integration, package]
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: plugin-release
+    concurrency:
+      group: publish-${{ needs.verify-ref.outputs.plugin }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -149,24 +200,27 @@ jobs:
           verify_sdk: 'false'
       - name: Fail loudly if dependencies or upstream releases changed after acceptance
         run: |
-          node scripts/check-dependency-freshness.mjs
+          node scripts/check-dependency-freshness.mjs --refresh
           node scripts/assert-latest-targets.mjs
-      - name: Validate all 18 packages and three manifests
+      - name: Validate the exact selected release set and three manifests
         shell: pwsh
         env:
           RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          VERSION_TAG: ${{ needs.verify-ref.outputs.version_tag }}
+          PLUGIN: ${{ needs.verify-ref.outputs.plugin }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: ./scripts/validate-release-set.ps1 -Directory release -Tag $env:RELEASE_TAG -Plugin all -Repository $env:RELEASE_REPOSITORY
-      - name: Publish immutable suite release
+        run: ./scripts/validate-release-set.ps1 -Directory release -Tag $env:VERSION_TAG -ReleaseTag $env:RELEASE_TAG -Plugin $env:PLUGIN -Repository $env:RELEASE_REPOSITORY
+      - name: Publish immutable release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.verify-ref.outputs.tag }}
+          PLUGIN: ${{ needs.verify-ref.outputs.plugin }}
         run: |
           git log -1 --format=%B | Set-Content release-notes.txt
-          Add-Content release-notes.txt "`nAll six plugins for Linux x64, Linux ARM64 and Windows x64. Integration preview; see documented acceptance limits."
-          gh release create $env:RELEASE_TAG --verify-tag --draft --title "All plugins $env:RELEASE_TAG" --notes-file release-notes.txt
+          Add-Content release-notes.txt "`nSelected plugins: $env:PLUGIN. Linux x64, Linux ARM64 and Windows x64. Integration preview; see documented acceptance limits."
+          gh release create $env:RELEASE_TAG --verify-tag --draft --title "$env:PLUGIN $env:RELEASE_TAG" --notes-file release-notes.txt
           if ($LASTEXITCODE) { throw 'Release exists or creation failed; assets will not be overwritten' }
           gh release upload $env:RELEASE_TAG (Get-ChildItem release -File | ForEach-Object FullName)
           if ($LASTEXITCODE) { throw 'Upload failed; release remains draft' }
@@ -179,5 +233,5 @@ jobs:
       contents: write
     uses: ./.github/workflows/update-manifest.yml
     with:
-      plugin: all
+      plugin: ${{ needs.verify-ref.outputs.plugin }}
       release_tag: ${{ needs.verify-ref.outputs.tag }}

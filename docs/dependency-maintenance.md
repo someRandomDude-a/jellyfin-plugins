@@ -33,20 +33,20 @@ The local test/package entry points bootstrap tools and check dependency freshne
 before execution. CI uses `.github/actions/setup-latest-tools` in the parent
 target gate and child target-binding action. Node/PowerShell/SDK versions bind
 children to the parent evidence; a new release appearing mid-graph causes a
-mismatch failure rather than mixing toolchains. Both release engines preflight
+mismatch failure rather than mixing toolchains. The shared release engine preflights
 tools/freshness **before creating a tag** as well as before tests/publication.
 Docker daemon, Git and OS utilities remain runner prerequisites; managed browser,
 lint, tunnel and fixture images are handled by the image freshness/bump policies.
 
-The reviewable bump workflow also runs hourly. Renovate's separate hourly bot
-workflow opens the protected dependency PR; the preview workflow applies updates
+One hourly maintenance workflow contains both jobs. Renovate
+opens the protected dependency PR; the preview job applies updates
 only in its disposable checkout and uploads the patch/report, then tests it.
 Immutable release source is never automatically rewritten: stale releases stop
 until the tested dependency update is merged.
 
 ### Manual reviewable bump (same engine locally and in Actions)
 
-Run **Actions → Dependency bump preview and validation** to get a dependency-only patch, report
+Run **Actions → Dependency maintenance** to get a dependency-only preview patch, report
 and itemized version/lock changes plus Linux root tests, without commits, pushes or publication. For the
 same steps locally, with current stable Node/npm:
 
@@ -111,8 +111,8 @@ rewrites them to approve changed upstream contracts.
 
 The bump job discovers updates; it does **not** by itself guarantee the branch is
 current. `latest-targets.yml` is the mandatory shared entry gate for normal CI,
-dependency validation, integration, suite releases and all six independent-release
-wrappers. `check-dependency-freshness.mjs` blocks outdated runtime/test packages,
+dependency validation, integration and the suite/independent release selector.
+`check-dependency-freshness.mjs` blocks outdated runtime/test packages,
 SDK declarations, Actions, embedded browser/tool images and mismatched image
 digests. npm lock roots and resolved direct versions must match the current direct
 declarations; `npm ci` verifies reproducible installation/integrities during tests.
@@ -145,7 +145,19 @@ Bridge combinations and the standalone Notifications owner exercise library
 capture; Hub-only checks do not request a Notifications-owned library observer. Disposable Docker tools
 pull before running, so mutable tags cannot quietly reuse an older local cache.
 
-Immediately before publication, both release engines repeat dependency freshness
+Nested tests/packages validate the parent's successful dependency audit rather
+than repeatedly crawling GitHub. The audit is bound to the exact commit,
+declarations, lock contents, Node version, run ID and attempt, with a 24-hour
+expiry. Local entry points use the target snapshot's unique run ID; hosted jobs
+also bind the GitHub run attempt. Line-ending differences between Windows and Linux do not invalidate it;
+changed/missing/expired evidence fails without rediscovery or cross-run fallback.
+GitHub calls use `GH_TOKEN` or `GITHUB_TOKEN`; CI refuses anonymous discovery.
+403/429 errors include only safe rate-limit headers, never credentials or response
+bodies. A shared audit reduces API pressure; it cannot override a real outage,
+revoked token or exhausted quota when a fresh discovery is required.
+
+Immediately before publication, the release engine repeats dependency freshness
+with `--refresh`, bypassing the parent audit,
 and recheck upstream releases, source commits, container digests and the recorded
 Node target. A new upstream release or retag during testing/approval blocks
 publication and requires a new complete run. Existing release approvals remain.

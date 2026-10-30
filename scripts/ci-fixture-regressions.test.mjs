@@ -9,7 +9,8 @@ import {moveFixtureState} from './fixture-state-files.mjs';
 
 test('snapshot tests work alone on a fresh runner without an opencode temp parent',async()=>{
     const base=join(tmpdir(),'opencode');await mkdir(base,{recursive:true});const directory=await mkdtemp(join(base,'fresh-runner-'));
-    try{const result=spawnSync(process.execPath,['--test',fileURLToPath(new URL('./latest-releases.test.mjs',import.meta.url))],{encoding:'utf8',env:{...process.env,TMPDIR:directory,TEMP:directory,TMP:directory},timeout:30000});assert.equal(result.status,0,result.stdout+result.stderr);}finally{await rm(directory,{recursive:true,force:true});}
+    const env={...process.env,TMPDIR:directory,TEMP:directory,TMP:directory};delete env.NODE_TEST_CONTEXT;
+    try{const result=spawnSync(process.execPath,['--test','--test-reporter=spec',fileURLToPath(new URL('./latest-releases.test.mjs',import.meta.url))],{encoding:'utf8',env,timeout:30000});assert.equal(result.status,0,result.stdout+result.stderr);assert(result.stdout.includes('children use the same run snapshot'),result.stdout+result.stderr);}finally{await rm(directory,{recursive:true,force:true});}
 });
 test('Queue archive allowlist matches staged dependencies, including diagnostics',async()=>{
     const read=path=>readFile(new URL('../plugins/deletion-queue/scripts/'+path,import.meta.url),'utf8');

@@ -43,7 +43,7 @@ Jobs are independent: changing their order never skips safety checks. A past del
 ## Verification
 
 ```powershell
-pwsh -File scripts/test-plugin.ps1 -Plugin automatic-deletion-requests
+pwsh -File scripts/test.ps1 -Plugin automatic-deletion-requests
 ```
 
 The project and tests are in the root solution. Root packaging, release-set validation, independent test/release selection and installed integration support `automatic-deletion-requests` (`--plugins=automatic` for installed checks). Current Linux x64/ARM64 and Windows x64 packages passed archive/identity/checksum/SBOM validation. The final six-plugin Linux amd64 installation passed native daily-task discovery/manual execution, disabled-default/administrator authorization and 320/1280-pixel rule/artwork editor checks, including real PNG previews. Full root regressions passed, including six automation tests and 207 Deletion Queue tests. See the root `docs/review-status.md` for exact evidence and limits. No packages have been published.
