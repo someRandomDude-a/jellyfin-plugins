@@ -6,14 +6,16 @@
 |---|---|
 | `tests.yml` | Push, pull request, manual or reusable call: one Windows/Linux unit matrix, standalone installation matrix, lint and suite browser acceptance. Select `all` or one plugin. |
 | `integration.yml` | Weekly, manual or reusable call: disposable combinations, native Security and external-service acceptance. The public sentinel tunnel is manual opt-in only. |
-| `dependency-maintenance.yml` | One hourly/manual workflow: Renovate opens protected stable dependency PRs; a separate disposable preview job exports and tests an update patch without committing or publishing. Bot discovery requires the configured bot. |
-| `dependency-validation.yml` | Eligible same-repository bot PRs: scope validation, shared acceptance gates, then protected merge/release promotion. |
+| `.github/dependabot.yml` | Native hourly grouped discovery for NuGet, npm, SDK, Actions and Compose; no custom discovery secret. |
+| `dependency-maintenance.yml` | Hourly/manual residual updater for embedded tools/images and upstream markers. Supplements a pending Dependabot PR or opens a residual-only PR. |
+| `dependency-validation.yml` | Eligible same-repository bot PRs: dependency-only scope and full shared acceptance, without custom secrets. |
+| `dependency-promotion.yml` | Trusted default-branch `workflow_run` phase: verify the successful exact-head/base run, protected merge and immutable patch release. |
 | `release-all.yml` | **Release plugins**: one manual selector for `all` or an independent plugin, plus plugin-prefixed tag triggers. Exact source, immutable tags and protected approval remain required. |
 | `update-manifest.yml` | Update platform catalogs and live README metadata from validated published assets; no rebuild. |
 
 ## Shared implementation
 
-- `latest-targets.yml` is the seventh workflow: a reusable-only entry gate that
+- `latest-targets.yml` is a reusable-only entry gate that
   discovers stable software and audits dependency freshness once per graph.
   Child jobs validate the same source/declaration/lock/Node hash and run attempt;
   audits expire after 24 hours. Publication always rediscovers, even with an audit.

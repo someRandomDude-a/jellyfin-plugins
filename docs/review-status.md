@@ -11,12 +11,14 @@ Latest recorded local checks, 2026-10-30:
 | Check | Result | Local evidence |
 |---|---|---|
 | Nine .NET test projects | 1,216 passed; one opt-in live Arr test skipped | `artifacts/ui-polish-backend-suite-r2.log` |
-| Root scripts, tooling, docs and release metadata | 261 passed | `artifacts/docs-cleanup-scripts-r1.log` |
+| Root scripts, tooling, docs and dependency/release automation | 271 passed | `artifacts/dependabot-migration-suite-final.log` |
 | Notification bell | 61 passed | `artifacts/ui-polish-bell-r3.log` |
 
 Backend and bell results cover the media-identity/UI changes. The script run also
-covers documentation links, per-plugin published metadata and Latest-marker
-workflow checks. Logs are local artifacts, not installed-browser evidence.
+covers documentation links, per-plugin published metadata, Dependabot/residual
+ownership, isolated promotion and credential-safe failure paths. The Dependabot
+configuration also passed JSON Schema validation. Logs are local artifacts, not
+hosted workflow or installed-browser acceptance.
 
 ## Remaining acceptance
 

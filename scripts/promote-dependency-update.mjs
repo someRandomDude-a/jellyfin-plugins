@@ -1,21 +1,27 @@
 // Privileged phase: this script is checked out from the trusted PR base, never head.
-import { execFileSync } from 'node:child_process';
+import { privateCommand } from './private-command.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { nextDependencyRelease } from './dependency-summary.mjs';
+import { promotionIdentity } from './dependency-policy.mjs';
 
-const gh = args => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 1024 * 1024 }).trim();
-const repo = process.env.GH_REPO, number = process.env.PR_NUMBER, head = process.env.HEAD_SHA, base = process.env.BASE_SHA;
-if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '') || !/^\d+$/.test(number || '') || ![head, base].every(value => /^[a-f0-9]{40}$/.test(value || ''))) throw Error('Invalid promotion identity');
+const gh = args => privateCommand('gh', args);
+const repo = process.env.GH_REPO, runId = process.env.VALIDATION_RUN_ID;
+if (!/^[\w.-]+\/[\w.-]+$/.test(repo || '') || !/^\d+$/.test(runId || '')) throw Error('Invalid promotion identity');
 const branch = process.env.DEFAULT_BRANCH;
-const pr = JSON.parse(gh(['api', `repos/${repo}/pulls/${number}`]));
+const run = JSON.parse(gh(['api', `repos/${repo}/actions/runs/${runId}`]));
+if (run.pull_requests?.length !== 1) throw Error('Validation must identify exactly one pull request');
+const pr = JSON.parse(gh(['api', `repos/${repo}/pulls/${run.pull_requests[0].number}`]));
+const jobs = gh(['api', `repos/${repo}/actions/runs/${runId}/attempts/${run.run_attempt}/jobs?per_page=100`, '--paginate', '--jq', '.jobs[] | {name, conclusion} | @json'])
+    .split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+const { number, head, base } = promotionIdentity(run, pr, jobs, { repo, branch, login: process.env.DEPENDENCY_BOT_LOGIN });
 if (pr.head.sha !== head || pr.head.repo.full_name !== repo || pr.base.ref !== branch || !pr.merged && pr.base.sha !== base) throw Error('PR base/head changed after testing; rebase and retest before promotion');
 const current = JSON.parse(gh(['api', `repos/${repo}/branches/${encodeURIComponent(branch)}`]));
 if (!pr.merged && current.commit.sha !== base) throw Error('Default branch advanced after testing; rebase and retest');
 // Recompute from trusted code rather than trusting an artifact written by a
 // candidate test job or any PR-controlled commit/PR description.
-execFileSync('git', ['fetch', 'origin', head], { stdio: 'pipe' });
-execFileSync(process.execPath, [fileURLToPath(new URL('./dependency-summary.mjs', import.meta.url)), '--base=' + base, '--head=' + head, '--output=dependency-commit.txt'], { stdio: 'pipe' });
+privateCommand('git', ['fetch', 'origin', head]);
+privateCommand(process.execPath, [fileURLToPath(new URL('./dependency-summary.mjs', import.meta.url)), '--base=' + base, '--head=' + head, '--output=dependency-commit.txt']);
 const message = await readFile('dependency-commit.txt', 'utf8');
 if (!message.endsWith('Dependency-Maintenance: true\n')) throw Error('Missing validated dependency commit summary');
 if (!pr.merged) {

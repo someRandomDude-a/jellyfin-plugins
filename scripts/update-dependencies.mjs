@@ -9,6 +9,10 @@ import { summarizeChanges } from './dependency-summary.mjs';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
 const value = row => typeof row.latest === 'string' ? row.latest : row.latest.version;
+// Dependabot owns manifests. This filter covers only declarations it cannot parse.
+export const residualDeclaration = row => row.kind === 'node' ||
+    (['image', 'npm'].includes(row.kind) && /\.(?:mjs|cjs|ps1|sh|ya?ml)$/.test(row.path) &&
+        !/(?:^|\/)(?:docker-compose|compose)\.ya?ml$/.test(row.path));
 export function rewriteDependencies(path, text, rows) {
     const find = (kind, name, current) => rows.find(row => row.kind === kind && row.name === name && row.current === current);
     if (/(?:^|\/)package\.json$/.test(path)) {
@@ -53,11 +57,11 @@ export function rewriteDependencies(path, text, rows) {
         });
 }
 
-export async function planUpdates(paths, lookup) {
+export async function planUpdates(paths, lookup, { residual = false } = {}) {
     const changes = [], rows = [];
     for (const path of paths) {
         if (!/(?:package\.json|global\.json|Dockerfile|\.(?:csproj|props|targets|ya?ml|mjs|cjs|ps1|sh))$/.test(path)) continue;
-        const before = await readFile(path, 'utf8'), items = declarations(path, before);
+        const before = await readFile(path, 'utf8'), items = declarations(path, before).filter(row => !residual || residualDeclaration(row));
         if (!items.length) continue;
         for (const row of items) { row.latest = await lookup(row); rows.push(row); }
         const after = rewriteDependencies(path, before, items);
@@ -79,19 +83,19 @@ export async function planUpdates(paths, lookup) {
     return { changes, rows };
 }
 
-export async function updateDependencies({ apply = false, output = 'artifacts/dependency-bump' } = {}) {
+export async function updateDependencies({ apply = false, residual = false, output = 'artifacts/dependency-bump' } = {}) {
     const paths = await dependencyPaths(), lookup = registryLookup();
-    const { changes, rows } = await planUpdates(paths, lookup);
+    const { changes, rows } = await planUpdates(paths, lookup, { residual });
     await mkdir(output, { recursive: true });
     const report = { policy: 'latest-stable-fixed-direct-dependency-set', requestedApply: apply, applied: false, verified: false, resolvedAt: new Date().toISOString(),
-        declarations: rows.length, changes: changes.map(change => ({ path: change.path, beforeSha256: hash(change.before), afterSha256: hash(change.after) })) };
+        residual, declarations: rows.length, changes: changes.map(change => ({ path: change.path, beforeSha256: hash(change.before), afterSha256: hash(change.after) })) };
     await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     if (!apply) { console.log('PLAN ' + changes.length + ' files; rerun with --apply to update and resolve locks.'); return; }
     for (const change of changes) if (await readFile(change.path, 'utf8') !== change.before) throw Error('Concurrent edit; bump refused: ' + change.path);
     for (const change of changes) await writeFile(change.path, change.after);
     report.applied = true;
     await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
-    for (const path of paths.filter(path => /(?:^|\/)package-lock\.json$/.test(path) && !/(?:^|\/)(?:node_modules|artifacts|dist)\//.test(path))) {
+    for (const path of paths.filter(path => !residual && /(?:^|\/)package-lock\.json$/.test(path) && !/(?:^|\/)(?:node_modules|artifacts|dist)\//.test(path))) {
         const before = await readFile(path, 'utf8');
         refreshLock(dirname(path));
         const after = await readFile(path, 'utf8');
@@ -100,15 +104,16 @@ export async function updateDependencies({ apply = false, output = 'artifacts/de
     await writeFile(resolve(output, 'dependency-commit.txt'), changes.length ? summarizeChanges(changes) : 'No dependency version changes.\n');
     const actual = [];
     for (const path of paths) if (/(?:package\.json|global\.json|Dockerfile|\.(?:csproj|props|targets|ya?ml|mjs|cjs|ps1|sh))$/.test(path)) actual.push(...declarations(path, await readFile(path, 'utf8')));
-    await checkFreshness(actual, lookup);
-    await checkLocks(paths);
+    await checkFreshness(actual.filter(row => !residual || residualDeclaration(row)), lookup);
+    if (!residual) await checkLocks(paths);
     report.verified = true;
+    if (residual) report.updates = rows;
     report.changes = changes.map(change => ({ path: change.path, beforeSha256: hash(change.before), afterSha256: hash(change.after) }));
     await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     console.log('PASS bump and freshness: ' + actual.length + ' declarations; locks resolved; no commit, push or publication.');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const unknown = process.argv.slice(2).filter(arg => arg !== '--apply' && !arg.startsWith('--output='));
+    const unknown = process.argv.slice(2).filter(arg => !['--apply', '--residual'].includes(arg) && !arg.startsWith('--output='));
     if (unknown.length) throw Error('Unsupported bump option');
-    await updateDependencies({ apply: process.argv.includes('--apply'), output: process.argv.find(arg => arg.startsWith('--output='))?.slice(9) });
+    await updateDependencies({ apply: process.argv.includes('--apply'), residual: process.argv.includes('--residual'), output: process.argv.find(arg => arg.startsWith('--output='))?.slice(9) });
 }

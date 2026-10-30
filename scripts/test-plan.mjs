@@ -5,7 +5,7 @@ export const plugins = ['account-hub','discord-bridge','private-syncplay','delet
 const rootTests = names => names.map(name => 'scripts/' + name + '.test.mjs');
 export const commonTests = [
     ...rootTests(['admin-ui','diagnostics-ui','user-error-boundary','latest-releases','ci-fixture-regressions','docs',
-        'dependency-maintenance','dependency-evidence','update-dependencies','fixture-tools','route-audit','browser-relay',
+        'dependency-maintenance','dependency-evidence','private-command','update-dependencies','fixture-tools','route-audit','browser-relay',
         'release-target-policy','workflows','test-plan']),
     'plugins/private-syncplay/tests/jellyfin-versions.test.mjs',
     'tests/tooling/tool-http.test.mjs'

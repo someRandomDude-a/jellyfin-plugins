@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   scope:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == vars.DEPENDENCY_BOT_LOGIN && startsWith(github.head_ref, 'renovate/')
+    if: github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/')) || (vars.DEPENDENCY_BOT_LOGIN != '' && github.event.pull_request.user.login == vars.DEPENDENCY_BOT_LOGIN && startsWith(github.head_ref, 'dependency-maintenance/')))
     runs-on: ubuntu-latest
     outputs:
       base: ${{ steps.scope.outputs.base }}
@@ -64,32 +64,3 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           node -e 'const jobs=JSON.parse(process.env.RESULTS); if(Object.values(jobs).some(job=>job.result!=="success"))process.exit(1)'
-  merge-and-release:
-    needs: [scope, accepted]
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    concurrency:
-      group: dependency-promotion
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v7.1.0
-        with:
-          node-version: node
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          name: dependency-commit-${{ github.event.pull_request.number }}
-      - name: Merge only the tested head, preserve branch rules, dispatch immutable patch release
-        env:
-          GH_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ needs.scope.outputs.base }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: node scripts/promote-dependency-update.mjs

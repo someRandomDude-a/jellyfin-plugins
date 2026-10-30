@@ -11,60 +11,26 @@ concurrency:
   group: dependency-discovery
   cancel-in-progress: false
 jobs:
-  renovate:
+  residual:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check dependency-bot installation
-        env:
-          BOT_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
-          BOT_LOGIN: ${{ vars.DEPENDENCY_BOT_LOGIN }}
-        run: |
-          test -n "$BOT_TOKEN" || { echo 'Configure DEPENDENCY_BOT_TOKEN with repository contents, pull-request and Actions write access.'; exit 1; }
-          test -n "$BOT_LOGIN" || { echo 'Configure DEPENDENCY_BOT_LOGIN to the token owner/app bot login.'; exit 1; }
       - uses: actions/checkout@v7.0.1
-      - name: Discover stable NuGet, npm, SDK, Actions and embedded container updates
-        uses: renovatebot/github-action@v46.3.10
         with:
-          token: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
-          renovate-version: latest
-        env:
-          RENOVATE_REPOSITORIES: ${{ github.repository }}
-          RENOVATE_USERNAME: ${{ vars.DEPENDENCY_BOT_LOGIN }}
-          RENOVATE_ONBOARDING: 'false'
-          RENOVATE_REQUIRE_CONFIG: required
-          RENOVATE_ALLOWED_COMMANDS: '[]'
-          RENOVATE_IGNORE_SCRIPTS: 'true'
-          RENOVATE_AUTOMERGE: 'false'
-  preview:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7.0.1
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: node
-      - name: Apply fixed-scope stable updates in this disposable checkout only
+      - name: Discover only embedded tools, images and upstream markers
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/update-dependencies.mjs --apply
-      - name: Export reviewable dependency patch
-        run: git diff --binary > artifacts/dependency-bump/dependencies.patch
-      - uses: ./.github/actions/setup-latest-tools
-      - name: Audit updated source once before the nested test entry points
+        run: node scripts/update-dependencies.mjs --apply --residual
+      - name: Publish dependency-only PR from trusted tooling
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node scripts/check-dependency-freshness.mjs --output=artifacts/dependency-bump/dependency-audit.json
-          echo "SUITE_DEPENDENCY_AUDIT=$GITHUB_WORKSPACE/artifacts/dependency-bump/dependency-audit.json" >> "$GITHUB_ENV"
-      - run: npm ci --ignore-scripts --prefix plugins/private-syncplay
-      - name: Linux root tests on the bumped working source
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/test.ps1
-      - uses: actions/upload-artifact@v7.0.2
-        if: always()
-        with:
-          name: dependency-bump-preview
-          path: artifacts/dependency-bump/
+          GH_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DEPENDENCY_BOT_LOGIN: ${{ vars.DEPENDENCY_BOT_LOGIN }}
+        run: node scripts/publish-residual-update.mjs

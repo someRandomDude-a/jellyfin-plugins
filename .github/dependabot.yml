@@ -1,0 +1,53 @@
+version: 2
+
+# Public registries only: no custom discovery credential or external-code execution.
+multi-ecosystem-groups:
+  project-dependencies:
+    schedule:
+      interval: cron
+      cronjob: '17 * * * *'
+
+updates:
+  - package-ecosystem: nuget
+    directories: ['/**']
+    patterns: ['*']
+    multi-ecosystem-group: project-dependencies
+    cooldown:
+      exclude: ['*']
+    exclude-paths: ['**/bin/**', '**/obj/**', '**/artifacts/**', 'Jellyfin.Target.props']
+    ignore:
+      # These follow the reviewed server ABI, not independent package upgrades.
+      - dependency-name: Jellyfin.Controller
+      - dependency-name: Jellyfin.Model
+      - dependency-name: Jellyfin.Common
+      - dependency-name: Microsoft.Data.Sqlite
+      - dependency-name: Microsoft.Data.Sqlite.Core
+      - dependency-name: Microsoft.EntityFrameworkCore.Sqlite
+      - dependency-name: Microsoft.EntityFrameworkCore.Design
+      - dependency-name: SkiaSharp
+      - dependency-name: SkiaSharp.NativeAssets.Linux.NoDependencies
+  - package-ecosystem: npm
+    directories: ['/plugins/private-syncplay', '/plugins/deletion-queue/test-infrastructure/browser']
+    patterns: ['*']
+    multi-ecosystem-group: project-dependencies
+    versioning-strategy: increase
+    cooldown:
+      exclude: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    patterns: ['*']
+    multi-ecosystem-group: project-dependencies
+    cooldown:
+      exclude: ['*']
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    patterns: ['*']
+    multi-ecosystem-group: project-dependencies
+    cooldown:
+      exclude: ['*']
+  - package-ecosystem: docker-compose
+    directories: ['/modules/user-management', '/plugins/deletion-queue/test-infrastructure']
+    patterns: ['*']
+    multi-ecosystem-group: project-dependencies
+    cooldown:
+      exclude: ['*']

@@ -1,0 +1,36 @@
+name: Dependency update promotion
+on:
+  workflow_run:
+    workflows: [Dependency update validation]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: dependency-promotion
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Never check out candidate code, download artifacts, restore caches or run
+      # dependency installation in this privileged workflow.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: node
+      - name: Revalidate accepted run and promote only its exact dependency diff
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDENCY_BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DEPENDENCY_BOT_LOGIN: ${{ vars.DEPENDENCY_BOT_LOGIN }}
+          VALIDATION_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: node scripts/promote-dependency-update.mjs

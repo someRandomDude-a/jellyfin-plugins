@@ -2,13 +2,15 @@
 
 ## Prerequisites and setup
 
-Configure the dedicated bot token/login, required checks, squash merging and
+Configure Dependabot, the residual/promotion bot secret, required checks, squash merging and
 release-environment policy using the setup section below. Changes take effect
 only after the normal reviewed deployment; never bypass approvals.
 The [current review status](review-status.md) records direct-dependency freshness
 and acceptance results separately. Bot discovery is not proof that an upgrade passed acceptance.
 
-`dependency-maintenance.yml` checks for stable updates **hourly**, on manual
+Dependabot checks supported ecosystems **hourly**, grouped across ecosystems by
+`.github/dependabot.yml`. It uses public registries without a custom token.
+`dependency-maintenance.yml` checks the remaining embedded declarations hourly, on manual
 dispatch, or on a `repository_dispatch` event of type `dependency-update`.
 An upstream webhook can send that event for earlier discovery; GitHub does not
 provide a universal “any dependency released” event.
@@ -44,17 +46,19 @@ tools/freshness **before creating a tag** as well as before tests/publication.
 Docker daemon, Git and OS utilities remain runner prerequisites; managed browser,
 lint, tunnel and fixture images are handled by the image freshness/bump policies.
 
-One hourly maintenance workflow contains both jobs. Renovate
-opens the protected dependency PR; the preview job applies updates
-only in its disposable checkout and uploads the patch/report, then tests it.
+Dependabot owns standard manifests/locks. The residual workflow updates only
+embedded image/tool versions, numeric Node declarations and upstream markers.
+It supplements a pending Dependabot PR, preserving its native changes, or opens
+a separate `dependency-maintenance/` PR if no Dependabot PR is pending. Candidate
+files are read as Git objects, never checked out or executed by the publisher.
 Immutable release source is never automatically rewritten: stale releases stop
 until the tested dependency update is merged.
 
 ### Manual reviewable bump (same engine locally and in Actions)
 
-Run **Actions → Dependency maintenance** to get a dependency-only preview patch, report
-and itemized version/lock changes plus Linux root tests, without commits, pushes or publication. For the
-same steps locally, with current stable Node/npm:
+**Actions → Dependency maintenance** publishes or supplements a residual dependency
+PR; it does not merge or release it. For a local full reviewable bump without a
+commit, push or publication, use current stable Node/npm:
 
 ```powershell
 node scripts/update-dependencies.mjs --apply
@@ -69,20 +73,22 @@ new direct versions; that is not a project feature/dependency-set expansion. Rep
 live under `artifacts/dependency-bump/`. Failed resolution or acceptance is not a
 successful bump. The read-only release gate never edits immutable tagged source.
 
-The scheduled/manual preview workflow is an artifact-only helper; the existing Renovate discovery/
-PR/validation/promotion process below remains the protected recurring automation.
+Use `node scripts/update-dependencies.mjs --apply --residual` for only the custom
+updater's scope, without npm lock refresh or dependency installation. Residual
+verification covers that scope only; full freshness remains mandatory in PR CI.
 After bumping, run Linux root/installed acceptance locally. GitHub retains its
 Windows/ARM/platform jobs; no live human fixture is launched by dependency discovery.
 
 ### Protected recurring automation
 
-1. Renovate discovers direct NuGet/npm dependencies (refreshing their locks), .NET SDK,
-   GitHub Actions (including composite actions), Docker Compose, embedded
-   tool-container and Playwright tool updates. Updates
-   are grouped into one dependency branch/PR. Stable major updates are eligible,
+1. Dependabot discovers NuGet/npm dependencies and locks, .NET SDK,
+   GitHub Actions (including composite actions) and Docker Compose. The custom
+   residual workflow covers embedded tool/container declarations and upstream releases.
+   Native version updates share a multi-ecosystem group with no cooldown. Major updates are eligible,
    but an incompatible update must fail tests rather than bypass them.
-2. `dependency-validation.yml` accepts only a same-repository `renovate/` branch
-   owned by the configured dependency bot. Trusted **base-branch** tooling checks
+2. `dependency-validation.yml` accepts same-repository `dependabot/` branches
+   authored by `dependabot[bot]`, or `dependency-maintenance/` branches authored by
+   the configured residual bot. Trusted **base-branch** tooling checks
    that only dependency declarations/locks changed and generates the commit body.
 3. All selected-plugin Windows/Linux gates, standalone installed tests, full root
    tests on Windows/Linux, installed browser checks, the 128-case matrix, native
@@ -90,11 +96,16 @@ Windows/ARM/platform jobs; no live human fixture is launched by dependency disco
    fixtures must pass. Human/live-service acceptance is never silently launched
    or represented as tested. Failures/cancellations/skipped required jobs block
    promotion.
-4. The bot squash-merges only the tested head onto the unchanged tested base.
+4. A separate default-branch `dependency-promotion.yml` workflow runs after successful
+   validation. It checks the API-reported workflow path, event, repository, PR
+   association, exact head/base and successful acceptance job in the current run
+   attempt. It recomputes the entire dependency-only diff using trusted scripts,
+   without candidate artifacts/caches, checkout or dependency installation.
+   The bot squash-merges only the tested head onto the unchanged tested base.
    The final commit lists **each changed direct and lockfile/transitive dependency**,
    old/new versions, integrity/digest changes and affected files. Non-dependency
-   source/config changes require separate review; npm lifecycle scripts and
-   Renovate post-upgrade commands are disabled.
+   source/config changes require separate review. No general external-code
+   execution is enabled in Dependabot; custom updates do not install dependencies.
 5. The promotion script picks the next suite **patch** above every existing
    suite/plugin version and dispatches `release-all.yml` at the exact merged SHA.
    That engine rechecks/builds/validates all 18 packages, publishes an immutable
@@ -104,7 +115,7 @@ Windows/ARM/platform jobs; no live human fixture is launched by dependency disco
 
 Software under test—Jellyfin, Security, Enhanced, Seerr and Arr—continues to be
 resolved automatically per run, not converted into permanent fixture pins.
-`.github/upstream-dependencies.json` lets Renovate detect their new releases and
+`.github/upstream-dependencies.json` lets the residual updater detect new releases and
 open a tested maintenance PR even when no library declaration changed. It is an
 automatically maintained notification marker, **never** a build/test input or an
 older-version fallback. Its changes are itemized in the final commit too.
@@ -175,6 +186,54 @@ A version bump or freshness pass does not prove full acceptance. See
 
 ## One-time repository setup
 
+### Discovery ownership
+
+| Dependency source | Native Dependabot |
+| --- | --- |
+| NuGet projects, npm manifests/locks | Supported; preserve server-owned package exclusions |
+| GitHub workflows and composite Actions | Supported |
+| `global.json` SDK | Supported through `dotnet-sdk` |
+| Compose manifests | Configured through `docker-compose`; there are no tracked Dockerfiles |
+| Images/tool versions embedded in scripts or workflow commands | Custom residual updater |
+| `.github/upstream-dependencies.json` release markers | Custom residual updater |
+| Full acceptance, protected merge and exact-SHA patch release | Keep the project workflows |
+
+Nested NuGet projects and both npm manifests are covered. Server-owned SDK,
+database and renderer packages and the historical IDE baseline are excluded.
+SDK prereleases are disabled in `global.json`. Reviewed source fingerprints are
+never updated automatically. Add an explicit `docker` entry if Dockerfiles are added.
+
+Dependabot PR workflows normally receive a read-only `GITHUB_TOKEN` and
+**Dependabot secrets**, not ordinary Actions secrets. Do **not** copy the promotion
+credential into Dependabot secrets or use `pull_request_target` to execute candidate
+code. The separate `workflow_run` promotion uses trusted default-branch tooling.
+Private registry credentials, if ever needed, belong in narrowly scoped Dependabot
+secrets, not a general repository-write bot token. Public discovery needs no custom
+bot token. Prefer short-lived GitHub App credentials for privileged promotion in a
+future migration.
+
+### Credential handling
+
+The current custom credential is referenced only through GitHub Actions
+`secrets.DEPENDENCY_BOT_TOKEN`; `DEPENDENCY_BOT_LOGIN` is public identity, not a
+credential. Never supply credentials through repository variables, dispatch inputs,
+URLs, command arguments, source files, patches or artifacts. Do not enable shell,
+HTTP or Git debug tracing in credential-bearing jobs.
+
+Maintenance and promotion checkouts do not persist credentials. The custom
+token is scoped to final trusted publication/promotion steps, never passed into candidate test
+jobs or inherited by reusable workflows. Promotion recomputes its summary rather
+than downloading candidate-produced artifacts. Subprocess failures discard output
+and nested errors instead of printing potentially credential-bearing diagnostics.
+Dependabot receives no custom bot token. The residual discovery step uses only
+the read-only job token; only its final publication step receives the custom secret.
+
+These controls reduce exposure; they do not establish that historical logs or
+remote secret configuration have never leaked. Secret values and `.env` files were
+not read during this assessment, and remote logs/settings were not audited. If
+exposure is suspected, revoke/rotate the credential in GitHub and review affected
+logs/artifacts; masking is not a substitute for isolation.
+
 - Add secret **`DEPENDENCY_BOT_TOKEN`**, a dedicated bot fine-grained token for
   this repository with Contents, Pull requests, Actions and Workflows write
   access, plus Administration read access to inspect required checks. Use normal
@@ -192,22 +251,32 @@ A version bump or freshness pass does not prove full acceptance. See
   the normal approved source-change process. No local commit/push/publication is
   performed merely by adding this configuration.
 
-A normal `GITHUB_TOKEN` is intentionally not used as the dependency bot: its
-commits generally do not trigger subsequent Actions workflows. The dedicated
-token allows PR test runs and explicit release dispatch without relying on tag
-push side effects.
+The dedicated residual/promotion token ensures custom branch updates trigger PR
+tests and permits explicit release dispatch. It is not needed by native Dependabot.
+Do not copy it into Dependabot secrets. Activate the configuration through normal
+review on the default branch and enable Dependabot version updates in repository
+settings if disabled. No remote settings or secrets are changed by local edits.
 
 ## Failure and retry behavior
 
-No update is merged or released after a failed gate. A moving base/head requires
+No update is merged or released after a failed gate. The residual publisher never
+force-pushes or overwrites an existing residual branch. An existing residual PR
+requiring fresh versions must be rebased/reviewed; a pending grouped Dependabot PR
+can instead receive the latest residual supplement. Ambiguous multiple native PRs
+require consolidation. Newly stale native dependencies wait for Dependabot; the
+residual workflow does not silently take over native manifests. Full freshness
+may remain blocked until that happens. A moving base/head requires
 rebase and retesting, not a forced merge. A failed release leaves its immutable
 tag/draft for investigation; never overwrite assets or move tags. Retrying
-promotion reuses an existing suite tag for the same merge commit. Catalog repair
-continues through the existing manifest workflow. A passing automated preview is
+promotion is refused for closed/merged PRs, preventing a replay from publishing a
+second release. If release dispatch fails after merge, use the protected release
+selector at the exact merge SHA and its existing immutable tag, if any. Catalog
+repair continues through the existing manifest workflow. Passing automation is
 not completion of the product/live-service gates in [review status](review-status.md).
 
 ## References
 
 - [Current release procedures](independent-plugin-releases.md) · [Release checklist](github-release-checklist.md)
 - [Testing](testing.md) · [Current blockers](review-status.md)
-- [Renovate documentation](https://docs.renovatebot.com/)
+- [Dependabot ecosystems](https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories)
+- [Dependabot Actions security](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions)

@@ -56,7 +56,7 @@ test('tool-bound jobs authenticate discovery, share source/run audits and always
 });
 test('dependency promotion uses trusted base tooling and requires every reusable gate without duplicate root tests', async () => {
     const workflow = await read('.github/workflows/dependency-validation.yml');
-    contains(workflow,['needs: [scope, targets, all-plugin-checks, installed-and-external]','needs: [scope, accepted]',
+    contains(workflow,['needs: [scope, targets, all-plugin-checks, installed-and-external]',
         'ref: ${{ github.event.pull_request.base.sha }}','uses: ./.github/workflows/tests.yml',
         'uses: ./.github/workflows/integration.yml','uses: ./.github/workflows/latest-targets.yml',
         "github.event.pull_request.head.repo.full_name == github.repository",'vars.DEPENDENCY_BOT_LOGIN']);
@@ -64,8 +64,43 @@ test('dependency promotion uses trusted base tooling and requires every reusable
     const promotion = await read('scripts/promote-dependency-update.mjs');
     contains(promotion,["'--match-head-commit', head",'current.commit.sha !== base',"contexts.includes('Dependency update acceptance')"]);
     const maintenance = await read('.github/workflows/dependency-maintenance.yml');
-    contains(maintenance,['schedule:','  preview:','  renovate:','group: dependency-discovery','cancel-in-progress: false','contents: read']);
+    contains(maintenance,['schedule:','  residual:','--apply --residual','publish-residual-update.mjs','group: dependency-discovery','cancel-in-progress: false','contents: read']);
+    assert(!maintenance.includes('renovate'));
     assert(!maintenance.includes('git push'));
+});
+test('dependency credentials stay out of persisted checkouts, candidate jobs and promotion artifacts', async () => {
+    for (const name of ['dependency-maintenance', 'dependency-validation', 'dependency-promotion']) {
+        const workflow = await read('.github/workflows/' + name + '.yml');
+        for (const checkout of workflow.split(/- uses: actions\/checkout@/).slice(1)) {
+            assert(checkout.split(/\r?\n      - /)[0].includes('persist-credentials: false'));
+        }
+        assert(!/pull_request_target:|secrets: inherit|set -x|printenv|GH_DEBUG:/.test(workflow));
+        assert(!/vars\.\w*(?:TOKEN|PASSWORD|SECRET)/.test(workflow));
+    }
+    const validation = await read('.github/workflows/dependency-validation.yml');
+    assert(!validation.includes('secrets.'));
+    assert(!validation.includes('merge-and-release:'));
+    const promotion = await read('.github/workflows/dependency-promotion.yml');
+    contains(promotion, ['workflow_run:', 'workflows: [Dependency update validation]',
+        'ref: ${{ github.event.repository.default_branch }}', 'VALIDATION_RUN_ID:', 'promote-dependency-update.mjs']);
+    assert(!promotion.includes('download-artifact'));
+    assert(!promotion.includes('uses: ./.github/'));
+    assert(!promotion.includes('npm ci'));
+    assert.equal((promotion.match(/secrets\.DEPENDENCY_BOT_TOKEN/g) || []).length, 1);
+    assert((await read('scripts/promote-dependency-update.mjs')).includes("import { privateCommand }"));
+});
+test('Dependabot owns supported ecosystems without a discovery secret or host ABI upgrades', async () => {
+    const config = await read('.github/dependabot.yml');
+    for (const ecosystem of ['nuget','npm','github-actions','dotnet-sdk','docker-compose']) {
+        assert(config.includes('package-ecosystem: ' + ecosystem));
+    }
+    contains(config, ['multi-ecosystem-groups:', "cronjob: '17 * * * *'", "directories: ['/**']",
+        'Jellyfin.Target.props', 'dependency-name: Jellyfin.Controller', 'dependency-name: SkiaSharp',
+        '/plugins/deletion-queue/test-infrastructure/browser', "exclude: ['*']"]);
+    assert(!/secrets\.|insecure-external-code-execution|registries:/.test(config));
+    await assert.rejects(access(new URL('../renovate.json', import.meta.url)));
+    const validation = await read('.github/workflows/dependency-validation.yml');
+    contains(validation, ["'dependabot[bot]'", "'dependabot/'", "'dependency-maintenance/'"]);
 });
 function assertLibraryOwners(text) {
     const commands = text.split(/\r?\n/).map(line=>line.trim()).filter(line=>line.startsWith('node scripts/integration.mjs '));

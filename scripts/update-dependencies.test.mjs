@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rewriteDependencies } from './update-dependencies.mjs';
+import { rewriteDependencies, residualDeclaration } from './update-dependencies.mjs';
 import { declarations } from './check-dependency-freshness.mjs';
 import { summarizeChanges } from './dependency-summary.mjs';
 
@@ -9,6 +9,16 @@ test('bump changes versions but preserves the direct dependency set and scripts'
     const after = rewriteDependencies('package.json', before, [{ kind: 'npm', name: 'existing', current: '^1.0.0', latest: '2.0.0' }]);
     assert.deepEqual(JSON.parse(after), { dependencies: { existing: '^2.0.0' }, scripts: { test: 'node test.mjs' } });
     assert.match(summarizeChanges([{ path: 'package.json', before, after }]), /existing/);
+});
+test('residual updater excludes all native Dependabot manifests and action refs', () => {
+    for (const row of [
+        { path: 'package.json', kind: 'npm' }, { path: 'test.csproj', kind: 'nuget' },
+        { path: 'global.json', kind: 'sdk' }, { path: '.github/workflows/check.yml', kind: 'action' },
+        { path: 'compose.yaml', kind: 'image' }, { path: 'nested/docker-compose.yml', kind: 'image' },
+        { path: 'Dockerfile', kind: 'image' }
+    ]) assert(!residualDeclaration(row));
+    for (const row of [{ path: 'scripts/test.sh', kind: 'npm' }, { path: 'scripts/tool.mjs', kind: 'image' },
+        { path: '.github/workflows/check.yml', kind: 'image' }, { path: '.github/workflows/check.yml', kind: 'node' }]) assert(residualDeclaration(row));
 });
 test('bump updates action refs and annotated hashes without changing workflow behavior', () => {
     const path = '.github/workflows/test.yml', before = 'uses: actions/checkout@' + 'a'.repeat(40) + ' # v4\nrun: safe';
