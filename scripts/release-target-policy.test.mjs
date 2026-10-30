@@ -90,4 +90,6 @@ test('tool bootstrap uses official stable metadata and verifies checksums before
     const code=await read('scripts/bootstrap-tools.ps1');
     for(const value of ['nodejs.org/dist/index.json','PowerShell/PowerShell/releases/latest','releases-index.json','SHASUMS256.txt','Get-FileHash','SHA512','checksum mismatch','PlanOnly','SUITE_TOOLCHAIN_READY'])assert(code.includes(value),value);
     assert(code.indexOf('Get-FileHash')<code.indexOf('Expand-Archive'));assert(!code.includes('Invoke-Expression'));assert(code.includes('do not override the source SDK'));
+    assert(code.includes('tool-http.ps1'));assert(!/\bInvoke-(?:WebRequest|RestMethod)\b/.test(code),'Bootstrap HTTP must use the bounded transport');
+    assert(code.includes('-TimeoutSeconds $MetadataTimeoutSeconds'));assert(code.includes('-TimeoutSeconds $DownloadTimeoutSeconds'));
 });

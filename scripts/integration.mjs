@@ -10,6 +10,7 @@ import { interactionsCompleted, accountInteractionsCompleted, accountResetComple
 import { startDiscordTunnel, probeDiscordTunnel, probeTrustedProxyAuth } from './discord-tunnel.mjs';
 import { requireFixturePowerShell } from './fixture-tools.mjs';
 import { moveFixtureState } from './fixture-state-files.mjs';
+import { verifyDiscordTransportSettings } from './discord-settings-acceptance.mjs';
 
 const option = name => process.argv.find(value => value.startsWith('--' + name + '='))?.split('=').slice(1).join('=');
 const liveDiscord = process.argv.includes('--live-discord');
@@ -1012,18 +1013,9 @@ try {
     }
     if (!has('hub') && libraryFixture) await testLibraryAdditions();
     if (!has('hub') && has('discord') && option('security') && process.argv.includes('--proof')) {
-        const enrollment = (await request('TwoFactorAuth/Setup/Totp', { method: 'POST', body: {} })).data;
-        await request('TwoFactorAuth/Setup/Totp/Confirm', { method: 'POST', body: { Code: totp(enrollment.secretKey) } });
-        const bridge = (await request('DiscordBridge/admin/v1/settings')).data.data;
-        const command = { revision: bridge.revision, settings: bridge.settings, confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: 'invalid' } };
-        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: command, expected: 403 });
-        await wait(30000 - Date.now() % 30000 + 1000);
-        command.stepUp.code = totp(enrollment.secretKey);
-        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: command });
-        await request('DiscordBridge/admin/v1/settings', { method: 'PUT', body: { ...command, revision: command.revision + 1 }, expected: 403 });
-        assert.equal((await request('DiscordBridge/admin/v1/settings')).data.data.revision, command.revision + 1);
-        enrollment.secretKey = enrollment.manualEntryKey = enrollment.qrCodeBase64 = command.stepUp.code = null;
-        console.log('PASS standalone Discord configuration uses real fresh native Security proof and rejects invalid/replayed proof without any Hub.');
+        assert(!liveDiscord, 'Standalone Security authorization acceptance requires a disposable non-live fixture');
+        await verifyDiscordTransportSettings({ request, totp, administratorId: login.data.user.id });
+        console.log('PASS standalone Discord operational settings with an enrolled native Security factor: administrator writes without fresh proof, anonymous/ordinary/API-key denial without changes, and stale revision rejection; no Hub.');
     }
     if (databaseSafety) {
         const identities = async () => (await request('Users')).data.map(user => ({ id: user.id, name: user.name, policy: user.policy })).sort((a, b) => a.id.localeCompare(b.id));

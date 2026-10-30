@@ -76,6 +76,27 @@ release. See [test ownership](testing.md#what-belongs-in-each-gate) and the
 [workflow map](../.github/README.md) for branch-protection migration notes.
 Earlier workflow, Linux fixture and poster evidence is preserved in the history.
 
+Latest Discord fixture correction: transport settings already use operational
+native-administrator authorization, not fresh proof. The stale standalone 403
+expectation is replaced with enrolled-factor administrator writes, anonymous/
+ordinary/API-key denial without mutation, and stale revision rejection. **241
+script tests** pass on Windows/Linux in `artifacts/discord-operational-scripts-r1.log`
+and `artifacts/discord-operational-linux-scripts-r1.log`. Backend/native acceptance
+is unverified; fresh discovery timed out in `artifacts/discord-operational-targets-r1.log`
+and `artifacts/discord-operational-targets-r2.log`. No older snapshot was substituted.
+The traced third attempt in `artifacts/discord-operational-targets-r3-trace.log`
+passes current release metadata and both reviewed source contracts; the official
+Security ZIP returns HTTP 200 but times out while downloading its body. This is
+not evidence that the new installed authorization checks passed.
+The owner test process was subsequently stopped after 90 minutes: its log was
+empty and bootstrap had downloaded only part of PowerShell, before any tests ran.
+The missing web-request deadlines are corrected with bounded, stage-logged HTTP;
+**248 script/tool checks** pass in `artifacts/tool-http-and-scripts-r2.log`, including
+seven real PowerShell HTTP cases (headers/body stalls, continuous trickle, clean
+metadata, HTTP failure, size limit and success). Live metadata-only bootstrap
+passes in `artifacts/tool-http-bootstrap-plan-r2.log`. Full tool installation and
+Discord backend/native acceptance remain unverified; no full rerun is active.
+
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys
 and histories. Use [testing](testing.md), [dependency maintenance](dependency-maintenance.md)

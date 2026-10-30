@@ -183,6 +183,24 @@ public sealed class ClientAndAuthorizationTests
     public void CumulativeMirror(StepUpLevel level, CommandRisk risk, bool expected) =>
         Assert.Equal(expected, CommandAuthorization.RequiresProof(level, risk));
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("invalid")]
+    public async Task OperationalSettingsNeverRequestOrConsumeFreshProof(string? code)
+    {
+        var http = new HttpStub(_ => throw new Exception("Operational writes must not call Security"));
+        using var cache = new ReadModelCache();
+        var compat = new CompatibilityStub();
+        var gate = new CommandAuthorization(new SecurityClient(new HttpClient(http), compat, cache), compat, new FixedClock());
+        var proof = code is null ? null : new StepUpProof { Code = code };
+        var result = await gate.AuthorizeAsync(Caller, new(StepUpLevel.Everything), CommandRisk.Operational,
+            false, null, "CONFIRM", proof, default);
+        Assert.Equal("administrator", result.Method);
+        Assert.Equal("non_security_operation", result.FallbackReason);
+        Assert.Empty(http.Requests);
+        if (proof is not null) Assert.Null(proof.Code);
+    }
+
     [Fact]
     public async Task SafeCacheChecksCompatibilityAndRefreshes()
     {

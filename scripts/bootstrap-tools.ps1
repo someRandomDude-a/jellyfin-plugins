@@ -1,5 +1,8 @@
-param([string]$Directory = '', [switch]$PlanOnly)
+param([string]$Directory = '', [switch]$PlanOnly,
+    [ValidateRange(1,900)][int]$MetadataTimeoutSeconds = 30,
+    [ValidateRange(1,900)][int]$DownloadTimeoutSeconds = 300)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'tool-http.ps1')
 $repo = Split-Path $PSScriptRoot -Parent
 $windows = $env:OS -eq 'Windows_NT'
 $platform = if ($windows) { 'win' } elseif ((uname -s) -eq 'Linux') { 'linux' } else { throw 'Tool bootstrap supports Windows and Linux only' }
@@ -7,11 +10,11 @@ $machine = if ($windows) { $env:PROCESSOR_ARCHITECTURE } else { uname -m }
 $arch = switch -Regex ($machine) { '^(AMD64|x86_64)$' { 'x64'; break } '^(ARM64|aarch64)$' { 'arm64'; break } default { throw 'Unsupported tool architecture' } }
 $headers = @{ 'User-Agent' = 'JellyfinSuite-ToolBootstrap' }
 if ($env:GH_TOKEN) { $headers.Authorization = "Bearer $env:GH_TOKEN" }
-$nodeReleases = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
+$nodeReleases = Invoke-ToolHttp -Name 'stable Node metadata' -Uri 'https://nodejs.org/dist/index.json' -TimeoutSeconds $MetadataTimeoutSeconds -Quiet:$PlanOnly | ConvertFrom-Json
 $node = @($nodeReleases | Where-Object { $_.version -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]$_.version.Substring(1) } -Descending)[0].version
-$ps = Invoke-RestMethod 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -Headers $headers
+$ps = Invoke-ToolHttp -Name 'stable PowerShell metadata' -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -Headers $headers -TimeoutSeconds $MetadataTimeoutSeconds -Quiet:$PlanOnly | ConvertFrom-Json
 if ($ps.draft -or $ps.prerelease -or $ps.tag_name -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid stable PowerShell release metadata' }
-$index = Invoke-RestMethod 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json'
+$index = Invoke-ToolHttp -Name 'stable SDK metadata' -Uri 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json' -TimeoutSeconds $MetadataTimeoutSeconds -Quiet:$PlanOnly | ConvertFrom-Json
 $channel = @($index.'releases-index' | Where-Object { $_.'support-phase' -in @('active','maintenance') -and $_.'latest-sdk' -match '^\d+\.\d+\.\d+$' } | Sort-Object { [version]$_.'latest-sdk' } -Descending)[0]
 $sdk = $channel.'latest-sdk'
 $declared = (Get-Content -LiteralPath (Join-Path $repo 'global.json') -Raw | ConvertFrom-Json).sdk.version
@@ -26,8 +29,7 @@ function Install-Verified([string]$Name, [string]$Url, [string]$Expected, [strin
     if ($Expected -notmatch $(if ($Algorithm -eq 'SHA512') { '^[a-fA-F0-9]{128}$' } else { '^[a-fA-F0-9]{64}$' })) { throw "Missing official checksum for $Name" }
     $archive = Join-Path $Directory ($Name + $Extension)
     $destination = Join-Path $Directory $Name
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $archive
+    Invoke-ToolHttp -Name "$Name archive" -Uri $Url -Destination $archive -TimeoutSeconds $DownloadTimeoutSeconds -MaxBytes 1073741824
     if ((Get-FileHash -LiteralPath $archive -Algorithm $Algorithm).Hash.ToLowerInvariant() -ne $Expected.ToLowerInvariant()) { throw "$Name checksum mismatch; refusing extraction or execution" }
     New-Item -ItemType Directory -Path $destination | Out-Null
     if ($Extension -eq '.zip') { Expand-Archive -LiteralPath $archive -DestinationPath $destination }
@@ -36,7 +38,7 @@ function Install-Verified([string]$Name, [string]$Url, [string]$Expected, [strin
 }
 $nodeExt = if ($windows) { '.zip' } else { '.tar.xz' }
 $nodeName = "node-$node-$platform-$arch"
-$sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$node/SHASUMS256.txt").Content
+$sums = Invoke-ToolHttp -Name 'official Node checksums' -Uri "https://nodejs.org/dist/$node/SHASUMS256.txt" -TimeoutSeconds $MetadataTimeoutSeconds
 $nodeHash = [regex]::Match($sums, '(?m)^([a-f0-9]{64})\s+' + [regex]::Escape($nodeName + $nodeExt) + '\r?$').Groups[1].Value
 $nodeRoot = Install-Verified node "https://nodejs.org/dist/$node/$nodeName$nodeExt" $nodeHash SHA256 $nodeExt
 $nodeBin = Join-Path $nodeRoot $nodeName
@@ -46,7 +48,7 @@ $psName = if ($windows) { "PowerShell-$($versions.powershell)-win-$arch.zip" } e
 $asset = @($ps.assets | Where-Object name -eq $psName)
 if ($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:([a-f0-9]{64})$') { throw 'Official PowerShell asset/checksum unavailable' }
 $psBin = Install-Verified powershell $asset[0].browser_download_url $asset[0].digest.Substring(7) SHA256 $psExt
-$releases = Invoke-RestMethod $channel.'releases.json'
+$releases = Invoke-ToolHttp -Name 'SDK release metadata' -Uri $channel.'releases.json' -TimeoutSeconds $MetadataTimeoutSeconds | ConvertFrom-Json
 $sdkRelease = @($releases.releases | ForEach-Object { $_.sdks } | Where-Object version -eq $sdk)[0]
 $sdkFile = @($sdkRelease.files | Where-Object { $_.rid -eq "$platform-$arch" -and $_.name.EndsWith($(if ($windows) { '.zip' } else { '.tar.gz' })) })[0]
 if (!$sdkFile) { throw 'Latest SDK archive is unavailable for this platform' }

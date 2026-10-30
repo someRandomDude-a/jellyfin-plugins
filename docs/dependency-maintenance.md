@@ -29,6 +29,14 @@ is retained and rejected, never executed. `-PlanOnly` prints discovered versions
 without installing. A newer SDK than `global.json` requires a dependency bump,
 not an override of the source's build policy.
 
+Bootstrap logs each fetch stage and applies a hard **30-second metadata** and
+**300-second archive** deadline across connection, headers and the entire body.
+Slow trickle traffic cannot reset the deadline. Failures preserve partial files
+without extracting/executing them, retrying indefinitely or selecting older tools.
+Explicit `-MetadataTimeoutSeconds`/`-DownloadTimeoutSeconds` values remain bounded
+to 1–900 seconds. `tests/tooling/tool-http.test.mjs` exercises real stalled/trickling
+local HTTP responses through PowerShell; normal owner/suite test plans include it.
+
 The local test/package entry points bootstrap tools and check dependency freshness
 before execution. CI uses `.github/actions/setup-latest-tools` in the parent
 target gate and child target-binding action. Node/PowerShell/SDK versions bind

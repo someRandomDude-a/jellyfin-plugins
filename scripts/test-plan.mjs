@@ -7,11 +7,12 @@ export const commonTests = [
     ...rootTests(['admin-ui','diagnostics-ui','user-error-boundary','latest-releases','ci-fixture-regressions','docs',
         'dependency-maintenance','dependency-evidence','update-dependencies','fixture-tools','route-audit','browser-relay',
         'release-target-policy','workflows','test-plan']),
-    'plugins/private-syncplay/tests/jellyfin-versions.test.mjs'
+    'plugins/private-syncplay/tests/jellyfin-versions.test.mjs',
+    'tests/tooling/tool-http.test.mjs'
 ];
 export const ownerTests = {
     'account-hub': rootTests(['group-policy-ui','domain-panel','invite-public','public-link','link-return']),
-    'discord-bridge': rootTests(['discord-acceptance','discord-tunnel','discord-permissions']),
+    'discord-bridge': rootTests(['discord-acceptance','discord-tunnel','discord-permissions','discord-settings-acceptance']),
     'private-syncplay': [],
     'deletion-queue': rootTests(['removal-ui','presentation-ui']),
     notifications: rootTests(['push-settings','notification-studio','live-poster-measurement','notification-studio-snapping','notification-catalog']),

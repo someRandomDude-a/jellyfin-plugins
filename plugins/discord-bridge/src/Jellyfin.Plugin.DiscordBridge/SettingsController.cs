@@ -46,7 +46,7 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
         } catch { permissionUsersStatus = "unavailable"; }
         return Envelope(new { revision = value.Revision, settings = value.Settings, effectivePublicServerUrl=publicUrl?.AbsoluteUri.TrimEnd('/'), tokenConfigured = value.Token is not null, connected = runtime.Connected, state = runtime.State, instanceCode=runtime.InstanceCode, botUsername=runtime.BotUsername, botId=runtime.ApplicationId, interactions = runtime.Interactions.Snapshot(),
             permissionActions = BridgePermissions.Catalog, permissionUsers, permissionUsersStatus,
-            authorization = "Native Jellyfin administrator authorization; explicit confirmation, no fresh factor for Discord transport settings",
+            authorization = "Native Jellyfin administrator authorization; no fresh factor or typed confirmation for Discord transport settings",
             security = security.State, libraryFolders = libraries, libraryStatus, libraryHealth = services.GetRequiredService<Jellyfin.LibraryNotifications.LibraryNoticeStore>().Health(), libraryCaptureOwner = notifications ? "Notifications (single observer; Discord Bridge owns channel delivery)" : "Unavailable — install Notifications; Bridge retains transport history only",
             features = new[] {
                 new { id = "transport", name = "Bot / generic Discord delivery", available = true, reason = "No other suite plugin is required.", fix = "Configure this bot and its Discord permissions." },
@@ -96,8 +96,9 @@ public sealed class SettingsController(BridgeStore store, BridgeRuntime runtime,
                 var trusted = new Uri(app.GetLocalApiUrl("127.0.0.1", "http", app.HttpPort).TrimEnd('/') + '/');
                 var proof = body.TryGetProperty("stepUp", out var step) ? step.Deserialize<StepUpProof>(SecurityJson.Options) : null;
                 var confirmation = body.TryGetProperty("confirmation", out var confirm) ? confirm.GetString() : null;
-                // Absence of Hub never lowers a configured Hub policy: standalone configuration
-                // conservatively requires proof for every write when Security has a factor.
+                // Match the Hub gate's operational classification. Native elevated
+                // administrator authorization was rechecked above; transport writes
+                // do not add a fresh-factor or typed-confirmation requirement.
                 evidence = await services.GetRequiredService<CommandAuthorization>().AuthorizeAsync(new(caller.UserId, caller.Token!, trusted), new(StepUpLevel.Everything), CommandRisk.Operational, false, confirmation, "CONFIRM ACCOUNT HUB CHANGE", proof, ct);
             }
             var config = body.GetProperty("settings").Deserialize<Configuration>(Json) ?? throw new ArgumentException();
