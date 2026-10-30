@@ -364,6 +364,15 @@ notificationTest('Installed category acceptance targets visible headings and ret
     assert(acceptance.includes("getByRole('heading', { name, exact: true })"));
     for (const check of ['await important.check()', "important.press('ArrowRight')", "press('ArrowLeft')", 'document.activeElement', 'box.width >= 44', 'Could not restore disposable personal preferences']) assert(acceptance.includes(check));
 });
+queueTest('Installed queued context fixture invalidates shared lookup and checks concise status without timelines', async () => {
+    const acceptance = await source('scripts/theme-acceptance.cjs');
+    const queued = acceptance.slice(acceptance.indexOf('queuedMenu = true;'), acceptance.indexOf("phase = 'enhanced-deletion-views'"));
+    const invalidate = queued.indexOf("window.dispatchEvent(new Event('suite-removal-changed'))");
+    assert(invalidate >= 0 && invalidate < queued.indexOf("new MouseEvent('contextmenu'"));
+    assert(queued.includes(".dq-timeline, .dq-flow-timeline, [aria-current=step]"));
+    assert(queued.includes("getByRole('button', { name: 'Undo removal request', exact: true }).waitFor()"));
+    assert(queued.includes("'Keep item (reject removal)'"));
+});
 queueTest('Installed journal acceptance checks current table records rather than the retired JSON viewer', async () => {
     const acceptance = await source('scripts/theme-acceptance.cjs');
     assert(acceptance.includes("journal.locator('#dqJournal table')"));

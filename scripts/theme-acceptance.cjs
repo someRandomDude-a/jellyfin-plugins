@@ -350,6 +350,9 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
         assert.equal(deletionPreviews, 4, 'Detail, Enhanced request, removed menu and native dialog must each open a read-only preview');
         queuedMenu = true;
         await page.evaluate(() => {
+            // Model the real proposal-change notification, invalidating the shared
+            // unqueued media lookup before reopening the native menu.
+            window.dispatchEvent(new Event('suite-removal-changed'));
             document.querySelector('#dq-installed-contract .card').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
             const menu = document.createElement('dialog'); menu.className = 'dialog actionSheet'; menu.id = 'dq-queued-menu-fixture';
             menu.innerHTML = '<div class="actionSheetScroller"><button class="listItem listItem-button actionSheetMenuItem">Play</button></div>'; document.body.append(menu); menu.showModal();
@@ -357,7 +360,8 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
         const queuedContext = page.locator('#dq-queued-menu-fixture');
         await queuedContext.getByRole('button', { name: 'Undo removal request', exact: true }).waitFor();
         assert(await queuedContext.evaluate(e => getComputedStyle(e).color === getComputedStyle(document.body).color), 'Native context section must inherit theme foreground');
-        assert.equal(await queuedContext.locator('[aria-current=step]').getAttribute('data-checkpoint'), 'delay');
+        assert.equal(await queuedContext.locator('.dq-timeline, .dq-flow-timeline, [aria-current=step]').count(), 0, 'Context menus show concise status, not a timeline');
+        assert.match(await queuedContext.locator('[data-removal-status]').textContent(), /Removal · /);
         assert.equal(await queuedContext.getByRole('button', { name: 'Request removal', exact: true }).count(), 0);
         assert.equal(await queuedContext.getByRole('button', { name: 'Keep item (reject removal)', exact: true }).getAttribute('aria-pressed'), 'true');
         assert.equal(await queuedContext.locator('.dq-context-action .listItemIcon').count(), 4);
