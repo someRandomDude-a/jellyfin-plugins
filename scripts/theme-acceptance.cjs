@@ -622,8 +622,10 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                     assert(await editor.evaluate(e => e.scrollWidth <= e.clientWidth + 2), 'Presentation editor overflows at ' + width);
                 }
                 const journal = page.locator('#dqJournal').locator('..'); await journal.locator(':scope > summary').click();
-                await journal.locator('.suiteJsonTree').waitFor(); assert(await journal.locator('.suiteJsonTree details').count() > 1, 'Journal must provide transaction blocks');
-                await journal.getByRole('button', { name: 'JSON code', exact: true }).click(); assert(await journal.locator('.suiteJsonKey').count() > 0, 'Journal code must be syntax highlighted'); await journal.locator(':scope > summary').click();
+                await journal.locator('#dqJournal table').waitFor();
+                for (const heading of ['Sequence', 'Time', 'Event', 'Actor']) await journal.getByRole('columnheader', { name: heading, exact: true }).waitFor();
+                assert(await journal.locator('#dqJournal tbody tr').count() > 0, 'Journal must show recorded transactions');
+                await journal.locator(':scope > summary').click();
                 const taskLink = editor.locator('.suiteJobBadge').first(); assert.match(await taskLink.textContent(), /Daily/); await taskLink.click(); await page.waitForURL(/#\/dashboard\/tasks\//);
                 await page.goto(base.href.replace(/\/$/, '') + '/web/index.html#/configurationpage?name=DeletionQueueAdmin'); await page.locator('#dqPresentation .dq-canvas-editor').first().waitFor(); await page.waitForLoadState('networkidle');
             }

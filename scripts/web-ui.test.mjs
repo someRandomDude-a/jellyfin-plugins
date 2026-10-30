@@ -358,6 +358,27 @@ hubTest('Workspace navigation clears an open fresh-proof dialog without issuing 
     root.dispatchEvent(new window.Event('viewhide')); await turn();
     assert.equal(proof.value, ''); assert.equal(window.document.querySelectorAll('dialog').length, 0); assert.equal(calls.filter(c => c.method === 'POST').length, 0); dom.window.close();
 });
+notificationTest('Installed category acceptance targets visible headings and retains saved priority and keyboard checks', async () => {
+    const acceptance = await source('scripts/notification-category-acceptance.cjs');
+    assert(!acceptance.includes("closest('details').open"));
+    assert(acceptance.includes("getByRole('heading', { name, exact: true })"));
+    for (const check of ['await important.check()', "important.press('ArrowRight')", "press('ArrowLeft')", 'document.activeElement', 'box.width >= 44', 'Could not restore disposable personal preferences']) assert(acceptance.includes(check));
+});
+queueTest('Installed journal acceptance checks current table records rather than the retired JSON viewer', async () => {
+    const acceptance = await source('scripts/theme-acceptance.cjs');
+    assert(acceptance.includes("journal.locator('#dqJournal table')"));
+    assert(acceptance.includes("['Sequence', 'Time', 'Event', 'Actor']"));
+    assert(acceptance.includes("journal.locator('#dqJournal tbody tr').count() > 0"));
+    assert(!acceptance.includes("journal.locator('.suiteJsonTree')"));
+});
+hubTest('Installed diagnostic acceptance selects the table checkbox independently of inspect details', async () => {
+    const acceptance = await source('scripts/diagnostics-acceptance.cjs');
+    assert(acceptance.includes("panel().locator('tbody tr').filter"));
+    assert(acceptance.includes("const record=row.locator('details')"));
+    assert(acceptance.includes("row.getByRole('checkbox',{name:'Select error '+id,exact:true}).check()"));
+    assert(acceptance.includes("assert.equal((await api('errors?id='+id)).items.length,0)"));
+    assert(acceptance.includes('assert.equal(denied.disclosed,false)'));
+});
 hubTest('Permission dialog foreground inheritance outranks late native dialog rules without fixed colors', async () => {
     const css = await source('plugins/account-hub/src/AccountHub/Web/workspace.css');
     assert.match(css, /dialog\.dialog\.accountHubDialog\s*\{\s*color:\s*inherit;\s*font:\s*inherit;/);

@@ -13,8 +13,7 @@ module.exports = async function checkNotificationCategories(page, applyTheme, sc
         for (const theme of ['dark', 'light']) for (const width of [320, 1280]) {
             await applyTheme(theme); await page.setViewportSize({ width, height: 900 });
             for (const name of ['New episodes and movies', 'Library categories']) {
-                const summary = inbox.getByText(name, { exact: true });
-                if (!await summary.evaluate(node => node.closest('details').open)) await summary.click();
+                await inbox.getByRole('heading', { name, exact: true }).waitFor({ state: 'visible' });
             }
             const watch = page.getByRole('switch', { name: 'Watchlisted media on in-app', exact: true });
             if (await watch.getAttribute('aria-checked') === 'true') { await watch.click(); await waitSwitch('Watchlisted media on in-app', false); }
@@ -23,8 +22,7 @@ module.exports = async function checkNotificationCategories(page, applyTheme, sc
             if (await favorite.getAttribute('aria-checked') !== 'true') { await favorite.click(); await waitSwitch('Favorited media on in-app', true); }
             for (const toggle of [watch, favorite]) assert(await toggle.evaluate(node => { const box = node.getBoundingClientRect(); return box.width >= 44 && box.height >= 44; }), 'Category switches need a usable mobile touch target');
             for (const name of ['Watchlisted media · In-app', 'Favorited media · In-app']) {
-                const summary = inbox.getByText(name, { exact: true });
-                if (!await summary.evaluate(node => node.closest('details').open)) await summary.click();
+                await inbox.getByText(name, { exact: true }).waitFor({ state: 'visible' });
             }
             const important = page.getByRole('radio', { name: 'Watchlisted media on in-app Important', exact: true });
             await important.check();
