@@ -145,11 +145,12 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
             await page.locator('#account-hub-inbox').waitFor({ state: 'hidden' });
             const inboxPattern = '**/Notifications/api/v1/notifications?*';
             const actionPattern = '**/Notifications/api/v1/notifications/*/actions';
-            let selectedAnswer = 'allow', inlineActions = 0, consentSwipeFixture = false;
+            const { notificationFixtureId } = require('./notification-theme-fixture.cjs');
+            let selectedAnswer = 'allow', inlineActions = 0, consentSwipeFixture = false, fixtureEpoch = 0;
             const notificationFixtureTime=Date.now();
             const consentWrites = [];
             const swipeWrites = [];
-            await page.route(/\/Notifications\/api\/v1\/notifications\/fixture-\d+\/(read|dismiss)$/, route => {
+            await page.route(/\/Notifications\/api\/v1\/notifications\/fixture-\d+-\d+\/(read|dismiss)$/, route => {
                 assert.equal(route.request().method(), 'POST'); swipeWrites.push(new URL(route.request().url()).pathname.split('/').at(-1));
                 if (consentSwipeFixture) consentWrites.push('dismiss');
                 return route.fulfill({ json: { ok: true, data: { status: 'updated' } } });
@@ -161,7 +162,7 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
             });
             await page.route(inboxPattern, route => {
                 const skip = Number(new URL(route.request().url()).searchParams.get('skip') || 0);
-                return route.fulfill({ json: { ok: true, data: { hasMore: skip === 0, notifications: Array.from({ length: 20 }, (_, i) => ({ id: 'fixture-' + (skip + i), read: false, event: {
+                return route.fulfill({ json: { ok: true, data: { hasMore: skip === 0, notifications: Array.from({ length: 20 }, (_, i) => ({ id: notificationFixtureId(fixtureEpoch, skip + i), read: false, event: {
                      title: 'Compact notification ' + (skip + i), body: 'A short summary of the update.', details: 'Expanded details stay inside the notification menu.',
                      ...(consentSwipeFixture ? { source: 'deletion-queue', type: 'proposal.updated' } : {}),
                     occurredAt: new Date(notificationFixtureTime - (i === 19 ? 8 * 86400000 : 2 * 3600000) - (skip+i)*1000).toISOString(), severity: i % 10 === 0 ? 'warning' : 'info',
@@ -171,17 +172,23 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
             });
             for (const theme of ['dark', 'light']) for (const width of [320, 1280]) {
                 phase = 'notification-scroll/' + theme + '/' + width;
+                // Closing a panel does not cancel its final pagination/count
+                // request. Drain that case before changing mock response state.
+                await page.waitForLoadState('networkidle');
+                fixtureEpoch++;
                 selectedAnswer = 'allow';
                 await applyTheme(theme);
                 await page.setViewportSize({ width, height: 900 });
                 await page.locator('[data-notifications-bell]').click();
-                await page.locator('#account-hub-inbox section').filter({ hasText: 'Compact notification 0' }).waitFor();
-                await page.waitForFunction(() => document.querySelector('#account-hub-inbox .notificationCommand[data-action=allow]')?.getAttribute('aria-pressed') === 'true');
+                const firstId = notificationFixtureId(fixtureEpoch, 0);
+                const first = page.locator('#account-hub-inbox section[data-notification-id="' + firstId + '"]');
+                phase = 'notification-scroll/' + theme + '/' + width + '/initial-selection';
+                await first.waitFor();
+                await page.waitForFunction(id => document.querySelector('#account-hub-inbox section[data-notification-id="' + id + '"] .notificationCommand[data-action=allow]')?.getAttribute('aria-pressed') === 'true', firstId);
                 const inbox = page.locator('#account-hub-inbox');
                 assert(await inbox.evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight; }), 'Notification menu must fit the viewport');
                 if (width > 600) assert(await inbox.evaluate(e => { const r = e.getBoundingClientRect(); return r.height <= innerHeight / 2 + 1 && Math.abs(innerWidth - r.right - 12) <= 2; }), 'Desktop inbox must be half-height and aligned with the right edge');
                 assert(await page.locator('[data-notifications-bell]').evaluate(e => { const badge = e.querySelector('.notificationBadge'); if (!badge) return false; const b = badge.getBoundingClientRect(), p = e.getBoundingClientRect(); return b.top >= p.top && b.right <= p.right + 1; }), 'Badge must stay inside header button bounds');
-                const first = inbox.locator('section[data-notification-id="fixture-0"]');
                 const commandsBeforeSwipe = inlineActions;
                 for (const [dx, action] of [[85, 'read'], [-85, 'dismiss']]) {
                     const before = swipeWrites.length;
@@ -191,6 +198,7 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                     const actions = first.locator('.notificationSwipeActions'); await actions.waitFor({ state: 'visible' });
                     assert.equal(swipeWrites.length, before, 'Swipe requires confirmation');
                     await actions.locator('[data-swipe-action="' + action + '"]').click();
+                    phase = 'notification-scroll/' + theme + '/' + width + '/swipe-' + action;
                     await page.waitForFunction(() => !document.querySelector('#account-hub-inbox section .notificationSwipeActions:not([hidden])'));
                     assert.equal(swipeWrites.at(-1), action); assert.equal(swipeWrites.length, before + 1);
                 }
@@ -238,8 +246,10 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                         observer.observe(panel, { childList: true });
                     }, { once: true });
                 });
+                phase = 'notification-scroll/' + theme + '/' + width + '/keep-selection';
                 await first.getByRole('button', { name: 'Keep', exact: true }).click();
-                await page.waitForFunction(() => document.querySelector('#account-hub-inbox .notificationCommand[data-action=keep]')?.getAttribute('aria-pressed') === 'true');
+                await page.waitForFunction(id => document.querySelector('#account-hub-inbox section[data-notification-id="' + id + '"] .notificationCommand[data-action=keep]')?.getAttribute('aria-pressed') === 'true', firstId);
+                phase = 'notification-scroll/' + theme + '/' + width + '/keep-invalidation';
                 await page.waitForFunction(() => window.__suiteNotificationActionRendered === true);
                 assert(await inbox.isVisible(), 'Inline consent must not dismiss the inbox or open a modal');
                 assert(await first.locator('time').getAttribute('datetime'), 'Notification must expose an exact timestamp');
@@ -263,6 +273,7 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                 const actionSizes = await first.evaluate(e => ['compact','normal'].map(size => { const action = e.querySelector('[data-size=' + size + ']'); return { height: action.getBoundingClientRect().height, font: getComputedStyle(action).fontSize }; }));
                 assert(actionSizes[0].height < actionSizes[1].height, 'Producer action sizes must differ: ' + JSON.stringify(actionSizes));
                 await inbox.getByRole('button', { name: 'Older notifications', exact: true }).scrollIntoViewIfNeeded();
+                phase = 'notification-scroll/' + theme + '/' + width + '/pagination';
                 await page.waitForFunction(() => document.querySelectorAll('#account-hub-inbox section').length === 40);
                 assert.equal(await inbox.getByRole('heading', { name: 'Compact notification 0', exact: true }).count(), 1, 'Scrolling must retain earlier notifications without duplication');
                 for (const group of ['Important', 'Other', 'Older']) assert.equal(await inbox.getByRole('heading', { name: group, exact: true }).count(), 1);

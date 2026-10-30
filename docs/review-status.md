@@ -97,6 +97,17 @@ metadata, HTTP failure, size limit and success). Live metadata-only bootstrap
 passes in `artifacts/tool-http-bootstrap-plan-r2.log`. Full tool installation and
 Discord backend/native acceptance remain unverified; no full rerun is active.
 
+Latest theme-scroll harness correction: each theme/width case now owns distinct
+notification IDs, settles prior requests before switching mock state and scopes
+selection waits to its current row. Timeout phases distinguish initial selection,
+swipe, Keep selection/invalidation and pagination; strict 40-row/no-duplication,
+consent and geometry checks remain. **11 focused regressions** pass in
+`artifacts/theme-scroll-regressions-r1.log`, including actual `bell.js` in jsdom
+retaining an old Keep-selected row until a delayed new projection arrives. The
+reported broad phase alone does not identify which wait timed out; installed
+browser acceptance still needs rerunning and is not certified by this unit test.
+All **243 root script tests** pass in `artifacts/theme-scroll-scripts-r1.log`.
+
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys
 and histories. Use [testing](testing.md), [dependency maintenance](dependency-maintenance.md)

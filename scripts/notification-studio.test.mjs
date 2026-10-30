@@ -3,6 +3,37 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 const { JSDOM } = createRequire(new URL('../plugins/private-syncplay/package.json', import.meta.url))('jsdom');
+const { notificationFixtureId } = createRequire(import.meta.url)('./notification-theme-fixture.cjs');
+test('theme/viewport cases and pagination cannot reuse a previous notification fixture identity',()=>{
+    const ids=[];
+    for(let epoch=0;epoch<=4;epoch++)for(const skip of [0,100])for(let i=0;i<20;i++)ids.push(notificationFixtureId(epoch,skip+i));
+    assert.equal(new Set(ids).size,ids.length);
+    assert.equal(notificationFixtureId(1,0),'fixture-1-0');
+    for(const args of [[-1,0],[1,-1],[NaN,0],[1,1.5]])assert.throws(()=>notificationFixtureId(...args));
+});
+test('opening the real bell retains old selected rows until its new inbox response arrives',async()=>{
+    const dom=new JSDOM('<div data-notifications-bootstrap data-notifications-api="Notifications/api/v1/"></div><header><button class="headerUserButton">User</button></header>',{runScripts:'outside-only',pretendToBeVisual:true,url:'https://fixture.test/web/'}),w=dom.window;
+    const settle=async()=>{for(let i=0;i<8;i++)await new Promise(setImmediate);};
+    let epoch=1,hold=false,release;
+    try{
+        w.document.querySelector('.headerUserButton').getClientRects=()=>[{}];w.MutationObserver=class{observe(){}};w.WebSocket=undefined;
+        w.ApiClient={accessToken:()=> 'fixture',getCurrentUserId:()=> 'owner',getUrl:path=>new URL(path,'https://fixture.test/').href};
+        w.fetch=async url=>{
+            const snapshot=epoch;
+            const data=url.includes('notifications?')?{hasMore:false,notifications:[{id:notificationFixtureId(snapshot,0),read:false,event:{title:'Compact notification 0',body:'Fixture',occurredAt:new Date().toISOString(),commands:['allow','keep'].map(id=>({id,label:id,revision:1,snapshot:'fixture',enabled:true,selected:id===(snapshot===1?'keep':'allow')}))}}]}:{count:1};
+            if(url.includes('notifications?')&&hold)await new Promise(resolve=>{release=resolve;});
+            return{ok:true,status:200,headers:{get:()=>null},json:async()=>({ok:true,data})};
+        };
+        w.eval(await readFile(new URL('../modules/notifications/src/AccountHub.Notifications/Web/bell.js',import.meta.url),'utf8'));await settle();
+        const bell=w.document.querySelector('[data-notifications-bell]');bell.click();await settle();bell.click();
+        epoch=2;hold=true;bell.click();await settle();
+        assert.equal(w.document.querySelector('#account-hub-inbox .notificationCommand[data-action=keep]').getAttribute('aria-pressed'),'true','A generic title/first-command wait sees the previous case');
+        assert.equal(w.document.querySelector('[data-notification-id="fixture-2-0"]'),null);
+        assert(release);hold=false;release();await settle();
+        assert.equal(w.document.querySelector('[data-notification-id="fixture-2-0"] [data-action=allow]').getAttribute('aria-pressed'),'true');
+        assert.equal(w.document.querySelector('[data-notification-id="fixture-1-0"]'),null);
+    }finally{dom.window.close();}
+});
 async function fixture() {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://fixture.test/web/' });
     for (const name of ['notification-card.js', 'notification-studio.js']) dom.window.eval(await readFile(new URL('../modules/notifications/src/AccountHub.Notifications/Web/' + name, import.meta.url), 'utf8'));
