@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "timestamp": "2026-10-30T10:41:37.9675622Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/AutomaticDeletionRequests-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "5a5953c184f849a659e40c1135778270"
+      },
+      {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "version": "0.2.0.0",
@@ -36,11 +44,19 @@
   {
     "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
     "name": "Notifications",
-    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "description": "Independent shared notification inbox, library events, studio, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, library events, studio, settings and delivery with native Jellyfin authorization.",
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "timestamp": "2026-10-30T10:41:47.9761422Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/Notifications-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "14be57e4aa1e9ce88524d2fab46de025"
+      },
       {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
@@ -126,11 +142,19 @@
   {
     "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
     "name": "Account Hub",
-    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "description": "Integration preview. Unified account workspace with Security and optional Notifications integration; library events belong to Notifications.",
+    "overview": "Integration preview. Unified account workspace with Security and optional Notifications integration; library events belong to Notifications.",
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "timestamp": "2026-10-30T10:41:59.1377467Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/AccountHub-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "08632d2aee0a7e48026404444c7d2c60"
+      },
       {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
@@ -238,6 +262,14 @@
     "category": "General",
     "versions": [
       {
+        "timestamp": "2026-10-30T10:42:03.3402209Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/DiscordBridge-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "8211e65f4bddd980f58c744a181164cb"
+      },
+      {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "version": "0.2.0.0",
@@ -344,6 +376,14 @@
     "category": "General",
     "versions": [
       {
+        "timestamp": "2026-10-30T10:42:06.6044035Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/PrivateSyncPlay-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "b5708b9be0799d9b24d74572761b941e"
+      },
+      {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
         "version": "0.2.0.0",
@@ -449,6 +489,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "timestamp": "2026-10-30T10:42:12.4004902Z",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/DeletionQueue-0.3.7.0-linux-arm64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "version": "0.3.7.0",
+        "targetAbi": "12.4.0.0",
+        "checksum": "62341702f1cca515286510bc58ad9703"
+      },
       {
         "targetAbi": "12.3.0.0",
         "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",

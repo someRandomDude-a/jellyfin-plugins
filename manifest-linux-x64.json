@@ -8,6 +8,14 @@
     "category": "General",
     "versions": [
       {
+        "checksum": "41a77d3f06f3370e502b1a77e879e3a0",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/AutomaticDeletionRequests-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:41:35.2540685Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
+      {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/AutomaticDeletionRequests-0.2.0.0-linux-x64.zip",
         "targetAbi": "12.3.0.0",
@@ -36,11 +44,19 @@
   {
     "guid": "c18d78ec-4b70-47cf-a0d2-936d987c37ba",
     "name": "Notifications",
-    "description": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
-    "overview": "Independent shared notification inbox, settings and delivery with native Jellyfin authorization.",
+    "description": "Independent shared notification inbox, library events, studio, settings and delivery with native Jellyfin authorization.",
+    "overview": "Independent shared notification inbox, library events, studio, settings and delivery with native Jellyfin authorization.",
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "checksum": "41559cfb9b5ce0f5348cb1ebf7fca4d8",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/Notifications-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:41:44.6982486Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
       {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/Notifications-0.2.0.0-linux-x64.zip",
@@ -126,11 +142,19 @@
   {
     "guid": "bc9c3d3e-6da3-4ee5-91cd-c429d58ad901",
     "name": "Account Hub",
-    "description": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
-    "overview": "Integration preview. Unified account workspace with embedded Security and Notifications; see documented acceptance limits.",
+    "description": "Integration preview. Unified account workspace with Security and optional Notifications integration; library events belong to Notifications.",
+    "overview": "Integration preview. Unified account workspace with Security and optional Notifications integration; library events belong to Notifications.",
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "checksum": "2a2373e082daf4d043093a6c6f7fef50",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/AccountHub-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:41:55.9923341Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
       {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/AccountHub-0.2.0.0-linux-x64.zip",
@@ -238,6 +262,14 @@
     "category": "General",
     "versions": [
       {
+        "checksum": "071d576f2f2d35cecf7d6aabb3118abd",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/DiscordBridge-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:42:00.318208Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
+      {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/DiscordBridge-0.2.0.0-linux-x64.zip",
         "targetAbi": "12.3.0.0",
@@ -344,6 +376,14 @@
     "category": "General",
     "versions": [
       {
+        "checksum": "99717e5a7e1f739c0e23eea0d8d94527",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/PrivateSyncPlay-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:42:03.5652134Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
+      {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/PrivateSyncPlay-0.2.0.0-linux-x64.zip",
         "targetAbi": "12.3.0.0",
@@ -449,6 +489,14 @@
     "owner": "someRandomDude-a",
     "category": "General",
     "versions": [
+      {
+        "checksum": "b4887bf70576c1b20c58f28be3129bbe",
+        "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.3.7/DeletionQueue-0.3.7.0-linux-x64.zip",
+        "changelog": "Preview monorepo release; see release notes and documented acceptance limits.",
+        "timestamp": "2026-10-30T10:42:09.6102786Z",
+        "targetAbi": "12.4.0.0",
+        "version": "0.3.7.0"
+      },
       {
         "version": "0.2.0.0",
         "sourceUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/download/v0.2.0/DeletionQueue-0.2.0.0-linux-x64.zip",
