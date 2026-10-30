@@ -24,7 +24,7 @@ Dependency discovery is separate from runtime health: a loaded bot/provider is n
 
 ## Readiness and migration
 
-**Sixth-plugin preview (2026-10-26):** Automatic Deletion Requests installs independently for administrator rule configuration. New submissions require a ready Deletion Queue automation boundary, Notifications and a configured native administrator with proposal authority. Seerr evidence uses Deletion Queue's existing protected connection; no rule plugin media executor, separate credentials or automatic consent/approval is introduced. Collections and reversible artwork are opt-in Deletion Queue features for all pending requests, independent of rule ownership.
+Automatic Deletion Requests installs independently for rule configuration. Submissions require a ready Deletion Queue boundary, Notifications and an authorized native administrator. Seerr evidence uses Queue's protected connection. Collections and reversible artwork belong to Deletion Queue.
 
 **Current removal-action capability:** new Deletion Queue intake also requires Notifications health feature `commands`, in addition to the standalone owner marker, `registered-types` and `scoped-access`. Update Notifications and Deletion Queue together for the new inline controls. Existing-request consent, Undo and history remain available through the queue during provider failure. Enhanced is optional; only the full Requests/Calendar integration and full-page shortcut depend on its enabled pages.
 
@@ -38,8 +38,8 @@ owner suppresses its old bell/worker. Migration moves notification data and
 re-protects secrets into its own database/key ring before retiring source tables.
 See [upgrade instructions](../plugins/notifications/README.md). Security/Lifecycle
 remain implementation modules; native Security and Seerr are external integrations.
-The six-plugin implementation is not completion of the planned Invitations and
-shared-registry extraction in [product requirements](product-requirements.md).
+Invitations remain integrated in Account Hub. There is no mandatory shared
+connection registry or separate Invitations plugin.
 
 The following feature requirements are not blanket certification; see [current evidence](review-status.md).
 
@@ -47,20 +47,20 @@ The following feature requirements are not blanket certification; see [current e
 |---|---|---|
 | Hub directory, managed access and audit | None | Operate independently; standalone Notifications owns shared inbox/settings |
 | Domain administration | Corresponding domain plugin | Configure Queue, Bridge and SyncPlay in their own settings; missing-provider links/features remain unavailable |
-| Hub Discord delivery | Discord Bridge + configured bot | Discord route options greyed; inbox/webhook features remain available |
-| Hub native 2FA status/safe actions | Supported Jellyfin Security | Greyed with supported-version instructions; core features retain explicit audited authorization fallback |
+| Hub Discord delivery | Discord Bridge + configured bot | Unavailable Discord settings are hidden; inbox/webhook features remain available |
+| Hub native 2FA status/safe actions | Supported Jellyfin Security | Unavailable controls are hidden; core authorization remains enforced |
 | Hub Seerr lifecycle integration | Configured Seerr service URL/API key | Dependent lifecycle operations are unavailable; domain administration stays in its owning plugin |
 | Discord transport/configuration | Bot credentials/guild permissions to connect | Settings work standalone; no other suite plugin needed |
 | New episode/movie inbox notices | Notifications; opt-in | Work without Hub/Bridge; personal preferences and current native access apply |
 | New episode/movie Discord announcements | Notifications + Discord Bridge + configured bot; opt-in libraries/channels/disclosure | Work without Hub. Notifications alone observes; Bridge owns approved-channel delivery |
-| Discord account commands | Hub-owned verified identity provider | Only account-command controls greyed; never infer account/admin identity from Discord roles |
-| Discord watch-party commands | Hub verified link + native Private SyncPlay provider | Only party controls greyed with missing-provider instructions; native web party invitations need no Discord plugin |
+| Discord account commands | Hub-owned verified identity provider | Dependent settings are hidden; never infer native identity from Discord roles |
+| Discord watch-party commands | Hub verified link + native Private SyncPlay provider | Dependent settings are hidden; native web party invitations need no Discord plugin |
 | SyncPlay parties, player, web invitations | None; HTTPS for guest viewing | Native core independent of Hub/Discord |
 | SyncPlay central audit / notifications | Hub for central audit; Notifications for shared notices | Core parties and local/native feedback remain independent |
 | Deletion Queue new intake | Standalone Notifications with required capabilities | New intake blocked; existing consent/Undo/history remain accessible |
 | Deletion Queue policy/evidence/history | None | Independent of Hub/Discord/Enhanced; no bypass of intake/execution gates |
 | Seerr-managed deletion | Configured Seerr service plus all existing safety/consent gates | New automatic-deletion opt-in greyed, with manual configuration/import instructions; existing opt-in can still be turned off |
-| Enhanced connection import | Enabled unambiguous Jellyfin Enhanced connection | Import greyed; direct Seerr configuration remains available |
+| Enhanced connection import | Enabled unambiguous Jellyfin Enhanced connection | Unavailable Queue import controls are hidden; direct configuration remains available |
 
 Installed/enabled metadata is not a claim that an external service or bot is connected. Their runtime health remains separate. Disabling or removing a provider never grants permissions, weakens native 2FA, guesses identity links, removes safety gates or silently replaces stored credentials.
 
@@ -77,8 +77,7 @@ isolated current-stable Jellyfin servers. `--security=latest` doubles this to 12
 cases and automatically downloads the current compatible-major Security asset.
 `--wiring-check` adds standalone-owner discovery and HTTP audit routing/replay/scope
 checks. Startup, settings, task discovery, invalid inputs and dependency reporting
-are also checked. Historical 128/128 evidence is in the [evidence register](verification.md);
-latest-target certification is tracked separately in [current status](review-status.md).
+are also checked. Current validation limits are tracked in [status](review-status.md).
 No subset matrix implies every feature/fault flow, live delivery or arbitrary
 package-version skew. See [testing](testing.md) for the authoritative commands.
 
@@ -92,4 +91,4 @@ node scripts/test-combinations.mjs --packages=artifacts/current-candidate --secu
 - [Notifications migration](../plugins/notifications/README.md)
 - [Accounts](account-management.md) · [Discord](discord-suite-integration.md) · [Library notices](library-notifications.md)
 - [Latest-only testing](testing.md) · [Dependency maintenance](dependency-maintenance.md)
-- [Current evidence](review-status.md) · [Evidence register](verification.md)
+- [Current validation](review-status.md)

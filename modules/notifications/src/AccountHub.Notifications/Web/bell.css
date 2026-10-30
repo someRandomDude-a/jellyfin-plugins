@@ -9,6 +9,7 @@
 [data-notifications-bell] .notificationBadge { position: absolute; inset-inline-end: .1rem; inset-block-start: .1rem; min-width: 1.15em; line-height: 1.2; text-align: center; font-size: .65rem; border-radius: 1rem; padding: .1em .25em; background: var(--theme-primary-color, Highlight); color: var(--theme-background-color, HighlightText); border: 1px solid currentColor; pointer-events: none; }
 .accountHubInbox { --notification-line: color-mix(in srgb, currentColor 16%, transparent); position: fixed; inset-inline-end: 1rem; inset-block-start: 4rem; z-index: 2000; max-height: calc(100dvh - 5rem); overflow: auto; width: min(26rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 1rem; border: 1px solid var(--notification-line); border-radius: .8rem; box-shadow: 0 .5rem 2rem #0004; }
 .accountHubInbox[hidden], .notificationBadge[hidden] { display: none; }
+.accountHubInbox [hidden] { display:none!important; }
 .accountHubInbox > h2 { margin: 0 2.5rem 1rem 0; font-size: 1.2em; }
 .accountHubInbox > .notificationSettings { position: absolute; inset-inline-end: .5rem; inset-block-start: .5rem; padding: .5rem; }
 .accountHubInbox .notificationHeader { position: relative; z-index: 3; padding-block: .35rem; margin-block: 0 .25rem; background-color: inherit; border-block-end: 1px solid var(--notification-line); }
@@ -66,13 +67,15 @@
 .accountHubInbox .notificationPreference > span { flex: 1 0 8rem; }
 .accountHubInbox .notificationCategory { align-items: flex-start; flex-wrap: nowrap; gap: .65rem; padding-block: .7rem; }
 .accountHubInbox .notificationCategoryDetails { flex: 1; min-width: 0; }
-.accountHubInbox .notificationCategoryDetails > summary { display: flex; flex-direction: column; gap: .2rem; min-height: 2.75rem; justify-content: center; overflow-wrap: anywhere; }
-.accountHubInbox .notificationCategoryDetails > summary small { font-size: .8em; opacity: .75; }
+.accountHubInbox .notificationCategoryDetails > div { display: flex; flex-direction: column; gap: .2rem; min-height: 2.75rem; justify-content: center; overflow-wrap: anywhere; }
+.accountHubInbox .notificationCategoryDetails small { font-size: .8em; opacity: .75; }
 .accountHubInbox .notificationCategoryDetails p { font-size: .85em; }
 .accountHubInbox .notificationCategory .notificationToggle { flex-shrink: 0; }
-.accountHubInbox .notificationImportance { border: 0; padding: .3rem 0; margin: 0; min-width: 0; }
+.accountHubInbox .notificationImportance { display:flex;flex-wrap:wrap;gap:.35rem;border: 0; padding: .3rem 0; margin: 0; min-width: 0; }
 .accountHubInbox .notificationImportance legend { font-size: .85em; }
-.accountHubInbox .notificationImportance label { display: flex; align-items: center; gap: .65rem; padding-block: .55rem; min-height: 44px; box-sizing: border-box; cursor: pointer; }
+.accountHubInbox .notificationImportance label { display: flex; align-items: center; gap: .35rem; padding:.35rem .6rem; min-height: 44px; box-sizing: border-box; cursor: pointer;border:1px solid var(--notification-line);border-radius:2rem; }
+.accountHubInbox .notificationImportance label:has(input:checked) { border-color:var(--theme-primary-color,currentColor);background:color-mix(in srgb,var(--theme-primary-color,currentColor) 12%,transparent); }
+.accountHubInbox .notificationSettingsCard { padding:.8rem;border:1px solid var(--notification-line);border-radius:.8rem;margin-block:1rem; }
 .accountHubInbox .notificationImportance input { flex-shrink: 0; accent-color: var(--theme-primary-color, var(--jf-palette-primary-main, auto)); }
 .accountHubInbox .notificationImportance input:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .accountHubInbox .notificationAppCategories { margin-block: .5rem; }

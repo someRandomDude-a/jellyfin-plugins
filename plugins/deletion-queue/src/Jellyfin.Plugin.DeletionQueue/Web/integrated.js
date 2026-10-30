@@ -332,7 +332,7 @@
         return queue('active', id);
     }
     async function queue(initialView = null, focusId = null) {
-        initialView??=get(integration,'isAdministrator')?'approvals':'active';
+        initialView??=get(integration,'isAdministrator')?'auto':'active';
         const panel = dialog('Deletion queue');
         panel.d.classList.add('dq-queue-popover');
         const anchor = document.querySelector('[data-notifications-bell], [data-account-hub-bell], .dq-local-shortcut, .dq-bell, .headerUserButton');
@@ -377,24 +377,30 @@
         const generation=(host.dqQueueViewGeneration||0)+1,originalValid=valid;
         host.dqQueueViewGeneration=generation;
         valid=()=>host.dqQueueViewGeneration===generation&&originalValid();
+        host.querySelector(':scope > .dq-loading')?.remove();
+        host.dqQueueViewCleanup?.();
+        const events=new AbortController();host.dqQueueViewCleanup=()=>events.abort();
         const tabs = node('div', undefined, 'dq-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Deletion requests');
         const rows = node('div', undefined, 'dq-queue-rows'); rows.setAttribute('role', 'tabpanel'); host.append(tabs, rows);
-        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView, revision = 0, first = true, lastSnapshot = '';
+        let loading = false, refreshed = 0, offset = 0, more = true, view = initialView==='auto'?'approvals':initialView, revision = 0, first = true, lastSnapshot = '',chooseDefault=initialView==='auto';
+        rows.append(node('p','Loading removal requests…','dq-loading'));rows.setAttribute('aria-busy','true');
         const seen = new Set(), sameId = (a, b) => String(a).replaceAll('-', '').toLowerCase() === String(b).replaceAll('-', '').toLowerCase();
         const historyGroups=new Map();let allUsers=false,allToggle;
         if(get(integration,'isAdministrator')){const all=button('All requesters',async()=>{allUsers=!allUsers;all.setAttribute('aria-pressed',String(allUsers));revision++;await refresh();},'emby-button button-flat');allToggle=all;all.setAttribute('aria-pressed','false');host.insertBefore(all,tabs);}
         for (const [key, label] of [...(get(integration,'isAdministrator')?[['approvals','Needs approval']]:[]),['active', 'Active'], ['history', 'History']]) {
-            const tab = button(label, async () => { view = key; revision++; await refresh(); }, 'emby-button button-flat');
+            const tab = button(label, async () => { if(view===key)return;chooseDefault=false;view = key; revision++; await refresh(); }, 'emby-button button-flat');
             tab.dataset.view = key; tab.setAttribute('role', 'tab'); tabs.append(tab);
         }
         async function refresh(append = false) {
             if (loading || !valid()) return; loading = true; const started = revision;
+            rows.setAttribute('aria-busy','true');
             if(allToggle)allToggle.hidden=view==='approvals';
             rows.setAttribute('aria-label',view==='approvals'?'Removal approvals':'Removal requests');
             try {
                 const start = append ? offset : 0;
                 if (focused && !append && !first) focused = await api('proposals/' + get(focused, 'id'));
-                const proposals = await api(view==='approvals'?'admin/approvals?skip='+start+'&take=50':'proposals?skip=' + start + '&take=50&view=' + view+(allUsers?'&scope=all-users':'')); if (!valid() || revision !== started) return;
+                let proposals = await api(view==='approvals'?'admin/approvals?skip='+start+'&take=50':'proposals?skip=' + start + '&take=50&view=' + view+(allUsers?'&scope=all-users':'')); if (!valid() || revision !== started) return;
+                if(chooseDefault){chooseDefault=false;if(!proposals.length){view='active';if(allToggle)allToggle.hidden=false;rows.setAttribute('aria-label','Removal requests');proposals=await api('proposals?skip=0&take=50&view=active');if(!valid()||revision!==started)return;}}
                 const snapshot = JSON.stringify([view,allUsers,Number(get(integration,'recentHistoryDays'))||7,Math.floor(Date.now()/86400000), proposals, focused], (key, value) => key.toLowerCase() === 'evaluatedat' ? undefined : value);
                 if (!append && snapshot === lastSnapshot) { refreshed = Date.now(); return; }
                 lastSnapshot = append ? '' : snapshot;
@@ -405,7 +411,7 @@
                 let selected;
                 for (const p of records) {
                     const key = String(get(p, 'id')).replaceAll('-', '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
-                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row,async()=>{lastSnapshot='';await refresh();});
+                    const row = node('article', undefined, 'dq-queue-row'); renderProposal(p, row,async()=>{lastSnapshot='';});
                     row.dataset.requestId = get(p, 'id');
                     if (focused && sameId(get(p, 'id'), get(focused, 'id'))) { row.classList.add('dq-highlight'); row.tabIndex = -1; row.setAttribute('aria-label', 'Selected removal request'); selected = row; }
                     if(view==='history'){
@@ -418,15 +424,16 @@
                 offset = start + proposals.length; more = proposals.length === 50; refreshed = Date.now();
                 if (!seen.size) rows.append(node('p', view==='approvals'?'No requests need approval.':'No removal requests.'));
                 for (const tab of tabs.querySelectorAll('[role=tab]')) { tab.setAttribute('aria-selected', String(tab.dataset.view === view)); tab.tabIndex = tab.dataset.view === view ? 0 : -1; }
-            } catch (error) { if (valid()) { rows.replaceChildren(node('p', error.message || 'Requests unavailable.')); seen.clear(); focused = null; more = false; showError(error, host.closest('dialog')); } }
-            finally { loading = false; if (valid() && revision !== started) void refresh(); }
+            } catch (error) { if (valid() && revision === started) { lastSnapshot='';rows.replaceChildren(node('p', error.message || 'Requests unavailable.')); seen.clear(); focused = null; more = false; showError(error, host.closest('dialog')); } }
+            finally { loading = false;rows.setAttribute('aria-busy','false'); if (valid() && revision !== started) void refresh(); }
         }
         tabs.addEventListener('keydown', event => { if (['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) { event.preventDefault(); const controls = [...tabs.querySelectorAll('button')]; const current = controls.indexOf(document.activeElement); const index = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : controls.length - 1)) % controls.length; controls[index].focus(); controls[index].click(); } });
-        host.addEventListener('pointerdown', event => { if (!event.target.closest('button, input, a, .dq-help, .dq-timeline') && Date.now() - refreshed > 5000) void refresh(); });
-        scrollRoot.addEventListener('scroll', () => { if (more && scrollRoot.scrollTop + scrollRoot.clientHeight >= scrollRoot.scrollHeight - 120) void refresh(true); });
+        const refreshButton=button('Refresh requests',()=>refresh(),'emby-button button-flat');host.insertBefore(refreshButton,rows);
+        const refreshVisible=()=>{if(!valid()){if(!host.isConnected)events.abort();return;}if(!host.closest('[hidden]')&&!document.hidden){if(loading)revision++;else void refresh();}};
+        window.addEventListener('suite-removal-changed',refreshVisible,{signal:events.signal});
+        host.addEventListener('dq-refresh',refreshVisible,{signal:events.signal});
+        scrollRoot.addEventListener('scroll', () => { if (more && scrollRoot.scrollTop + scrollRoot.clientHeight >= scrollRoot.scrollHeight - 120) void refresh(true); },{signal:events.signal});
         await refresh();
-        const poll=async()=>{if(!valid())return;if(!document.hidden)await refresh();if(valid())setTimeout(poll,15000);};
-        setTimeout(poll,15000);
     }
     async function preferences() {
         const panel = dialog('Deletion queue preferences');
@@ -502,15 +509,16 @@
             const queued = get(itemStates.get(id)?.data, 'proposals')?.[0];
             return queued ? proposal(get(queued, 'id')) : propose(guid(get(itemStates.get(id)?.data,'targetItemId')) || id);
         }, cls + ' dq-media-action dq-web-owned');
-        b.dataset.dqItem = id; b.hidden = true; b.setAttribute('aria-label', 'Request removal'); b.title = 'Request removal';
-        b.replaceChildren(node('span', 'delete_outline', 'material-icons')); b.firstChild.setAttribute('aria-hidden', 'true');
+        b.dataset.dqItem = id; b.disabled=true;b.setAttribute('aria-busy','true'); b.setAttribute('aria-label', 'Checking removal status'); b.title = 'Checking removal status';
+        b.replaceChildren(node('span', 'hourglass_top', 'material-icons'),node('span','Checking removal status…','dq-action-label')); b.firstChild.setAttribute('aria-hidden', 'true');
         void updateMediaState(b, id);
         return b;
     }
     function stageAppearance(p) {
         const status = get(p, 'status');
         const icon = ({ Blocked: get(p, 'reason') === 'ConsentRequired' ? 'how_to_vote' : 'pending_actions', Waiting: 'hourglass_top', Ready: 'event_available', Claimed: 'auto_delete', Uncertain: 'warning_amber', FilesDeleted: 'task_alt', Completed: 'task_alt', Cancelled: 'undo', Expired: 'event_busy' })[status] || 'delete_outline';
-        return { icon, label: get(p, 'statusLabel') || 'Pending checks', status };
+        const short={TargetVerificationRequired:'Waiting for verification',VerificationUnavailable:'Verification unavailable',ActivityCoverageIncomplete:'Checking history',ConsentRequired:'Waiting for consent',AdministratorApprovalRequired:'Waiting for approval',DelayRequired:'Waiting for delay',PlaybackActive:'Playback active'};
+        return { icon, label: short[get(p,'reason')] || get(p, 'statusLabel') || 'Pending checks', status };
     }
     function unavailableReason(code) {
         return ({ NotYourRequest: 'Not your request', ProposalNotPermitted: 'Permission required', TargetUnavailable: 'Item unavailable',
@@ -525,19 +533,27 @@
         let text = control.querySelector('.dq-action-label'); if (!text) { text = node('span', undefined, 'dq-action-label'); control.append(text); }
         text.textContent = label;
     }
+    async function mediaState(id){
+        const generation=epoch;
+        let cached=itemStates.get(id);
+        if(!cached||!cached.pending&&Date.now()-cached.at>30000){
+            if(itemStates.size>=200)itemStates.clear();
+            cached={at:Date.now(),pending:true};itemStates.set(id,cached);
+            cached.promise=api('targets/items/'+id+'/removal').then(data=>{cached.data=data;cached.at=Date.now();return data;}).catch(error=>{if(itemStates.get(id)===cached)itemStates.delete(id);throw error;}).finally(()=>{cached.pending=false;});
+        }
+        const data=cached.data||await cached.promise;
+        return generation===epoch&&itemStates.get(id)!==cached?mediaState(id):data;
+    }
     async function updateMediaState(control, id) {
+        const capturedEpoch=epoch;
         try {
-            let cached = itemStates.get(id);
-            if (!cached || Date.now() - cached.at > 30000) {
-                if (itemStates.size >= 200) itemStates.clear();
-                cached = { at: Date.now(), promise: api('targets/items/' + id + '/removal') }; itemStates.set(id, cached);
-                cached.data = await cached.promise;
-            } else if (!cached.data) cached.data = await cached.promise;
-            if (!control.isConnected || control.dataset.dqItem !== id) return;
+            const data=await mediaState(id);
+            if (!control.isConnected || control.dataset.dqItem !== id||epoch!==capturedEpoch) return;
+            const cached={data};control.removeAttribute('aria-busy');
             control.hidden = get(cached.data, 'reason') === 'TargetUnavailable';
             const p = get(cached.data, 'proposals')?.[0];
             control.disabled = !p && get(cached.data, 'canPropose') === false;
-            const signature = p ? JSON.stringify([get(p, 'id'), get(p, 'revision'), get(p, 'status'), get(p, 'statusLabel')]) : JSON.stringify([get(cached.data, 'canPropose'), get(cached.data, 'reason')]);
+            const signature = p ? JSON.stringify([get(p, 'id'), get(p, 'revision'), get(p, 'status'), get(p, 'reason'), get(p, 'statusLabel')]) : JSON.stringify([get(cached.data, 'canPropose'), get(cached.data, 'reason')]);
             if (control.dataset.removalSignature === signature) return;
             control.dataset.removalSignature = signature;
             if (p) paintStage(control, p);
@@ -546,9 +562,8 @@
             const host = control.closest('.je-request-card') || control.closest('.mainDetailButtons')?.parentElement;
             if (host) {
                 host.querySelector(':scope > .dq-item-progress')?.remove();
-                if (p) { const progress = node('div', undefined, 'dq-item-progress dq-web-owned'); renderTimeline(p, progress); host.append(progress); }
             }
-        } catch (error) { if (control.isConnected) { control.hidden = error.code === 'TargetUnavailable'; control.disabled = true; const reason = unavailableReason(error.code); control.title = reason; control.setAttribute('aria-label', reason); control.replaceChildren(node('span', 'info_outline', 'material-icons'), node('span', reason, 'dq-action-label')); } }
+        } catch (error) { if (control.isConnected&&epoch===capturedEpoch) { control.removeAttribute('aria-busy');control.hidden = error.code === 'TargetUnavailable'; control.disabled = true; const reason = unavailableReason(error.code); control.title = reason; control.setAttribute('aria-label', reason); control.replaceChildren(node('span', 'info_outline', 'material-icons'), node('span', reason, 'dq-action-label')); } }
     }
     function routeId() {
         const route = location.hash.slice(1) || location.pathname + location.search;
@@ -589,10 +604,15 @@
                 enhancedDeletionSelected = true; section.classList.add('dq-deletion-selected'); view.hidden = false;
                 for (const sibling of tabs.querySelectorAll('button')) sibling.classList.toggle('active', sibling === tab);
                 if (!view.children.length || pendingRequestFocus) {
+                    const opening=(view.dqOpening||0)+1,capturedEpoch=epoch;view.dqOpening=opening;
+                    view.dqQueueViewCleanup?.();view.dqQueueViewGeneration=(view.dqQueueViewGeneration||0)+1;
                     const id = pendingRequestFocus; pendingRequestFocus = null; let focused;
+                    view.replaceChildren(node('p','Loading removal requests…','dq-loading'));
                     if (id) focused = await api('proposals/' + id);
-                    view.replaceChildren(); await queueView(view, focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : !focused&&get(integration,'isAdministrator')?'approvals':'active', undefined, view, focused);
+                    if(!view.isConnected||view.dqOpening!==opening||epoch!==capturedEpoch)return;
+                    view.replaceChildren(node('p','Loading removal requests…','dq-loading')); await queueView(view, focused && ['Completed', 'Cancelled', 'Expired'].includes(get(focused, 'status')) ? 'history' : !focused&&get(integration,'isAdministrator')?'auto':'active', undefined, view, focused);
                 }
+                else view.dispatchEvent(new Event('dq-refresh'));
             }, 'je-requests-tab emby-button dq-deletion-tab dq-web-owned');
             tabs.addEventListener('click', event => {
                 if (event.target.closest('button') && !event.target.closest('.dq-deletion-tab')) { enhancedDeletionSelected = false; section.classList.remove('dq-deletion-selected'); view.hidden = true; }
@@ -708,17 +728,10 @@
         // Keep thumbnails untouched: library-card actions belong to the native menu.
         document.querySelectorAll('.card .dq-card-action').forEach(action => action.remove());
         const id = routeId();
-        if (id && !capabilities.has(id)) {
-            if (capabilities.size >= 200) capabilities.clear();
-            capabilities.set(id, false); const generation = epoch;
-            api('targets/items/' + id + '/removal').then(result => {
-                if (generation === epoch) { itemStates.set(id, { at: Date.now(), data: result }); capabilities.set(id, Boolean(get(result, 'canPropose') || get(result, 'proposals')?.length)); schedule(); }
-            }).catch(() => {});
-        }
         for (const group of [...document.querySelectorAll('.mainDetailButtons')].slice(0, 5)) {
             const existing = group.querySelector('.dq-media-action');
             if (existing?.dataset.dqItem === id) { void updateMediaState(existing, id); continue; }
-            existing?.remove(); if (id && capabilities.get(id)) group.append(mediaButton(id, 'emby-button button-flat detailButton'));
+            existing?.remove(); if (id) group.append(mediaButton(id, 'emby-button button-flat detailButton'));
         }
         // Enhanced's available-request title/watch elements contain the authoritative native media ID.
         // No dependence on private renderer functions, card titles, usernames or third-party request IDs.
@@ -727,24 +740,29 @@
             const metadata = card.querySelector('[data-tmdb-id][data-media-type]');
             const requestKey = id || (metadata ? metadata.dataset.mediaType + ':' + metadata.dataset.tmdbId : '');
             const existing = card.querySelector('.dq-request-action');
-            if (existing?.dataset.dqItem === requestKey) { if (id) void updateMediaState(existing, id); continue; }
+            if (existing?.dataset.dqItem === requestKey) {
+                if (id) void updateMediaState(existing, id);
+                else if(capabilities.get(requestKey)===false)existing.remove();
+                else if(capabilities.get(requestKey)===true){existing.disabled=false;existing.removeAttribute('aria-busy');existing.querySelector('.material-icons').textContent='delete_outline';existing.querySelector('.dq-action-label').textContent='Request removal';}
+                continue;
+            }
             existing?.remove();
             if (!requestKey) continue;
             if (!id) {
                 const tmdb = Number(metadata?.dataset.tmdbId), type = metadata?.dataset.mediaType;
                 if (!Number.isSafeInteger(tmdb) || tmdb <= 0 || !['movie', 'tv'].includes(type)) continue;
                 if (!capabilities.has(requestKey)) {
-                    capabilities.set(requestKey, false); const generation = epoch;
+                    capabilities.set(requestKey, null); const generation = epoch;
                     api('requests?skip=0&tmdbId=' + tmdb + '&mediaType=' + type).then(result => {
                         if (generation === epoch) { capabilities.set(requestKey, (get(result, 'requests') || []).some(request => Number.isSafeInteger(get(request, 'requestId')) && get(request, 'requestId') > 0)); schedule(); }
-                    }).catch(() => {});
+                    }).catch(() => {if(generation===epoch){capabilities.set(requestKey,false);schedule();}});
                 }
-                if (!capabilities.get(requestKey)) continue;
+                if (capabilities.get(requestKey)===false) continue;
             }
             const b = id ? mediaButton(id, 'emby-button button-flat dq-request-action') : button('Request removal', () => requestRemoval(card), 'emby-button button-flat dq-request-action dq-web-owned');
             b.dataset.dqItem = requestKey;
-            if (id) b.append(node('span', 'Request removal', 'dq-action-label'));
-            else { const icon = node('span', 'delete_outline', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); b.replaceChildren(icon, node('span', 'Request removal', 'dq-action-label')); }
+            if (!id) { const icon = node('span', 'delete_outline', 'material-icons'); icon.setAttribute('aria-hidden', 'true'); b.replaceChildren(icon, node('span', 'Request removal', 'dq-action-label')); }
+            if(!id&&capabilities.get(requestKey)===null){b.disabled=true;b.setAttribute('aria-busy','true');b.querySelector('.material-icons').textContent='hourglass_top';b.querySelector('.dq-action-label').textContent='Checking removal status…';}
             (card.querySelector('.je-request-actions') || card.querySelector('.je-request-info') || card).append(b);
         }
         if (context && Date.now() - context.at < 15000) {
@@ -758,10 +776,10 @@
     }
     async function mountContextSection(menu, scroller, captured) {
         const section = node('section', undefined, 'dq-context-section dq-web-owned');
-        section.hidden = true;
+        section.hidden = false;
         section.setAttribute('aria-label', 'Deletion Queue');
         const heading = node('div', 'Deletion Queue', 'dq-context-heading');
-        const content = node('div'); content.append(node('div', 'Checking removal status…', 'dq-context-message'));
+        const content = node('div'); content.setAttribute('aria-busy','true');content.append(node('div', 'Checking removal status…', 'dq-context-message'));
         section.append(heading, content); scroller.append(section);
         const valid = () => section.isConnected && (menu.tagName !== 'DIALOG' || menu.open) && syncSession() && epoch === captured.epoch;
         function action(label, icon, run, selected) {
@@ -787,7 +805,7 @@
             content.append(b);
         }
         try {
-            const result = await api('targets/items/' + captured.id + '/removal'); if (!valid()) return;
+            const result = await mediaState(captured.id); if (!valid()) return;
             content.replaceChildren();
             const proposals = get(result, 'proposals') || [];
             if (!proposals.length) {
@@ -798,11 +816,6 @@
             for (const p of proposals) {
                 if (!get(p, 'canUndo') && get(p, 'canConsent') === false) continue;
                 const id = get(p, 'id'), status = get(p, 'status'), answer = get(p, 'ownAnswer');
-                const progress = node('div', undefined, 'dq-context-progress');
-                progress.append(node('div', get(p, 'statusLabel') || 'Pending checks', 'dq-context-status'));
-                const scheduled = date(get(p, 'scheduledFor'));
-                if (scheduled) progress.append(node('div', 'No earlier than · ' + scheduled.toLocaleDateString(), 'dq-hint'));
-                renderTimeline(p, progress); content.append(progress);
                 const stage = stageAppearance(p);
                 action('Removal · ' + stage.label, stage.icon, () => proposal(id));
                 const stateAction = content.lastElementChild; stateAction.dataset.removalStatus = stage.status;
@@ -822,7 +835,8 @@
             }
             if (!content.querySelector('button')) section.remove();
             else section.hidden = false;
-        } catch { section.remove(); }
+        } catch { if(valid()){content.replaceChildren(node('div','Removal status unavailable','dq-context-message'));} }
+        finally{content.setAttribute('aria-busy','false');}
     }
     function schedule() { if (!frame) frame = requestAnimationFrame(() => { try { mount(); } catch { /* Isolate unsupported Web markup. */ } }); }
     function captureContext(e) {

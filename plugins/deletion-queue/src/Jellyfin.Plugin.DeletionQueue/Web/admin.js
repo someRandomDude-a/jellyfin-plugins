@@ -85,11 +85,11 @@
                 const health = await request('admin/dependencies'), dependencies = health.data.items;
                 const hub = dependencies.find(item => item.id === 'account-hub');
                 for (const item of dependencies) if (item.id !== 'notifications') badge(item.id, { working: item.available, state: item.available ? 'Available' : 'Unavailable', detail: item.reason + ' ' + (item.available ? '' : item.fix) });
-                for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) { el(id).disabled = !hub?.available; el(id).title = hub?.available ? '' : hub?.reason + ' ' + hub?.fix; }
+                for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) { el(id).disabled = !hub?.available;el(id).closest('.checkboxContainer,.inputContainer').hidden=!hub?.available; }
             } catch {
                 if (!active || view !== epoch) return;
                 badge('account-hub', { working: false, state: 'Not verified', detail: 'Optional integration health could not be verified. Check Dashboard → Plugins and restart. Local queue features remain independent.' });
-                for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) el(id).disabled = true;
+                for (const id of ['dqHubEnabled', 'dqPublishAudit', 'dqHubFallback']) {el(id).disabled = true;el(id).closest('.checkboxContainer,.inputContainer').hidden=true;}
             }
             el('dqUrl').value = value(seerr, 'baseUrl');
             el('dqKey').value = '';
@@ -124,9 +124,10 @@
             el('dqUserAuthority').value = accountDraft[el('dqUsers').value] ?? '';
             const available = value(value(current, 'enhanced'), 'connectionAvailable');
             el('dqEnhanced').disabled = false;
+            el('dqEnhanced').hidden = !available;
             el('dqEnhancedStatus').textContent = '';
             badge('enhanced', { name: 'Jellyfin Enhanced', state: available ? 'Copy available' : undefined, detail: 'Optional Requests/Calendar integration and server-side Seerr connection copying. Use Copy Jellyfin Enhanced connection to check whether its connection can be copied.' });
-            el('dqCoverage').textContent = JSON.stringify({
+            const coverage={
                 coverageSince: value(current, 'coverageSince'), heartbeat: value(current, 'lastHeartbeat'),
                 healthy: value(current, 'coverageHealthy'), clockHealthy: value(current, 'clockHealthy'),
                 problem: value(current, 'coverageProblem'), localIntegrityVerified: value(current, 'localIntegrityVerified'),
@@ -135,29 +136,48 @@
                 independentRollbackProtection: value(current, 'independentRollbackProtection'),
                 historyAuthentication: value(current, 'historyAuthentication'),
                 integration: value(current, 'integration')
-            }, null, 2);
+            };
+            const make=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
+            const statusBadge=(text,tone)=>{if(window.SuiteAdminUI?.badge)return window.SuiteAdminUI.badge(text,tone);const badge=make('span');badge.className='suiteStatusBadge';badge.dataset.tone=tone;const icon=make('span',tone==='success'?'check_circle':tone==='warning'?'pending':'info');icon.className='material-icons';icon.setAttribute('aria-hidden','true');badge.append(icon,document.createTextNode(String(text??'—')));return badge;};
+            function table(host,columns,rows,selectable=false){host.replaceChildren();host.classList.add('suiteTableWrap');const table=make('table'),head=make('thead'),header=make('tr'),body=make('tbody');
+                for(const label of [...(selectable?['']:[]),...columns]){const th=make('th',label);th.scope='col';header.append(th);}head.append(header);table.append(head,body);host.append(table);
+                const choices=[];for(const row of rows){const tr=make('tr');if(selectable){const choice=make('input');choice.type='checkbox';choice.setAttribute('aria-label',typeof row[0]==='string'?row[0]:'Select row');const td=make('td');td.append(choice);tr.append(td);choices.push(choice);}for(const value of row){const td=make('td');td.append(value instanceof Node?value:document.createTextNode(String(value??'—')));tr.append(td);}body.append(tr);}
+                if(selectable){const all=make('input');all.type='checkbox';all.setAttribute('aria-label','Select all shown rows');header.firstChild.append(all);all.onchange=()=>{for(const choice of choices){choice.checked=all.checked;choice.closest('tr').classList.toggle('dq-row-selected',choice.checked);}};for(const choice of choices)choice.onchange=()=>{all.checked=choices.every(c=>c.checked);all.indeterminate=choices.some(c=>c.checked)&&!all.checked;choice.closest('tr').classList.toggle('dq-row-selected',choice.checked);};}
+            }
+            table(el('dqCoverage'),['Check','Status'],Object.entries(coverage).map(([key,item])=>[key.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()),typeof item==='boolean'?statusBadge(item?'Verified':'Not verified',item?'success':'warning'):item&&typeof item==='object'?JSON.stringify(item):item??'Not recorded']));
             el('dqBacklog').replaceChildren();
+            const backlog=[];
             for (const proposal of value(current, 'proposals')) {
                 const details = document.createElement('details'); const summary = document.createElement('summary');
-                summary.textContent = value(value(proposal, 'target'), 'title') + ' — ' + value(proposal, 'status') + ' / ' + value(proposal, 'reason');
+                summary.textContent = 'Review request';
                 const pre = document.createElement('pre'); pre.className = 'dq-evidence';
-                pre.textContent = JSON.stringify(proposal, null, 2); details.append(summary); el('dqBacklog').append(details);
+                const rawStatus=value(proposal,'status'),status=typeof rawStatus==='number'?['Blocked','Waiting','Ready','Claimed','Uncertain','FilesDeleted','Completed','Cancelled','Expired'][rawStatus]||'Unknown':rawStatus;
+                pre.textContent = JSON.stringify(proposal, null, 2); details.append(summary);backlog.push([value(value(proposal,'target'),'title'),statusBadge(status,status==='Completed'?'success':['Blocked','Waiting','Uncertain','Claimed'].includes(status)?'warning':'neutral'),details]);
                 const progress=value(current,'proposalProgress');
                 const progressKey=progress&&Object.keys(progress).find(k=>normalizedId(k)===normalizedId(value(proposal,'id')));
                 if(progressKey)window.DeletionQueueTimeline?.render(progress[progressKey],details);
                 const checks=document.createElement('p');
                 const evidence=value(proposal,'lastCheckEvidence'),checked=value(proposal,'lastCheckedAt');
+                const blocker=document.createElement('p');blocker.className='dq-blocker';
+                const reason=value(proposal,'reason'),failure=value(proposal,'lastVerificationFailureCode');
+                const explanations={TargetVerificationRequired:'Media identity changed. Compare the saved and current identifiers below; do not bypass this check.',SeerrNotConfigured:'The Seerr connection is not configured.',SeerrServerAssociationUnverified:'Seerr is not verified as connected to this Jellyfin server.',TargetUnavailable:'The media record is missing, inaccessible, or its provider identity could not be verified.',TargetEditionUnverified:'The requested edition is not mapped to the same accessible Jellyfin item.',SeerrTargetNotManaged:'Seerr has no verified Sonarr/Radarr target for this edition.',OwnershipScanIncomplete:'Seerr request ownership could not be fully verified.',ActivityTargetUnverified:'The Jellyfin item has no verified TMDB identity.',ProposalNotPermitted:'The current requester is not permitted to request this removal.',VerificationUnavailable:'A fresh check failed or timed out. Check Seerr connectivity and collector health; no removal is authorized.',AdministratorApprovalRequired:'A current administrator approval is required.',ConsentRequired:'Required viewer consent is missing or no longer current.',ActivityCoverageIncomplete:'The playback/history scan is incomplete.',PlaybackActive:'Playback is still active.',LocalCheckpointRequired:'The authenticated local storage checkpoint is not verified.',SeerrDelegationRequired:'The removal service is not verified.',AutomaticRuleVerificationRequired:'The originating automatic rule could not be revalidated.',OwnerNotAuthorized:'Current requester access or ownership is no longer authorized.',Suspended:'Removal processing is paused.',ClockUnverified:'The server clock is not verified.',DelayRequired:'Safety checks passed; the safety delay has not elapsed.'};
+                blocker.textContent='Current blocker: '+(explanations[failure||reason]||reason||'No blocker recorded');details.append(blocker);
+                const differences=value(evidence,'targetDifferences');
+                if(Array.isArray(differences)&&differences.length){
+                    const list=document.createElement('ul');list.setAttribute('aria-label','Media identity mismatches');
+                    for(const difference of differences){const item=document.createElement('li');item.textContent=value(difference,'field')+': saved '+value(difference,'expected')+' → current '+value(difference,'current');list.append(item);}details.append(list);
+                }
                 checks.textContent=(checked?'Last safety-check attempt: '+new Date(checked).toLocaleString()+'. ':'No safety-check attempt recorded. ')+(evidence?[
                     ['ownerAuthorized','Access/ownership'],['targetVerified','Media target'],['completeActivityScan','Live activity scan'],['nativeHistoryVerified','Native history'],['localCheckpointVerified','Storage checkpoint'],['seerrDelegationVerified','Removal service'],['automaticRuleVerified','Automatic rule (if required)'],['administratorAuthorized','Administrator approval (if required)']
-                ].map(([key,label])=>label+': '+(value(evidence,key)?'verified':'not verified')).join(' · '):'No completed evidence set; inspect connection and collector health.');
+                ].map(([key,label])=>label+': '+((key==='administratorAuthorized'&&!value(policy,'requireAdministratorApproval')||key==='automaticRuleVerified'&&!value(proposal,'requiresAutomaticRuleValidation'))?'not required':value(evidence,key)?'verified':'not verified')).join(' · '):'No completed evidence set; inspect connection and collector health.');
                 details.append(checks);
-                details.append(pre);
+                const technical=make('details');technical.append(make('summary','Technical details'),pre);details.append(technical);
                 if (!value(proposal, 'terminal') && !value(proposal, 'claim')) {
                     const snapshots = value(current, 'administratorApprovalSnapshots');
                     const key = Object.keys(snapshots).find(k => normalizedId(k) === normalizedId(value(proposal, 'id')));
                     for (const [label, approved] of [...(value(policy, 'requireAdministratorApproval') ? [['Approve removal', true]] : []), ['Deny request', false]]) {
                         const decision = document.createElement('button'); decision.type = 'button'; decision.className = 'emby-button raised';
-                        decision.textContent = label;
+                        decision.textContent = label;decision.dataset.tone=approved?'success':'danger';
                         decision.onclick = async () => {
                             decision.disabled = true;
                             try { await request('admin/proposals/' + value(proposal, 'id') + (approved ? '/approval' : '/deny'), 'POST', {
@@ -178,7 +198,8 @@
                     details.append(reconcile);
                 }
             }
-            el('dqJournal').textContent = JSON.stringify(value(current, 'journal'), null, 2);
+            table(el('dqBacklog'),['Media','Status','Details'],backlog,true);
+            table(el('dqJournal'),['Sequence','Time','Event','Actor'],(value(current,'journal')||[]).map(entry=>[value(entry,'sequence'),new Date(value(entry,'at')).toLocaleString(),statusBadge(value(entry,'kind'),/Failed|Uncertain|Blocked/.test(value(entry,'kind'))?'warning':/Completed|Verified/.test(value(entry,'kind'))?'success':'neutral'),value(entry,'actor')]),true);
         } catch (e) { error(e); } finally { if (view === epoch) { busy = false; page.setAttribute('aria-busy', 'false'); } }
     }
     el('dqRefresh').addEventListener('click', refresh);

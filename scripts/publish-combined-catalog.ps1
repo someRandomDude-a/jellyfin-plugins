@@ -68,6 +68,11 @@ try {
             $blob = Api 'git/blobs' @{ content=[Convert]::ToBase64String([IO.File]::ReadAllBytes($merged)); encoding='base64' }
             $updates += @{ path=$path; mode='100644'; type='blob'; sha=$blob.sha }
         }
+        $summary = Join-Path $work 'releases.json'
+        node (Join-Path $PSScriptRoot 'published-releases.mjs') "--directory=$work" "--repository=$Repository" "--output=$summary"
+        if ($LASTEXITCODE) { throw 'Cannot generate published release metadata' }
+        $blob = Api 'git/blobs' @{ content=[Convert]::ToBase64String([IO.File]::ReadAllBytes($summary)); encoding='base64' }
+        $updates += @{ path='releases.json'; mode='100644'; type='blob'; sha=$blob.sha }
         $body = @{ tree=$updates }; if ($tree) { $body.base_tree = $tree }
         $newTree = Api 'git/trees' $body
         $parents = @(); if ($parent) { $parents = @($parent) }

@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using DeletionQueue.Core;
 using DeletionQueue.Infrastructure;
@@ -79,10 +77,7 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         if (string.IsNullOrWhiteSpace(config.BaseUrl) || string.IsNullOrWhiteSpace(config.ApiKey) ||
             string.IsNullOrWhiteSpace(config.JellyfinServerId)) throw new QueueException("SeerrNotConfigured");
         using var seerr = seerrClients.Create(config);
-        var serverSettings = await seerr.JellyfinSettingsAsync(ct);
-        if (!string.Equals(config.JellyfinServerId, host.SystemId, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(Text(serverSettings, "serverId"), host.SystemId, StringComparison.OrdinalIgnoreCase))
-            throw new QueueException("SeerrServerAssociationUnverified");
+        await VerifyServerAssociationAsync(seerr, config, ct);
         BaseItem? item;
         if (selection.ItemId is { } itemId)
         {
@@ -139,8 +134,6 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         // Do not include service ID in the lock key: remapping must not create a second active proposal.
         // There is one configured Seerr association. Changing its address must not evade active scope locks.
         var key = $"seerr|{activityKey}|{selection.Is4K}";
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            $"{config.BaseUrl}|{key}|{mediaId}|{nativeId:D}|{service.GetInt32()}|{Number(info, externalProperty)}|{config.Revision}")));
         var own = false;
         bool? ownEvidence = null;
         try { ownEvidence = own = await SeerrOwnership.OwnsAsync(info, caller.Id, selection.Is4K, item is Series, seerr.UserAsync, ct); }
@@ -173,12 +166,12 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         // Seerr is explicitly trusted for Arr scope/files; the legacy FilesPinned field remains false and is not a gate.
         var title = item.Name ?? "Media";
         if (title.Length > 512) title = title[..512];
-        return new VerifiedTarget(key, activityKey, fingerprint, item.Id, title,
+        return MediaIdentity.PreserveExistingFingerprint(new VerifiedTarget(key, activityKey, "", item.Id, title,
             item is Series ? MediaKind.Series : MediaKind.Movie, mediaId, selection.Is4K, true, own, false, config.Revision,
-            $"{(item is Series ? "sonarr" : "radarr")}|{service.GetInt32()}|{Number(info, externalProperty)}");
+            $"{(item is Series ? "sonarr" : "radarr")}|{service.GetInt32()}|{Number(info, externalProperty)}"), state.Proposals);
     }
 
-    private static async Task<VerifiedTarget> ResolveUnfulfilledAsync(Account caller, TargetSelection selection, JsonElement request, JsonElement details,
+    private async Task<VerifiedTarget> ResolveUnfulfilledAsync(Account caller, TargetSelection selection, JsonElement request, JsonElement details,
         JsonElement info, string type, int tmdb, SeerrSettings config, SeerrClient seerr, CancellationToken ct)
     {
         var status = Number(request, "status");
@@ -204,32 +197,37 @@ public sealed class TargetResolver(ILibraryManager library, IUserManager users, 
         var activityKey = $"{type}:{tmdb}";
         var key = $"seerr|{activityKey}|{selection.Is4K}";
         var scope = requestOnly ? null : $"{(type == "tv" ? "sonarr" : "radarr")}|{Number(info, serviceName)}|{external}";
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{config.BaseUrl}|{key}|{Number(info, "id")}|{scope}|{config.Revision}|{ownerId}|{requestOnly}|{(requestOnly ? selection.RequestId : null)}")));
         var title = Text(details, type == "tv" ? "name" : "title");
         if (title.Length == 0) title = "Unfulfilled request";
-        return new(key, activityKey, fingerprint, Guid.Empty, title[..Math.Min(title.Length, 512)], type == "tv" ? MediaKind.Series : MediaKind.Movie,
-            Number(info, "id"), selection.Is4K, true, true, false, config.Revision, scope) { RequestId = selection.RequestId, RequestOwnerId = ownerId, RequestOnly = requestOnly };
+        return MediaIdentity.PreserveExistingFingerprint(new(key, activityKey, "", Guid.Empty, title[..Math.Min(title.Length, 512)], type == "tv" ? MediaKind.Series : MediaKind.Movie,
+            Number(info, "id"), selection.Is4K, true, true, false, config.Revision, scope) { RequestId = selection.RequestId, RequestOwnerId = ownerId, RequestOnly = requestOnly }, runtime.Read().Proposals);
     }
 
     public async Task<ExternalTargetChange?> InspectExternalChangeAsync(Proposal proposal,CancellationToken ct)
     {
         var state=runtime.Read();var target=proposal.Target;
-        if(proposal.Terminal||proposal.Claim is not null||target.ConfigurationRevision!=state.Seerr.Revision||!target.MappingVerified)return null;
+        if(proposal.Terminal||proposal.Claim is not null||!target.MappingVerified)return null;
         using var seerr=seerrClients.Create(state.Seerr);
+        ExternalTargetChange Observed(string reason) {
+            if(runtime.Read().Seerr.Revision!=state.Seerr.Revision)throw new QueueException("RevisionChanged");
+            return new(reason){ConnectionRevision=state.Seerr.Revision};
+        }
         // Establish the configured server association before interpreting a 404.
         // Auth/network/schema failures remain verification failures, not deletion.
-        var association=await seerr.JellyfinSettingsAsync(ct);
-        if(!string.Equals(state.Seerr.JellyfinServerId,host.SystemId,StringComparison.OrdinalIgnoreCase)||
-            !string.Equals(Text(association,"serverId"),host.SystemId,StringComparison.OrdinalIgnoreCase))throw new QueueException("SeerrServerAssociationUnverified");
+        await VerifyServerAssociationAsync(seerr,state.Seerr,ct);
         try {
             if(target.RequestOnly&&target.RequestId is {} requestId){
                 var request=await seerr.RequestAsync(requestId,ct);
                 if(Number(request,"id")!=requestId||!request.TryGetProperty("is4k",out var quality)||quality.ValueKind is not (JsonValueKind.True or JsonValueKind.False)||Bool(request,"is4k")!=target.Is4K||!request.TryGetProperty("media",out var media)||Number(media,"id")!=target.SeerrMediaId)return null;
-                return Number(request,"status")==3?new("RequestClosedOutsideQueue"):null;
+                return Number(request,"status")==3?Observed("RequestClosedOutsideQueue"):null;
             }
             var record=await seerr.MediaRecordAsync(target.SeerrMediaId,ct);
-            return MatchesMediaRecord(target,record)&&Number(record,target.Is4K?"status4k":"status")==7?new("RemovedOutsideQueue"):null;
-        }catch(HttpRequestException error)when(error.StatusCode==System.Net.HttpStatusCode.NotFound){return new("UpstreamTargetMissing");}
+            return MatchesMediaRecord(target,record)&&Number(record,target.Is4K?"status4k":"status")==7?Observed("RemovedOutsideQueue"):null;
+        }catch(HttpRequestException error)when(error.StatusCode==System.Net.HttpStatusCode.NotFound){return Observed("UpstreamTargetMissing");}
+    }
+    public async Task VerifyServerAssociationAsync(SeerrClient seerr, SeerrSettings config, CancellationToken ct) {
+        var settings=await seerr.JellyfinSettingsAsync(ct);
+        if(!string.Equals(config.JellyfinServerId,host.SystemId,StringComparison.OrdinalIgnoreCase)||!string.Equals(Text(settings,"serverId"),host.SystemId,StringComparison.OrdinalIgnoreCase))throw new QueueException("SeerrServerAssociationUnverified");
     }
     public static bool MatchesMediaRecord(VerifiedTarget target,JsonElement record)
     {

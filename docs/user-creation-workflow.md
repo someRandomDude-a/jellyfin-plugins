@@ -2,7 +2,7 @@
 
 With Account Hub installed, create accounts through **Account Hub → Invites**. The normal native HTTP `POST /Users/New` endpoint is blocked with `409 use_account_hub` and instructions linking to Hub. Initial Jellyfin server setup is unaffected. The plugin does not redirect POST requests into an onboarding form or silently resubmit credentials.
 
-An elevated administrator can use **Account Hub → Settings → User creation workflow → Enable native creation for five minutes**. This is an audited, revisioned command requiring the configured confirmation/fresh-proof policy. It does not bypass Jellyfin's own authorization. API keys and non-administrators cannot grant the override.
+An elevated administrator can use **Account Hub → Settings → Advanced settings → Temporary native creation → Enable native creation for five minutes**. The command is audited, revisioned and subject to the configured confirmation/proof policy. It does not bypass native authorization. API keys and non-administrators cannot grant the override.
 
 During the override:
 

@@ -3,8 +3,7 @@
 The shared `AccountHub.Api` SDK is the canonical framework-only producer contract.
 The native party SDK retains its independent 1.1 identity/signature; do not change
 that identity to match plugin release versions. Current build targets are discovered
-automatically. The original 12.2 implementation baseline is historical provenance,
-not a version pin or current certification.
+automatically.
 
 ## Boundary and configuration
 
@@ -78,8 +77,7 @@ Account Hub must enforce its own step-up mirror before invoking this adapter. Th
 
 Tests include native permission non-regression, adapter revision/replay/admin exclusion/preview/reset, separate-ALC client dispatch, absent-host fallback, independent audit acknowledgment, leases/freshness/pruning, bounded payloads, schema rejection and redaction. Real disposable Jellyfin integration exercises installed-package loading, auth/elevation, native guest isolation, the existing consumer SDK, adapter preview/replay/revisions and read-only integrity of both databases.
 
-Use [current status](../../../docs/review-status.md) and the [evidence register](../../../docs/verification.md)
-for actual installed Hub/Security/package scopes. Earlier adapter-only fixtures do
-not certify later packages, all failure paths, production proxies or human playback.
+Use [validation status](../../../docs/review-status.md) for installed acceptance
+limits. Adapter-only tests do not certify production proxies or human playback.
 Failed local outbox writes cannot be backfilled. Native XML/outbox backups must be
 consistent, and restoring an older receipt set does not promise idempotency.

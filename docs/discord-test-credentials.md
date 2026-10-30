@@ -45,4 +45,4 @@ created or published by this change.
 ## References
 
 - [Discord setup and delivery](discord-suite-integration.md)
-- [Current acceptance scope](review-status.md) · [Evidence register](verification.md)
+- [Current acceptance scope](review-status.md)

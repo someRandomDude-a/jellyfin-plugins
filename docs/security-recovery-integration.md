@@ -10,7 +10,7 @@ enrollment/sign-in. Keep a verified session in the same browser for the same
 account: this is **not signed-out account recovery**. No Security patch or new
 reset-time factor code is required or authorized.
 
-## Current contract — owner decision, 2026-10-27
+## Recovery contract
 
 Hub requests **no fresh 2FA code**. The browser must already hold a current native
 session for the reset-link account, and Jellyfin Security must mark that exact
@@ -49,7 +49,7 @@ exact binary version requires unchanged reviewed upstream C# source contracts,
 the discovered official asset's SHA-256 and metadata-only inspection of that
 asset. ZIP filenames/source versions can differ from the binary revision; neither
 is guessed or hardcoded as the current test target. Current native installed
-acceptance remains mandatory. Historical v2.6.4 results do not certify v2.6.5.
+acceptance remains mandatory.
 
 No private reflection, factor models/files, encryption keys, native writes,
 verification markers minted by Hub, or Security project patches are involved.
@@ -57,20 +57,11 @@ This depends on a reviewed public service contract, not a documented recovery HT
 extension. Changed upstream source or missing/changed public methods fail closed;
 version discovery alone never grants verification. See [testing](testing.md).
 
-## Superseded designs and evidence
-
-The earlier fresh-code implementation and `artifacts/reset-twofactor-verified-*`
-evidence describe a superseded requirement. The subsequently proposed signed-out,
-Security-owned recovery-factor hook was **rejected by the owner** and is not
-implemented. Review of upstream v2.6.5 at
-`548c19d5e2e091f78d45784a416ad83e825a6152` found no recovery-specific public hook;
-its own email password-reset service is a separate flow and is not reused by Hub.
-No upstream or sibling repository was edited.
+## Validation
 
 Current checks use `scripts/integration.mjs --reset-session` on a new disposable
-native Security fixture. Final evidence and remaining coverage limits are tracked
-in [review status](review-status.md); previous human reset acceptance predates
-this guard and must not be presented as current-session certification.
+native Security fixture. Remaining coverage limits are tracked in
+[validation status](review-status.md).
 
 ## Security alerts and transport validation
 

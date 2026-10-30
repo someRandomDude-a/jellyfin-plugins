@@ -72,7 +72,9 @@
             else if(custom){n.circuit=upgrade(copy(custom.circuit));n.name=custom.name;}
             g.nodes.push(n);selected=n.id;save();render();
         }
-        function paletteButton(label,kind,item){const b=btn(palette,label,()=>add(kind,160-g.panX/g.zoom,120-g.panY/g.zoom,item));b.draggable=true;b.ondragstart=e=>e.dataTransfer.setData('text/plain',JSON.stringify({kind,source:item?.source,index:item?custom.indexOf(item):-1}));}
+        function paletteButton(label,kind,item){const b=btn(palette,label,()=>add(kind,160-g.panX/g.zoom,120-g.panY/g.zoom,item));b.dataset.kind=kind;b.setAttribute('aria-label',label);
+            if(['and','or','not'].includes(kind)){const shape=document.createElementNS(svg.namespaceURI,'svg'),path=document.createElementNS(svg.namespaceURI,'path');shape.setAttribute('viewBox','0 0 230 120');shape.setAttribute('aria-hidden','true');path.setAttribute('d',kind==='and'?'M10 5 H110 C250 5 250 115 110 115 H10 Z':kind==='or'?'M10 5 Q145 5 215 60 Q145 115 10 115 Q65 60 10 5 Z':'M10 5 L200 60 L10 115 Z M225 60 A10 10 0 1 1 205 60 A10 10 0 1 1 225 60');shape.append(path);b.prepend(shape);}else{const icon=el('span',kind==='metadata'?'storage':kind==='condition'?'filter_alt':'extension');icon.className='material-icons';icon.setAttribute('aria-hidden','true');b.prepend(icon);}
+            b.draggable=true;b.ondragstart=e=>e.dataTransfer.setData('text/plain',JSON.stringify({kind,source:item?.source,index:item?custom.indexOf(item):-1}));}
         for(const source of ['jellyfin','seerr','sonarr','radarr'])paletteButton(source[0].toUpperCase()+source.slice(1)+' metadata','metadata',{source});
         for(const kind of ['condition','and','or','not'])paletteButton(kind==='condition'?'Condition':kind.toUpperCase(),kind);
         palette.title='Drag a block onto the canvas. Connect output to input. Use + to add an AND/OR input.';
@@ -201,8 +203,9 @@
         const endPan=()=>{if(panning){panning=null;sync();}};viewport.addEventListener('pointerup',endPan);viewport.addEventListener('pointercancel',endPan);
         root.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenu();});
         root.addEventListener('pointerdown',event=>{if(!event.target.closest('.ar-canvas-menu')&&!event.target.closest('path'))closeMenu();});
-        let framed=false;const observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{if(!framed&&viewport.clientWidth&&viewport.clientHeight){framed=true;if(initialFrame)fitCanvas();else wires();}else wires();}):null;observer?.observe(viewport);render();sync();
-        return {dispose(){disposed=true;closeMenu();observer?.disconnect();root.remove();},trace(values){if(!disposed){states=values;render();}}};
+        let framed=false,resizeFrame=null;const frame=window.requestAnimationFrame?.bind(window)||(fn=>setTimeout(fn,16)),cancelFrame=window.cancelAnimationFrame?.bind(window)||clearTimeout;
+        const observer=typeof ResizeObserver==='function'?new ResizeObserver(()=>{if(resizeFrame!==null)return;resizeFrame=frame(()=>{resizeFrame=null;if(disposed)return;if(!framed&&viewport.clientWidth&&viewport.clientHeight){framed=true;if(initialFrame)fitCanvas();else wires();}else wires();});}):null;observer?.observe(viewport);render();sync();
+        return {dispose(){disposed=true;if(resizeFrame!==null)cancelFrame(resizeFrame);closeMenu();observer?.disconnect();root.remove();},trace(values){if(!disposed){states=values;render();}}};
     }
     function check(g,depth=0,budget={n:0}){
         if(!g||![1,2].includes(g.version)||depth>4||!Array.isArray(g.nodes)||g.nodes.length<3||g.nodes.length>128||(budget.n+=g.nodes.length)>256)throw Error();

@@ -7,6 +7,7 @@ namespace AccountHub.Notifications;
 // No default implementation: installing a module must never introduce an auth bypass.
 public interface INotificationHost
 {
+    bool DiscordAvailable => false;
     string? PublicServerUrl(HttpContext context) => null;
     IReadOnlyList<NotificationRegistration> NotificationRegistrations => [];
     bool NotificationAccessAvailable(string source) => true;

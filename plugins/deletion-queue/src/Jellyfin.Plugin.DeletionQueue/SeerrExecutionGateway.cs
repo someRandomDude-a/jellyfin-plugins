@@ -16,6 +16,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var resolved = await targets.ResolveAsync(owner, proposal.Target.RequestId is { } requestId ? new TargetSelection(null, requestId, proposal.Target.Is4K) : new TargetSelection(proposal.Target.JellyfinItemId, null, proposal.Target.Is4K), ct,metadata);
         var requesterCurrent=proposal.RequesterId is not {} expected || metadata?.GetValueOrDefault("seerr.requesterId") is string mapped && Guid.TryParse(mapped,out var currentRequester)&&currentRequester==expected;
         var state = runtime.Read();
+        if (state.Seerr.Revision != resolved.ConfigurationRevision) throw new QueueException("RevisionChanged");
         var authority = QueueRules.Authority(state, owner.Id);
         var authorized = owner.Enabled && AuthorizerCurrent(state, proposal) && requesterCurrent && targets.Accessible(owner.Id, resolved) &&
             (authority == ProposalAuthority.AnyAccessibleItem || authority == ProposalAuthority.OwnRequests && resolved.OwnRequestVerified);
@@ -27,8 +28,10 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         var ruleVerified = await AutomaticRuleMatchesAsync(current, ct);
         var creatorAuthorized=!current.CreatorAutoApprovalDisabled&&current.AdministratorRequestedBy==current.OwnerId&&!current.RequiresAutomaticRuleValidation&&identity.Account(current.OwnerId) is {Enabled:true,Administrator:true}&&targets.Accessible(current.OwnerId,current.Target);
         scan = scan && fence.Quiet && observedGeneration == fence.Generation;
-        return new(new EvaluationEvidence(authorized, resolved.Fingerprint == proposal.Target.Fingerprint, scan, runtime.Available, true,
-            AdministratorAuthorized(latest, current)||creatorAuthorized) { AutomaticRuleVerified = ruleVerified,AdministratorCreatorAuthorized=creatorAuthorized, NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision){ActivityGeneration=observedGeneration};
+        if (runtime.Read().Seerr.Revision != resolved.ConfigurationRevision) throw new QueueException("RevisionChanged");
+        var differences = MediaIdentity.Differences(proposal.Target, resolved);
+        return new(new EvaluationEvidence(authorized, differences.Count == 0, scan, runtime.Available, true,
+            AdministratorAuthorized(latest, current)||creatorAuthorized) { TargetDifferences = differences, AutomaticRuleVerified = ruleVerified,AdministratorCreatorAuthorized=creatorAuthorized, NativeHistoryVerified = scan && latest.CoverageHealthy && latest.LastHeartbeat >= clock.GetUtcNow().AddMinutes(-2) }, current.Revision){ActivityGeneration=observedGeneration};
     }
 
     public Task<bool> AnchorClaimAsync(ExecutionClaim claim, CancellationToken ct)
@@ -61,8 +64,9 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
         if (!owner.Enabled || !AuthorizerCurrent(state, p) || !targets.Accessible(owner.Id, p.Target) || authority == ProposalAuthority.Denied ||
             authority == ProposalAuthority.OwnRequests && !p.Target.OwnRequestVerified) throw new QueueException("OwnerNotAuthorized");
         if (p.Claim?.Id != proposal.Claim?.Id || p.Status != ProposalStatus.Claimed || !state.Policy.AutomaticDeletion ||
-            !state.Policy.SeerrManagedDeletionAcknowledged || state.Policy.Suspended ||
-            state.Seerr.Revision != p.Target.ConfigurationRevision) throw new QueueException("DispatchVerificationFailed");
+            !state.Policy.SeerrManagedDeletionAcknowledged || state.Policy.Suspended) throw new QueueException("DispatchVerificationFailed");
+        var resolved = await targets.ResolveAsync(owner, p.Target.RequestId is {} selectedRequest ? new(null, selectedRequest, p.Target.Is4K) : new(p.Target.JellyfinItemId, null, p.Target.Is4K), ct);
+        if (MediaIdentity.Differences(p.Target, resolved).Count != 0 || resolved.ConfigurationRevision != state.Seerr.Revision) throw new QueueException("UpstreamTargetChanged");
         using var seerr = seerrClients.Create(state.Seerr);
         if (state.Policy.RequireAdministratorApproval && !AdministratorAuthorized(state, p)) throw new QueueException("AdministratorApprovalRequired");
         if (!fence.Quiet || observedGeneration != fence.Generation || !runtime.CollectorHealthy) throw new QueueException("ActivityChangedBeforeDispatch");
@@ -71,7 +75,7 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
             var allowed=QueueRules.Authority(live,account.Id);
             if(!runtime.CollectorHealthy||!fence.Quiet||fence.Generation!=observedGeneration||current.Status!=ProposalStatus.Claimed||current.Claim?.Id!=p.Claim?.Id||current.Revision!=p.Revision||
                 live.Preferences.Count!=state.Preferences.Count||state.Preferences.Any(pair=>!live.Preferences.TryGetValue(pair.Key,out var pref)||pref.Revision!=pair.Value.Revision)||
-                live.Policy.Revision!=state.Policy.Revision||live.Seerr.Revision!=p.Target.ConfigurationRevision||!live.Policy.AutomaticDeletion||!live.Policy.SeerrManagedDeletionAcknowledged||live.Policy.Suspended||
+                live.Policy.Revision!=state.Policy.Revision||live.Seerr.Revision!=state.Seerr.Revision||!live.Policy.AutomaticDeletion||!live.Policy.SeerrManagedDeletionAcknowledged||live.Policy.Suspended||
                 !account.Enabled||!AuthorizerCurrent(live,current)||!targets.Accessible(account.Id,current.Target)||allowed==ProposalAuthority.Denied||
                 allowed==ProposalAuthority.OwnRequests&&!current.Target.OwnRequestVerified||live.Policy.RequireAdministratorApproval&&!AdministratorAuthorized(live,current))throw new QueueException("DispatchVerificationFailed");
         }
@@ -107,15 +111,19 @@ public sealed class SeerrExecutionGateway(QueueRuntime runtime, TargetResolver t
     public async Task<DeletionProof?> InspectOutcomeAsync(Proposal proposal, CancellationToken ct)
     {
         var state = runtime.Read();
-        if (state.Seerr.Revision != proposal.Target.ConfigurationRevision || proposal.Claim is null) return null;
+        if (proposal.Claim is null) return null;
         using var seerr = seerrClients.Create(state.Seerr);
+        await targets.VerifyServerAssociationAsync(seerr, state.Seerr, ct);
         if (proposal.Target.RequestOnly && proposal.Target.RequestId is { } requestId) {
             var request = await seerr.RequestAsync(requestId, ct);
-            if (request.TryGetProperty("id", out var requestIdentity) && requestIdentity.GetInt32() == requestId && request.TryGetProperty("status", out var requestStatus) && requestStatus.GetInt32() == 3)
+            if (runtime.Read().Seerr.Revision == state.Seerr.Revision && request.TryGetProperty("id", out var requestIdentity) && requestIdentity.GetInt32() == requestId && request.TryGetProperty("status", out var requestStatus) && requestStatus.GetInt32() == 3 &&
+                request.TryGetProperty("is4k", out var quality) && quality.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False && quality.GetBoolean() == proposal.Target.Is4K &&
+                request.TryGetProperty("media", out var requestMedia) && TargetResolver.MatchesMediaRecord(proposal.Target, requestMedia))
                 return new(proposal.Target.Fingerprint, "Seerr reports the pending request declined; request history retained.");
             return null;
         }
         var media = await seerr.MediaRecordAsync(proposal.Target.SeerrMediaId, ct);
+        if (runtime.Read().Seerr.Revision != state.Seerr.Revision) return null;
         if (!TargetResolver.MatchesMediaRecord(proposal.Target,media)) return null;
         if (!media.TryGetProperty("status" + (proposal.Target.Is4K ? "4k" : ""), out var status) || !status.TryGetInt32(out var code) || code != 7) return null;
         return new(proposal.Target.Fingerprint, "Trusted Seerr reports DELETED for the claimed media/quality; Arr record and file removal delegated to Seerr. Request history retained.");

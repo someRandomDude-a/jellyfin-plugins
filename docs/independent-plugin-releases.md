@@ -7,17 +7,15 @@ dependencies and the [latest-only acceptance policy](dependency-maintenance.md).
 Enable Actions/Docker jobs and configure required reviewers on **plugin-release**;
 a workflow declaration alone does not create human approval requirements.
 
-This is the current local workflow configuration, not evidence of deployed remote
-protection. Dependency freshness and final acceptance remain mandatory. Nothing has
-been committed, pushed or published by preparing these instructions. See
-[current blockers](review-status.md) before attempting release.
+Dependency freshness and final acceptance remain mandatory. See
+[validation status](review-status.md) before attempting release.
 
 ## Release all six plugins
 
 Run **Actions → Release plugins → Run workflow** on the intended branch, select
 `plugin=all` and enter `vX.Y.Z`. The shared latest-only gate runs before the
-engine creates/reuses an immutable suite tag. Full Windows/Linux root tests and installed/browser/matrix/native
-Security/external-service acceptance, then builds 18 packages across `linux-x64`,
+engine creates/reuses an immutable suite tag. It runs Windows/Linux root tests and
+installed/browser/matrix/native Security/external acceptance, then builds 18 packages across `linux-x64`,
 `linux-arm64` and `win-x64`. Validation covers all six identities, inventories,
 encoded immutable URLs and exact checksums before protected publication.
 
@@ -65,17 +63,21 @@ each plugin retains its own connection settings.
 ## Immutable publication and catalog repair
 
 After protected approval, the engine creates a draft, uploads validated assets and
-publishes without replacing existing versions/assets. Partial draft uploads fail
+publishes with GitHub's **Latest** marker without replacing existing versions/assets. Partial draft uploads fail
 closed for operator review. History retrieval failures block publication rather
 than discarding older entries. Cross-packaging is not native Windows/physical ARM
 acceptance, and automated fixtures do not authorize human/live destructive tests.
 
 **Update plugin manifests** downloads and validates an already published release,
-then merges only the three combined `catalog/manifest-<runtime>.json` feeds. Suite
+then merges the three combined `catalog/manifest-<runtime>.json` feeds. Suite
 mode requires six matching identities across platforms; selected mode requires one.
-Existing versions and other plugins are preserved. All three files update in one
+Existing versions and other plugins are preserved. The three feeds and derived
+`releases.json` README metadata update in one
 non-forced commit; races re-read/re-merge the latest parent up to four attempts.
-Conflicting immutable metadata is rejected.
+Conflicting immutable metadata is rejected. README badges use the newest published
+entry for each plugin rather than applying one suite version to every plugin.
+An existing catalog can gain the summary through an authorized catalog-only repair;
+no source-branch README commit is needed. Badge caches may delay display briefly.
 
 If publication succeeded but the catalog update failed, run **Update plugin manifests**
 with the plugin (or `all`) and existing published tag. Independent repair accepts
@@ -101,5 +103,4 @@ platform or live feature. Do not repeat historical passes as current acceptance.
 
 - [Release checklist](github-release-checklist.md) · [Latest-only maintenance](dependency-maintenance.md)
 - [Testing](testing.md) · [Dependencies](dependencies.md)
-- [Current evidence/blockers](review-status.md) · [Scoped evidence register](verification.md)
-- [Remaining release gates](v1-release-gates.md)
+- [Current validation](review-status.md)

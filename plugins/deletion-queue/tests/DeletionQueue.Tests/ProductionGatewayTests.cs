@@ -61,6 +61,7 @@ public sealed class ProductionGatewayTests : IDisposable
     private bool wrongSeerrServer;
     private bool missingMediaRecord;
     private int recordTmdb=1;
+    private int managedServiceId;
     private int? record4KStatus;
     private Action? mediaReadAction;
     private readonly ServiceProvider rulesProvider;
@@ -143,7 +144,7 @@ public sealed class ProductionGatewayTests : IDisposable
             "/api/v1/movie/1" when unfulfilled => JsonSerializer.Serialize(new { id = 1, title = "Pending movie", mediaInfo = new { id = 42, tmdbId = 1, mediaType = "movie", status = 3,
                 serviceId = pendingOnly ? (int?)null : 0, externalServiceId = pendingOnly ? (int?)null : 123,
                 requests = new[] { new { id = 9, is4k = false, status = pendingOnly ? 1 : 2, requestedBy = new { id = otherRequestOwner ? 2 : 1 } } } } }),
-            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","status":{{{(deleted?7:5)}}},"serviceId":0,"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"id":9,"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
+            "/api/v1/movie/1" => $$$"""{"id":1,"mediaInfo":{"id":42,"tmdbId":1,"mediaType":"movie","status":{{{(deleted?7:5)}}},"serviceId":{{{managedServiceId}}},"externalServiceId":123,"jellyfinMediaId":"{{{movie.Id}}}","requests":[{"id":9,"is4k":false,"status":2,"requestedBy":{"id":1}}]}}""",
             "/api/v1/media/42" => JsonSerializer.Serialize(new{id=42,tmdbId=recordTmdb,status=deleted?7:5,status4k=record4KStatus}),
             _ => throw new NotSupportedException(request.RequestUri.AbsolutePath)
         };
@@ -319,6 +320,33 @@ public sealed class ProductionGatewayTests : IDisposable
     {
         clock.Now = clock.Now.AddHours(48);
         runtime.Write(Guid.NewGuid(), "fixture", "Heartbeat", s => { s.LastHeartbeat = clock.Now; return true; });
+    }
+    [Fact] public async Task BenignConnectionEditPreservesLegacyFingerprintAndConsentAndAllowsFreshExecution()
+    {
+        var id=await Seed();
+        runtime.Write(Guid.NewGuid(),"fixture","LegacyIdentity",s=>{QueueRules.Find(s,id).Target=QueueRules.Find(s,id).Target with{Fingerprint="legacy-connection-bound-hash"};return true;});
+        var saved=QueueRules.Find(runtime.Read(),id);var consents=JsonSerializer.Serialize(saved.Consents);var approval=JsonSerializer.Serialize(saved.AdministratorApproval);
+        runtime.Write(Guid.NewGuid(),"fixture","ConnectionEdit",s=>{s.Seerr.BaseUrl="https://renamed-seerr.invalid";s.Seerr.Revision++;return true;});
+        var resolved=await targets.ResolveAsync(new Account(owner.Id,true),new(movie.Id,null,false),default);
+        Assert.Equal(saved.Target.Fingerprint,resolved.Fingerprint);Assert.Empty(MediaIdentity.Differences(saved.Target,resolved));
+        var check=await gateway.PreflightAsync(saved,default);Assert.True(check.Evidence.TargetVerified);Assert.Empty(check.Evidence.TargetDifferences);
+        Assert.Equal(consents,JsonSerializer.Serialize(QueueRules.Find(runtime.Read(),id).Consents));Assert.Equal(approval,JsonSerializer.Serialize(QueueRules.Find(runtime.Read(),id).AdministratorApproval));
+        Due();await new ExecutionCoordinator(runtime,gateway,clock).ExecuteAsync(id,default);Assert.Equal(1,deletes);
+    }
+    [Fact] public async Task ChangedManagedServiceExplainsMismatchAndNeverDispatches()
+    {
+        var id=await Seed();managedServiceId=7;Due();var p=QueueRules.Find(runtime.Read(),id);
+        var check=await gateway.PreflightAsync(p,default);Assert.False(check.Evidence.TargetVerified);
+        Assert.Contains(check.Evidence.TargetDifferences,d=>d.Field=="Sonarr/Radarr target"&&d.Expected=="radarr|0|123"&&d.Current=="radarr|7|123");
+        var error=await Assert.ThrowsAsync<QueueException>(()=>new ExecutionCoordinator(runtime,gateway,clock).ExecuteAsync(id,default));Assert.Equal("ExecutionBlocked",error.Code);Assert.Equal(0,deletes);Assert.Null(QueueRules.Find(runtime.Read(),id).Claim);
+    }
+    [Theory][InlineData(false)][InlineData(true)] public async Task DispatchBlocksIdentityChangesAndInFlightConnectionEdits(bool connectionRace)
+    {
+        var id=await Seed();Due();var p=QueueRules.Find(runtime.Read(),id);var check=await gateway.PreflightAsync(p,default);
+        runtime.Write(Guid.NewGuid(),"fixture","ExecutionClaimed",s=>{QueueRules.Find(s,id).Claim=QueueRules.Claim(s,id,check.ProposalRevision,check.Evidence,clock.Now) with{ActivityGeneration=check.ActivityGeneration};return true;});
+        p=QueueRules.Find(runtime.Read(),id);
+        if(connectionRace)seerrUserReadAction=()=>runtime.Write(Guid.NewGuid(),"fixture","ConnectionRace",s=>{s.Seerr.Revision++;return true;});else managedServiceId=7;
+        await Assert.ThrowsAsync<QueueException>(()=>gateway.DeleteOnceAsync(p,default));Assert.Equal(0,deletes);Assert.NotNull(QueueRules.Find(runtime.Read(),id).Claim);
     }
     [Fact] public async Task RealGatewayPersistsClaimAndSeparateOutcomeBeforeCompletion()
     {

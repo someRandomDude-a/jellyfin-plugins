@@ -87,6 +87,7 @@ public sealed class NativeHost(IServiceProvider services, Storage storage) : INo
         catch (NativeAuthorizationFailure) { throw new NotificationException("unauthorized","Administrator required",403); }
     }
     public Task AuthorizeAuditAsync(HttpContext context,CancellationToken ct) => AuthorizeManagementAsync(context,false,ct);
+    public bool DiscordAvailable => services.GetKeyedService<Func<string,CancellationToken,Task<string>>>(DiscordBridge.Api.DiscordBridgeClient.ServiceKey) is not null;
     public Task<string?> DiscordLinkAsync(Guid id,CancellationToken ct) => services.GetKeyedService<Func<Guid,CancellationToken,Task<string?>>>("Notifications.DiscordLink.1")?.Invoke(id,ct) ?? Task.FromResult<string?>(null);
     public async Task<object> AppendAuditAsync(AuditEvent entry,CancellationToken ct)
     {

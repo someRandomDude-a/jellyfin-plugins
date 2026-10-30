@@ -25,11 +25,9 @@
             const minutes = field('Expires after (minutes, 15–43200)', 'number', '10080', 15, 43200);
             const uses = field('Maximum uses (1–100)', 'number', '1', 1, 100);
             const note = field('Administrator note (never shown publicly)', 'text', ''); note.maxLength = 500;
-            const discord = field('Optional Discord recipient ID (requires connected Discord Bridge)', 'text', ''); discord.maxLength = 20;
+            const discord = field('Discord recipient ID', 'text', ''); discord.maxLength = 20;
             discord.disabled = api.discordAvailable !== true;
-            const remediation = 'Discord delivery is unavailable. Install and enable a compatible Discord Bridge, connect its bot, then refresh. Copy-link invitations remain available.';
-            discord.title = discord.disabled ? remediation : '';
-            if (discord.disabled) form.append(element('p', remediation));
+            discord.parentElement.hidden=discord.disabled;
             const group = element('select', '', 'emby-select'); const groupLabel = element('label', 'Access template', 'inputLabel');
             group.id = 'hub-invite-group-' + crypto.randomUUID(); groupLabel.htmlFor = group.id; groupLabel.className = 'selectLabel'; group.setAttribute('is', 'emby-select'); group.classList.add('emby-select-withcolor'); group.append(new Option('Native defaults', ''));
             const groupWrap = element('div', '', 'selectContainer'); groupWrap.append(groupLabel, group); form.append(groupWrap);
@@ -39,7 +37,7 @@
             const groupPages = element('div'); form.append(groupPages);
             let defaults={defaultGroupId:null,discordCreationEnabled:false,allowedCreators:[],discordExpiryMinutes:60,dailyLimit:5,discordDefaultUses:1,discordMaxUses:100,discordMaxExpiryMinutes:43200};
             const defaultsPanel=element('details'),defaultGroup=element('select','', 'emby-select'),creators=element('select','', 'emby-select'),allowDiscord=element('input');
-            defaultsPanel.append(element('summary','Invitation defaults and Discord permissions'));
+            defaultsPanel.append(element('summary','Invitation defaults'));
             function labelControl(text,input,help){const wrap=element('div','',input.tagName==='SELECT'?'selectContainer':'inputContainer'),label=element('label',text,input.tagName==='SELECT'?'selectLabel':'inputLabel');input.id='invite-default-'+crypto.randomUUID();label.htmlFor=input.id;if(help)wrap.dataset.help=help;wrap.append(label,input);defaultsPanel.append(wrap);}
             labelControl('Default template',defaultGroup,'Access template preselected for new invitations. Discord invitations can only use this template. Administrator privileges, credentials and 2FA are never copied.');creators.multiple=true;creators.size=5;labelControl('Discord invite creators',creators,'Only selected users with a verified, enabled Discord link may use /invite. Other Discord roles and users gain no invitation permission.');
             allowDiscord.type='checkbox';allowDiscord.className='emby-checkbox';allowDiscord.setAttribute('is','emby-checkbox');const allowLabel=element('label','', 'emby-checkbox-label'),outline=element('span','', 'checkboxOutline');outline.append(element('span','', 'material-icons checkboxIcon checkboxIcon-checked check'));allowLabel.append(allowDiscord,element('span','Allow selected linked users to create signup invitations in Discord','checkboxLabel'),outline);defaultsPanel.append(allowLabel);
@@ -55,6 +53,7 @@
             function renderCreators(people,selected){creators.replaceChildren();for(const user of people.items||[]){const option=new Option(user.username,user.id);option.selected=selected.includes(user.id);creators.append(option);}for(const id of selected)if(![...creators.options].some(o=>o.value===id)){const option=new Option('Selected user (another page)',id);option.selected=true;creators.append(option);}creatorTotal=people.total??creatorSkip+(people.items||[]).length;creatorPrevious.disabled=creatorSkip===0;creatorNext.disabled=creatorSkip+100>=creatorTotal;}
             async function creatorPage(start){const chosen=[...creators.selectedOptions].map(o=>o.value),people=await api.read('users?skip='+start+'&limit=100');if(!alive())return;creatorSkip=start;renderCreators(people,chosen);}
             const creatorPrevious=control('Previous users',()=>creatorPage(Math.max(0,creatorSkip-100))),creatorNext=control('Next users',()=>creatorPage(creatorSkip+100));defaultsPanel.append(creatorPrevious,creatorNext);
+            if(api.discordAvailable!==true){creators.parentElement.hidden=true;allowLabel.hidden=true;creatorPrevious.hidden=true;creatorNext.hidden=true;}
             async function loadDefaults(){try{const [value,people]=await Promise.all([api.read('invite-defaults'),api.read('users?skip=0&limit=100')]);if(!alive())return;defaults={...defaults,...value};allowDiscord.checked=!!defaults.discordCreationEnabled;expiry.value=defaults.discordExpiryMinutes;daily.value=defaults.dailyLimit;defaultUses.value=defaults.discordDefaultUses;maxUses.value=defaults.discordMaxUses;maxExpiry.value=defaults.discordMaxExpiryMinutes;creatorSkip=0;renderCreators(people,defaults.allowedCreators||[]);if(defaults.defaultGroupId&&![...defaultGroup.options].some(o=>o.value===defaults.defaultGroupId))defaultGroup.append(new Option('Saved template (another page)',defaults.defaultGroupId));defaultGroup.value=defaults.defaultGroupId||'';defaultsSave.disabled=false;}catch{if(alive()){defaultsSave.disabled=true;status.textContent='Invitation defaults unavailable. Refresh and check account storage health.';}}}
             let groupEpoch = 0, groupInitialized = false;
             async function loadGroups() {

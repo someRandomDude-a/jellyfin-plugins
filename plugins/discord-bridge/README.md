@@ -37,7 +37,7 @@ Account signup defaults/maxima and party use/expiry/guest defaults have separate
 sections in Bridge's own settings. Hub retains additional signup-owner ceilings,
 creator delegation, templates and quotas.
 
-Settings show per-feature dependency health. Missing account/party providers grey out only their command switches, explain why, and provide installation/restart instructions. Generic bot transport stays configurable and operational without Hub or SyncPlay. Optional audit forwarding to Hub never gates standalone configuration.
+Settings show integration status in a table and hide unavailable account/party controls. Generic bot transport remains configurable without Hub or SyncPlay. Optional Hub audit forwarding does not gate configuration.
 
 The public URL is an optional override: leave it blank to reuse Account Hub's configured HTTPS URL, including BaseUrl, for party links. Notifications routes Deletion Queue, automation and other registered notices through the same bot. Stable notification delivery IDs have durable duplicate/uncertain-send protection; permanent Bridge errors are not retried as temporary outages. See [suite ownership, setup, delivery guarantees and verified limits](../../docs/discord-suite-integration.md).
 
@@ -51,7 +51,7 @@ Library announcements require Notifications, not Hub, and are disabled by defaul
 
 Back up `plugins/configurations/DiscordBridge/discord-bridge.db` and its original `keys` directory together while Jellyfin is stopped. Wrong/missing credential keys fail closed. Interaction claims survive restart and uncertain actions are not automatically replayed.
 
-Authorized live tests passed gateway/slash registration, synthetic library cards and Notifications-to-Bridge channel delivery in the configured test guild/channel. Human linking/commands, DM privacy and party redemption remain separate acceptance work. Discord may reject DMs due to recipient privacy settings. Delivery failure does not imply an invitation was never created; inspect the Jellyfin party before requesting another.
+Discord may reject DMs due to recipient privacy settings. Delivery failure does not prove an invitation was never created; inspect the native party before requesting another. See [validation limits](../../docs/review-status.md) before live use.
 
 ## References
 

@@ -181,6 +181,7 @@ public static class QueueRules
         if (proposal.Terminal || proposal.Claim is not null) return;
         proposal.LastCheckedAt = now;
         proposal.LastCheckEvidence = evidence;
+        proposal.LastVerificationFailureCode = null;
         var reason = !state.ClockHealthy ? "ClockUnverified"
             : state.Policy.Suspended ? "Suspended"
             : !evidence.OwnerAuthorized ? "OwnerNotAuthorized"
@@ -238,12 +239,13 @@ public static class QueueRules
         }
     }
 
-    public static void VerificationUnavailable(QueueState state, Proposal proposal, DateTimeOffset now)
+    public static void VerificationUnavailable(QueueState state, Proposal proposal, DateTimeOffset now, string? failureCode = null)
     {
         Expire(state, proposal, now);
         if (!proposal.Terminal && proposal.Claim is null) {
             proposal.LastCheckedAt = now;
             proposal.LastCheckEvidence = null;
+            proposal.LastVerificationFailureCode = failureCode is "SeerrNotConfigured" or "SeerrServerAssociationUnverified" or "TargetUnavailable" or "TargetEditionUnverified" or "SeerrTargetNotManaged" or "OwnershipScanIncomplete" or "ActivityTargetUnverified" or "ProposalNotPermitted" ? failureCode : "VerificationUnavailable";
             Block(proposal, "VerificationUnavailable");
         }
     }
@@ -300,7 +302,7 @@ public static class QueueRules
     public static void CloseExternalChange(QueueState state, Guid id, long revision, string fingerprint, ExternalTargetChange change, DateTimeOffset now)
     {
         var p=Find(state,id);
-        if(p.Revision!=revision||p.Target.ConfigurationRevision!=state.Seerr.Revision)throw new QueueException("RevisionChanged");
+        if(p.Revision!=revision||change.ConnectionRevision is {} observed && observed!=state.Seerr.Revision)throw new QueueException("RevisionChanged");
         if(p.Terminal||p.Claim is not null||p.FilesDeletedAt is not null||p.Target.Fingerprint!=fingerprint||
             change.Reason is not ("RemovedOutsideQueue" or "RequestClosedOutsideQueue" or "UpstreamTargetMissing"))throw new QueueException("InvalidCheckpoint");
         p.ClosedCheckpoint=UserProgress.Checkpoint(p);p.ClosedChecksAt=p.EligibleSince;

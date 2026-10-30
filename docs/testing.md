@@ -25,7 +25,7 @@ One entry point uses `scripts/test-plan.mjs` through `scripts/run-tests.ps1`.
 `-List` prints an offline JSON plan without bootstrap, builds or fixtures.
 Aggregate runs execute the solution once and batch shared/frontend tests once.
 Selected-plugin gates compile only that plugin and its actual dependencies;
-interoperability remains separate. The old `test-plugin.ps1` alias is removed.
+interoperability remains separate.
 
 ### What belongs in each gate
 
@@ -37,10 +37,7 @@ interoperability remains separate. The old `test-plugin.ps1` alias is removed.
 | Integration | All 128 plugin/Security combinations, native recovery/restart/storage loss, read-only database checker, SyncPlay/media/SDK and external-service APIs. |
 | Migration/history | Supported schemas, retained keys/identities, prior catalogs/archives and old-format rejection. Old fixture versions here are deliberate inputs, not stale software defaults. |
 
-Overlapping workflow assertions are consolidated in `scripts/workflows.test.mjs`.
-Tests that only enforced deleted dispatch wrappers, a retired consumer endpoint's
-source spelling, marketing text or document heading/line-count conventions are
-removed. Live runtime and upgrade regressions remain. The test-plan tests reject
+Workflow assertions live in `scripts/workflows.test.mjs`. The test-plan tests reject
 unassigned/missing root `.test.mjs` files and ensure every solution test project is
 registered, so consolidation cannot silently drop an owner or a new test file.
 
@@ -69,7 +66,8 @@ contract changes are not automatically trusted or worked around.
 Build new immutable packages first; never replace an earlier ZIP:
 
 ```powershell
-pwsh -File scripts/package.ps1 -Tag v0.2.0 -OutputDirectory artifacts/current-candidate
+# Replace vX.Y.Z with an unused candidate version.
+pwsh -File scripts/package.ps1 -Tag vX.Y.Z -OutputDirectory artifacts/current-candidate
 node scripts/integration.mjs --packages=artifacts/current-candidate --security=latest --proof --reset-session --wiring-check --permissions-check --library --v1-flows --database-safety --storage-recovery
 node scripts/test-combinations.mjs --packages=artifacts/current-candidate --security=latest --wiring-check --output=artifacts/current-combinations --jobs=2
 ```
@@ -132,8 +130,8 @@ print secrets or retry an uncertain external effect blindly.
 For this work, Discord human tests must be last: do not launch the human server,
 tunnel or live bot acceptance until the owner explicitly says they are ready.
 
-Keep current results in [review status](review-status.md); preserve failed and
-older acceptance separately in the [evidence register](verification.md).
+Keep current results in [validation status](review-status.md). Preserve raw logs,
+including failed attempts, in the run's artifact directory.
 A build, mock or older fixture pass does not certify installed latest software,
 live delivery, physical-device Push, destructive production behavior or v1 release.
 
@@ -142,4 +140,4 @@ live delivery, physical-device Push, destructive production behavior or v1 relea
 - [Plugin installation](../README.md#installation-and-upgrades) · [Documentation index](README.md)
 - [Latest-only dependency policy](dependency-maintenance.md)
 - [Browser/theme checks](theme-acceptance.md) · [Independent releases](independent-plugin-releases.md)
-- [Current evidence](review-status.md) · [Evidence register](verification.md)
+- [Current validation](review-status.md)

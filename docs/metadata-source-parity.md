@@ -6,7 +6,29 @@ this review). Reviewed `rules.constants.ts`, the shared rule types, and the
 Jellyfin, Seerr, Sonarr and Radarr getters. No upstream implementation or assets
 were copied. Maintainerr remains credited for the workflow and condition research.
 
-## Implemented in this iteration
+## Supported behavior
+
+### Maintainerr JSON import (2026-10-30)
+
+Paste a rule group, rule-group array, `ruleGroups` export, raw rule array, or
+community `JsonRules` payload into **JSON import/export**, then choose **Import
+draft**. RuleDto and serialized RuleDbDto conditions are detected automatically.
+
+- Imported rules are disabled. Matching native Jellyfin library IDs are retained;
+  otherwise choose the library explicitly. Review and test before enabling.
+- Boolean order and section boundaries are retained. Movie/show constraints become
+  explicit media-kind conditions. No credentials, scheduling, execution settings,
+  or collection actions are imported.
+- The importer supports an allowlisted subset of Jellyfin, Seerr, Radarr and
+  whole-series Sonarr fields. Compatible scalar/list comparisons, metadata operands,
+  existence checks, absolute dates and supported relative date windows are mapped.
+  Maintainerr numeric date intervals are seconds, converted to fractional days.
+- Unsupported fields, source types, user/disk scopes, season/episode scopes,
+  non-deletion actions, and incompatible comparisons reject the entire import.
+  Conditions are never dropped or guessed. Existing drafts remain unchanged.
+
+This is a bounded migration path, not full Maintainerr compatibility. In particular,
+Plex/Tautulli watch history and usernames are not treated as native Jellyfin IDs.
 
 ### Typed condition calculations and membership (2026-10-27)
 
@@ -126,14 +148,9 @@ approval, fresh playback/history checks and delays remain Deletion Queue's job.
 - Compatible typed/unit-matched cross-source value comparisons now have a second
   metadata input on condition cards. Both input sources are validated, fetched
   and required; unknown either side blocks OR/NOT and live execution as before.
-- Real API acceptance: disposable Linux amd64 Sonarr **4.0.20.3014** and Radarr
-  **6.4.4.10685**, with synthetic records seeded only into stopped test containers
-  because native create APIs require external catalogue lookups. Plugin providers
-  exercised actual GET endpoints, native provider-ID matching, profile lookup,
-  latest-season/missing/finale aggregates and confirmed unmatched-record absence.
-  Evidence: `artifacts/metadata-real-arr-tests.log`; reproducible runner:
-  `scripts/metadata-arr-acceptance.mjs`. No production mounts/keys or Arr writes
-  from the plugins were used.
+- Real API checks use `scripts/metadata-arr-acceptance.mjs` with disposable
+  current-stable Sonarr/Radarr containers and owned synthetic records. Plugins
+  perform GET-only provider reads; production servers and keys are not used.
 
 The catalog intentionally does not advertise getters that are not implemented.
 Maintainerr includes functionality beyond this iteration, notably:
@@ -153,8 +170,5 @@ Maintainerr includes functionality beyond this iteration, notably:
 - Every upstream client-side setting variation. Plex/Tautulli/Ombi/Emby and other
   unrelated sources are not included.
 
-The new modular providers/catalog are an implementation foundation, not a claim
-that the entire Maintainerr catalog or combination matrix has been completed.
-Disposable real Sonarr/Radarr API coverage is listed above; production servers and
-real configured Seerr request/deletion paths are not certified by those fixtures.
-Installed/package evidence is tracked separately in `review-status.md`.
+This is not full Maintainerr parity. Disposable provider checks do not certify
+production Seerr/removal paths. See [validation status](review-status.md).

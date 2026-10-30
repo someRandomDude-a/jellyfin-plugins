@@ -15,9 +15,9 @@ Independent plugin, disabled by default. Rules evaluate a bounded Jellyfin libra
 
 ## Implemented subset
 
-- Native Dashboard configuration with administrator/library pickers and a node canvas. Create a **Rule** or **Library filter** card with a title/description; select it to edit. Type stays fixed, while titles and descriptions remain editable.
+- Native Dashboard configuration with library pickers and a node canvas. The server binds the automation authorizer. Create a **Rule** or **Library filter** card with a title/description; select it to edit. Type stays fixed.
 - Library-filter cards own condition circuits and output connections to rule cards. Multiple filters may feed one rule; overlapping items run once per rule. Rule mode allows connecting/disconnecting library inputs. Click a library card to edit it, or **Test path** to find eligible media. Default cards are seeded per current native library without a global library selector.
-- Typed conditions, AND/OR with expandable inputs, NOT, draggable nodes/curved wires, zoom/pan/fit, self-contained reusable circuit blocks, and full-canvas/circuit JSON import/export. True test signals glow, false signals grey out, unknown signals block matching rather than becoming true under NOT. The Delete terminal requests removal through Deletion Queue; it does not execute deletion itself. Complete, valid circuits and layouts persist with **Save rules**; incomplete circuits are not executable configuration.
+- Typed conditions, expandable AND/OR, NOT, draggable nodes/wires, zoom/pan/fit, reusable circuits and JSON import/export. True/false/unknown signals are distinct; unknown evidence blocks matching, including under NOT. The terminal requests removal through Deletion Queue, not direct deletion. **Save automation** persists valid circuits and layouts; incomplete circuits are not executable.
 - Jellyfin title, release year, date added, community rating and movie/series kind conditions.
 - Version-2 circuits use expandable, source-specific metadata cards and typed outputs into conditions; no execution Start is needed in rules or filters. Version-1 circuits remain readable and migrate when edited; IDs and submission receipts are retained. AND/OR gates resize to their input count (minimum two, bounded to 128 for safety). Empty required sockets are invalid drafts, not implicit true values.
 - Seerr requester IDs/counts/dates/edition/availability are read through Deletion Queue's saved connection. The internal administrator authorizes automation; it is not requester metadata. Missing or mixed singular requesters stay unknown. The legacy `seerr.ownRequest` field keeps its old authorizer-relative meaning.
@@ -46,9 +46,16 @@ Jobs are independent: changing their order never skips safety checks. A past del
 pwsh -File scripts/test.ps1 -Plugin automatic-deletion-requests
 ```
 
-The project and tests are in the root solution. Root packaging, release-set validation, independent test/release selection and installed integration support `automatic-deletion-requests` (`--plugins=automatic` for installed checks). Current Linux x64/ARM64 and Windows x64 packages passed archive/identity/checksum/SBOM validation. The final six-plugin Linux amd64 installation passed native daily-task discovery/manual execution, disabled-default/administrator authorization and 320/1280-pixel rule/artwork editor checks, including real PNG previews. Full root regressions passed, including six automation tests and 207 Deletion Queue tests. See the root `docs/review-status.md` for exact evidence and limits. No packages have been published.
+Use `--plugins=automatic` for disposable installed checks. Current source evidence
+and remaining installed/browser acceptance are tracked in [validation status](../../docs/review-status.md).
+Published versions are shown in the [release table](../../README.md#published-releases).
 
-## Still required
+## Import and limits
+
+**JSON import/export** detects supported Maintainerr rule groups and community
+exports. Imports stay disabled until reviewed; unsupported metadata, actions and
+scopes reject the whole import without dropping conditions. See
+[supported formats and boundaries](../../docs/metadata-source-parity.md#maintainerr-json-import-2026-10-30).
 
 Deletion Queue owns opt-in collection selection/creation, reversible native-image overlays/backups/restoration and portrait/landscape editing. These are presentation features, not permission to remove media. The batch preview uses saved rules; per-media circuit testing uses draft conditions and filters. Test searches inspect at most 50 candidates and can be refined by title (or item ID for filtered input tests); unavailable external facts never enter an eligible test path. Circuit limits are 128 nodes, 256 expanded nodes and four nested custom circuits; rules/filters are bounded to 50 each. Full pagination, real Seerr path testing and richer fields remain follow-ups. Node-editor installed/browser acceptance is tracked separately in `docs/review-status.md`; earlier acceptance does not certify these later changes. The subset does not promise Maintainerr parity. Do not downgrade automation while enabled: older plugin versions do not understand circuit/filter semantics.
 

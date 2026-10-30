@@ -24,7 +24,7 @@
 #automaticDeletionAdmin #arResult:empty { display:none; }
 </style>
 <style>
-#automaticDeletionAdmin .ar-circuit{--ar-canvas-surface:var(--theme-background-color,transparent);--ar-accent:var(--theme-primary-color,Highlight);--ar-socket:var(--suite-wire-color,var(--ar-accent));border:1px solid var(--ar-line);border-radius:12px;overflow:hidden;margin:1rem 0;color:inherit}
+#automaticDeletionAdmin .ar-circuit{--ar-canvas-surface:var(--jf-palette-background-paper,var(--theme-background-color,Canvas));--ar-accent:var(--theme-primary-color,Highlight);--ar-socket:var(--suite-wire-color,var(--ar-accent));border:1px solid var(--ar-line);border-radius:12px;overflow:hidden;margin:1rem 0;color:inherit}
 #automaticDeletionAdmin .ar-circuit{position:relative}
 #automaticDeletionAdmin .ar-circuit{--ar-true:var(--suite-success-color,color-mix(in srgb,#3baf75 70%,currentColor));--ar-unknown:var(--suite-warning-color,color-mix(in srgb,#c88721 75%,currentColor));}
 #automaticDeletionAdmin .ar-canvas-menu{position:absolute;z-index:20;display:grid;gap:.25rem;padding:.5rem;border:1px solid var(--ar-line);border-radius:.5rem;box-shadow:0 4px 16px #0004;min-width:150px;max-width:calc(100% - 1rem)}
@@ -56,9 +56,22 @@
 #automaticDeletionAdmin .ar-metadata-outputs{max-height:min(18rem,36dvh);overflow:auto;overscroll-behavior:contain}
 #automaticDeletionAdmin .ar-metadata-outputs [hidden]{display:none}
 #automaticDeletionAdmin #arNewCard{box-sizing:border-box;width:min(32rem,calc(100vw - 2rem));max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);overflow:auto;padding:clamp(1rem,3vw,2rem);border:1px solid var(--ar-line);border-radius:1rem;color:inherit}
+#automaticDeletionAdmin #arNewCard{position:fixed;inset:0;margin:auto;background:var(--jf-palette-background-paper,var(--theme-background-color,Canvas));color:var(--jf-palette-text-primary,var(--theme-text-color,inherit));}
+#automaticDeletionAdmin #arNewCard::backdrop{background:#0008;}
+#automaticDeletionAdmin #arNewCard label{display:block;margin-block-end:.4rem;}
+#automaticDeletionAdmin #arNewCard button{margin:.4rem;padding:.65rem 1rem;}
+#automaticDeletionAdmin .ar-block:not(.ar-logic-gate),#automaticDeletionAdmin .ar-canvas-menu{background:var(--ar-canvas-surface);color:inherit;}
+#automaticDeletionAdmin .ar-block .selectContainer,#automaticDeletionAdmin .ar-block .inputContainer{margin:.5rem;}
+#automaticDeletionAdmin .ar-block label{display:block;font-size:.8rem;overflow-wrap:anywhere;}
 #automaticDeletionAdmin .ar-stage{position:absolute;width:4000px;height:4000px;transform-origin:0 0}
 #automaticDeletionAdmin .ar-palette{padding:.75rem;background:var(--ar-soft);border-inline-start:1px solid var(--ar-line)}
 #automaticDeletionAdmin .ar-palette button{display:block;width:100%;margin:.5rem 0;text-align:left}
+#automaticDeletionAdmin .ar-palette button[data-kind]{display:flex;align-items:center;gap:.5rem;min-height:2.75rem;border-inline-start:3px solid var(--ar-palette-color,var(--ar-accent));}
+#automaticDeletionAdmin .ar-palette button[data-kind=and]{--ar-palette-color:var(--suite-and-color,#288a68);}
+#automaticDeletionAdmin .ar-palette button[data-kind=or]{--ar-palette-color:var(--suite-or-color,#327aa9);}
+#automaticDeletionAdmin .ar-palette button[data-kind=not]{--ar-palette-color:var(--suite-not-color,#8062ad);}
+#automaticDeletionAdmin .ar-palette svg{width:2rem;height:1.5rem;flex:none;fill:color-mix(in srgb,var(--ar-palette-color,currentColor) 25%,transparent);stroke:var(--ar-palette-color,currentColor);stroke-width:8;}
+#automaticDeletionAdmin .ar-stage{will-change:transform;}
 #automaticDeletionAdmin .ar-palette p{font-size:.75rem;line-height:1.6;opacity:.75}
 #automaticDeletionAdmin .ar-block{position:absolute;width:230px;border:1px solid var(--ar-line);border-radius:9px;box-shadow:0 6px 16px #0003;padding-bottom:.8rem;min-height:80px}
 #automaticDeletionAdmin .ar-block header{background:color-mix(in srgb,var(--ar-accent) 12%,transparent);border-radius:8px 8px 0 0;padding:.65rem;font-size:.8rem;font-weight:700;cursor:grab;user-select:none}
@@ -97,7 +110,7 @@
 <form id="arForm">
 <input id="arHours" type="hidden" value="24" /><div data-suite-jobs aria-label="Scheduled maintenance tasks"></div>
 <section class="ar-section"><div class="ar-toolbar"><h2>Automation canvas</h2><button is="emby-button" id="arAddRule" type="button" class="raised">New card</button></div><div id="arRuleCards"></div></section>
-<details><summary>JSON import/export</summary><div class="inputContainer"><label for="arRules">Canvas JSON (rules, library filters and layout)</label><textarea is="emby-textarea" id="arRules" data-json rows="12" style="width:100%;box-sizing:border-box" spellcheck="false"></textarea></div><button is="emby-button" id="arImport" type="button" class="raised">Import draft</button><button is="emby-button" id="arExport" type="button" class="raised">Export canvas</button></details>
+<details><summary>JSON import/export</summary><div class="inputContainer"><label for="arRules">Canvas or Maintainerr JSON</label><textarea is="emby-textarea" id="arRules" data-json rows="12" style="width:100%;box-sizing:border-box" spellcheck="false"></textarea></div><p>Maintainerr rules import as disabled drafts. Unsupported rules leave the canvas unchanged.</p><button is="emby-button" id="arImport" type="button" class="raised">Import draft</button><button is="emby-button" id="arExport" type="button" class="raised">Export canvas</button></details>
 <section class="ar-section"><div data-help="Unknown evidence blocks matching, including under NOT. Changes are rechecked before queued requests progress. Collections and artwork are configured in Deletion Queue."><label class="checkboxContainer"><input is="emby-checkbox" id="arEnabled" type="checkbox" /><span>Enable automation</span></label></div><div class="ar-footer"><button is="emby-button" type="submit" class="raised button-submit">Save automation</button><button is="emby-button" id="arPreview" type="button" class="raised">Preview saved rules</button></div></section></form>
 <dialog id="arNewCard"><h2>New card</h2><div class="selectContainer"><label for="arNewType">Type (fixed after creation)</label><select is="emby-select" id="arNewType"><option value="rule">Rule</option><option value="filter">Library filter</option></select></div><div class="inputContainer"><label for="arNewTitle">Title</label><input is="emby-input" id="arNewTitle" maxlength="100" required /></div><div class="inputContainer"><label for="arNewDescription">Description</label><input is="emby-input" id="arNewDescription" maxlength="1000" /></div><button is="emby-button" type="button" id="arNewCreate">Create card</button><button is="emby-button" type="button" id="arNewCancel">Cancel</button></dialog>
 <section id="arResult" aria-live="polite"></section>

@@ -114,4 +114,4 @@ fixtures do not certify later hosts/packages or the full product.
 - [Producer/host API](../../../docs/notification-producer-api.md)
 - [Storage migration and recovery](../../../docs/plugin-storage-recovery.md)
 - [Safety and permissions](../../../docs/safety-and-permissions.md)
-- [Scoped historical evidence](../../../docs/verification.md) · [Testing](../../../docs/testing.md)
+- [Current validation](../../../docs/review-status.md) · [Testing](../../../docs/testing.md)

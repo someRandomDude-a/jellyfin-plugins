@@ -24,7 +24,7 @@
         const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('dq-flow-wires');svg.setAttribute('aria-hidden','true');grid.prepend(svg);
         const labels=node('div',undefined,'dq-flow-labels');labels.setAttribute('aria-hidden','true');grid.append(labels);
         const points=new Map(),edges=[],elements=new Map();
-        const add=(point,column,row)=>{if(!point)return;const key=get(point,'key');points.set(key,point);const li=node('li',undefined,'dq-flow-node paperList');li.dataset.checkpoint=key;li.dataset.state=state(point);li.style.gridColumn=String(column);li.style.gridRow=String(row);
+        const add=(point,column,row)=>{if(!point)return;const key=get(point,'key');points.set(key,point);const li=node('li',undefined,'dq-flow-node');li.dataset.checkpoint=key;li.dataset.state=state(point);li.style.gridColumn=String(column);li.style.gridRow=String(row);
             const icons={requested:'verified_user',activity:'manage_history',consent:'how_to_vote',checks:'fact_check',approval:'admin_panel_settings',approved:'check', 'approval-timeout':'timer_off','activity-timeout':'timer_off',delay:'hourglass_top',removing:'auto_delete',completed:'task_alt',cancelled:'cancel'};
             const glyph=node('span',icons[key]||'radio_button_unchecked','material-icons dq-flow-dot');glyph.setAttribute('aria-hidden','true');li.append(glyph,node('span',get(point,'label'),'dq-checkpoint-label'));
             const wait=duration(point);

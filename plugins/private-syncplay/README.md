@@ -19,8 +19,8 @@ pwsh -File scripts/test.ps1 -Plugin private-syncplay
 
 Use the SDK in `global.json`, current stable Node.js and PowerShell 7+. Test/package
 wrappers discover current stable Jellyfin automatically; `Jellyfin.Target.props`
-is a historical IDE baseline, not the CI target. Use the root **Release Private
-SyncPlay** action and [current release policy](../../docs/independent-plugin-releases.md).
+is an IDE baseline, not the CI target. Use **Release plugins → private-syncplay**
+and the [release policy](../../docs/independent-plugin-releases.md).
 Local builds do not publish catalogs. Check [current evidence](../../docs/review-status.md)
 before deployment; hardware, proxy, skin and human playback acceptance remain separate.
 
@@ -49,7 +49,7 @@ archive as a plugin or mix dependency DLLs from different package sets.
 
 ### Version history and updates
 
-- **Dashboard → Plugins → Catalog → Private SyncPlay** uses Jellyfin's normal **version selector**. It lists published compatible versions, newest first, with their changelogs/timestamps. An ABI newer than your server is filtered out. Before the first publication there are no installable versions; after the first publication there is only one until another is released. Test fixture versions are never published.
+- **Dashboard → Plugins → Catalog → Private SyncPlay** lists compatible published versions, newest first, with changelogs/timestamps. Incompatible ABIs are filtered out; test fixture versions are not published.
 - The installed version appears in Jellyfin's **Plugins / My Plugins** list. The plugin settings page also displays the **running plugin version and server version**, so a downloaded update cannot be mistaken for code already running.
 - With the repository enabled and Jellyfin's plugin automatic updates allowed, its **Update Plugins** scheduled task downloads newer compatible versions. You can also select a specific version and install it from the catalog. **Restart Jellyfin** to activate the new DLLs, then refresh Jellyfin Web. Updates are not hot-loaded into an existing browser page.
 - Server/per-user plugin configuration persists across upgrades. Parties, invitations and guest cookies are deliberately invalidated on restart; hosts must create new parties/links. No temporary guest is turned into an account during an upgrade.
@@ -91,7 +91,7 @@ repositories. The SDK keeps its API version independently of plugin releases.
 
 ### Releases
 
-Use **Release Private SyncPlay** and the [current release guide](../../docs/independent-plugin-releases.md).
+Use **Release plugins → private-syncplay** and the [release guide](../../docs/independent-plugin-releases.md).
 Tests, packages and publication share current-run targets; existing versions/assets
 are never overwritten. Catalog-only repair uses the existing published bytes, not
 a rebuild. Local builds do not publish or update installed servers.

@@ -32,9 +32,13 @@ test('one immutable release selector preserves exact source, platform, acceptanc
     for (const gate of ['uses: ./.github/actions/use-latest-targets','node scripts/check-dependency-freshness.mjs','node scripts/assert-release-source.mjs']) assert(release.indexOf(gate)<release.indexOf('git tag '));
     assert.equal(release.match(/uses: \.\/\.github\/workflows\/update-manifest.yml/g)?.length,1);
     assert(!/--clobber|--force|continue-on-error|git merge-base --is-ancestor/.test(release));
+    const publish=release.indexOf('gh release edit $env:RELEASE_TAG --draft=false --latest=true');
+    assert(publish>release.indexOf('gh release upload'),'Only the final successful publication marks Latest');
+    assert(!release.includes('--latest=false'));
     const manifest = await read('.github/workflows/update-manifest.yml');
     contains(manifest,["if ($env:PLUGIN -eq 'all')",'validate-release-set.ps1','publish-combined-catalog.ps1',"-AllPlugins:($env:PLUGIN -eq 'all')"]);
     assert(!manifest.includes('CatalogBranch $branch'));
+    const catalog=await read('scripts/publish-combined-catalog.ps1');contains(catalog,['published-releases.mjs',"path='releases.json'"]);
     assert((await read('.github/workflows/integration.yml')).includes('if: ${{ !inputs.external_only }}'));
 });
 test('tool-bound jobs authenticate discovery, share source/run audits and always rediscover before publication', async () => {

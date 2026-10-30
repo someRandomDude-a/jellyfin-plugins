@@ -61,8 +61,8 @@ make ordinary controls reachable. Hosted-Web injection must not persistently rew
 Web files or weaken CSP, and unsupported markup should fail without replacing commands.
 
 Component smoke/proxy/fault scripts are developer fixtures, not standalone deployment
-instructions. Resolve this run's latest image explicitly for Compose; old 12.2/12.3
-defaults are removed. Fault checks must verify the exact owned project, network,
+instructions. Resolve this run's latest image explicitly for Compose.
+Fault checks must verify the exact owned project, network,
 mounts and server identity before corrupting only its disposable plugin seal.
 Native Jellyfin health must survive while the plugin fails closed without repairing
 that seal. Never point these tools at retained/operator instances or production data.

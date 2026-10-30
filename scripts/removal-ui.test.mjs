@@ -18,6 +18,7 @@ async function fixture(failure = false, data = {}) {
     w.HTMLElement.prototype.scrollIntoView = function () { this.dataset.scrolled = 'true'; };
     w.fetch = async (url, options) => {
         const path = new URL(url).pathname; calls.push({ path, url: String(url), ...options });
+        await data.beforeResponse?.(path);
         const preview = path.endsWith('/preview');
         return { ok: !preview || !failure, status: preview && failure ? 409 : 200, headers: { get: () => null }, json: async () => preview ? failure ? { code: 'SeerrNotConfigured' } : { title: 'Fixture movie', kind: 'Movie', executionAvailable: true } : path.endsWith('/removal') ? data.removal || { canPropose: true, proposals: [] } : path.endsWith('/notices') ? [] : path.endsWith('/integration') ? data.integration || {} :path.endsWith('/approvals')?typeof data.approvals==='function'?data.approvals():data.approvals||[]: path.endsWith('/proposals') ? data.proposals || [] : data.detail || {} };
     };
@@ -54,6 +55,75 @@ test('queue shows a concise wait and last check with technical explanations reta
         assert.match(f.d.querySelector('.dq-queue-row').textContent,/retry about every minute/);
     }finally{f.dom.window.close();}
 });
+test('empty administrator approvals default to Active while an explicit approvals tab stays selected',async()=>{
+    const f=await fixture(false,{integration:{isAdministrator:true,deviceBell:false}});
+    try{
+        f.d.querySelector('.dq-local-shortcut').click();await tick();
+        assert.equal(f.d.querySelector('[role=tab][aria-selected=true]').textContent,'Active');
+        assert(f.calls.some(c=>c.url.includes('view=active')));
+        f.d.querySelector('[data-view=approvals]').click();await tick();
+        assert.equal(f.d.querySelector('[role=tab][aria-selected=true]').textContent,'Needs approval');
+        assert.match(f.d.querySelector('.dq-queue-rows').textContent,/No requests need approval/);
+    }finally{f.dom.window.close();}
+});
+test('queue immediately shows pending UI and keeps rows stable during explicit refresh',async()=>{
+    let release;const data={integration:{deviceBell:false},beforeResponse:path=>path.endsWith('/proposals')?new Promise(resolve=>{release=resolve;}):undefined};
+    const f=await fixture(false,data);
+    try{
+        f.d.querySelector('.dq-local-shortcut').click();await tick();
+        const rows=f.d.querySelector('.dq-queue-rows');assert.equal(rows.getAttribute('aria-busy'),'true');assert.match(rows.textContent,/Loading removal requests/);
+        release();await tick();assert.equal(rows.getAttribute('aria-busy'),'false');const previous=rows.firstChild;
+        [...f.d.querySelectorAll('button')].find(b=>b.textContent==='Refresh requests').click();await tick();
+        assert.equal(rows.getAttribute('aria-busy'),'true');assert.equal(rows.firstChild,previous);
+        release();await tick();assert.equal(rows.firstChild,previous);
+    }finally{f.dom.window.close();}
+});
+test('media controls and context menu show immediate pending UI and share the same lookup',async()=>{
+    let release;const f=await fixture(false,{removal:{canPropose:true,proposals:[{id:'queued',status:'Blocked',reason:'TargetVerificationRequired',canUndo:true,canConsent:false}]},beforeResponse:path=>path.endsWith('/removal')?new Promise(resolve=>{release=resolve;}):undefined});
+    try{
+        f.w.history.replaceState(null,'','#/details?id=11111111111111111111111111111111');
+        const host=f.d.createElement('div');host.innerHTML='<div class="mainDetailButtons"></div>';f.d.body.append(host);await waitFor(()=>host.querySelector('.dq-media-action'));
+        const control=host.querySelector('.dq-media-action');assert(control);assert(control.disabled);assert.equal(control.getAttribute('aria-busy'),'true');assert(!control.hidden);
+        f.d.querySelector('.itemAction').dispatchEvent(new f.w.MouseEvent('contextmenu',{bubbles:true}));
+        const menu=f.d.createElement('div');menu.className='actionSheet';menu.getClientRects=()=>[{}];menu.innerHTML='<div class="actionSheetScroller"></div>';f.d.body.append(menu);await tick();
+        assert.match(menu.textContent,/Checking removal status/);assert(!menu.querySelector('.dq-context-section').hidden);
+        assert.equal(f.calls.filter(c=>c.path.endsWith('/removal')).length,1);
+        release();await tick();assert.equal(control.getAttribute('aria-busy'),null);assert(!control.disabled);
+        assert.equal(menu.querySelector('.actionSheetItemText').textContent,'Removal · Waiting for verification');assert.equal(menu.querySelector('.dq-timeline'),null);
+    }finally{f.dom.window.close();}
+});
+test('queue has no periodic or pointer refresh and reopening does not duplicate change handlers',async()=>{
+    const f=await fixture(false,{integration:{deviceBell:false,enhancedRequestsEnabled:true}});
+    try{
+        const timers=new Set(),set=f.w.setTimeout.bind(f.w),clear=f.w.clearTimeout.bind(f.w);
+        f.w.setTimeout=(fn,ms,...args)=>{const id=set(fn,ms,...args);if(ms===15000)timers.add(id);return id;};
+        f.w.clearTimeout=id=>{timers.delete(id);clear(id);};
+        const section=f.d.createElement('section');section.className='je-requests-section';section.innerHTML='<div class="je-requests-tabs"><button>All</button></div>';f.d.body.append(section);await tick();
+        const tab=section.querySelector('.dq-deletion-tab');tab.click();await tick();assert.equal(timers.size,0);
+        const count=()=>f.calls.filter(c=>c.path.endsWith('/proposals')).length;
+        const before=count();section.querySelector('.dq-queue-rows').dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true}));await tick();assert.equal(count(),before);
+        tab.click();await tick();assert.equal(count(),before+1);
+        f.w.dispatchEvent(new f.w.Event('suite-removal-changed'));await tick();assert.equal(count(),before+2);
+        section.remove();f.w.dispatchEvent(new f.w.Event('suite-removal-changed'));await tick();assert.equal(count(),before+2);
+    }finally{f.dom.window.close();}
+});
+test('request-only cards show a disabled pending action before ownership lookup finishes',async()=>{
+    let release;const data={beforeResponse:path=>path.endsWith('/requests')?new Promise(resolve=>{release=resolve;}):undefined,detail:{requests:[{requestId:9}]}};
+    const f=await fixture(false,data);try{
+        const card=f.d.createElement('div');card.className='je-request-card';card.innerHTML='<div data-tmdb-id="1" data-media-type="movie"></div><div class="je-request-actions"></div>';f.d.body.append(card);
+        await waitFor(()=>card.querySelector('.dq-request-action'));const action=card.querySelector('.dq-request-action');assert(action.disabled);assert.equal(action.getAttribute('aria-busy'),'true');assert.match(action.textContent,/Checking removal status/);
+        release();await waitFor(()=>!action.disabled);assert.equal(action.getAttribute('aria-busy'),null);assert.match(action.textContent,/Request removal/);
+        assert.equal(f.calls.filter(c=>c.path.endsWith('/requests')).length,1);
+    }finally{f.dom.window.close();}
+});
+test('a delayed old tab response cannot replace the newly selected queue tab',async()=>{
+    let release;const data={integration:{deviceBell:false},beforeResponse:path=>path.endsWith('/proposals')&&!release?new Promise(resolve=>{release=resolve;}):undefined};
+    const f=await fixture(false,data);try{
+        f.d.querySelector('.dq-local-shortcut').click();await tick();f.d.querySelector('[data-view=history]').click();release();await tick();
+        assert.equal(f.d.querySelector('[role=tab][aria-selected=true]').textContent,'History');assert.equal(f.d.querySelector('.dq-queue-rows').getAttribute('aria-busy'),'false');
+        assert.equal(f.calls.filter(c=>c.path.endsWith('/proposals')).length,2);assert(f.calls.at(-1).url.includes('view=history'));
+    }finally{f.dom.window.close();}
+});
 test('timeline maintains a readable scale floor, centres the current node and allows horizontal drag',async()=>{
     const f=await fixture();try{const host=f.d.createElement('div');f.d.body.append(host);f.w.DeletionQueueTimeline.render({status:'Blocked',reason:'ConsentRequired',timeline:[{key:'requested',label:'Requested'},{key:'checks',label:'Checks',paths:[{key:'activity',label:'Inactive'},{key:'consent',label:'Consent',state:'current'}]},{key:'delay',label:'Delay'},{key:'removing',label:'Removal'}]},host);
         const graph=host.querySelector('.dq-flow-timeline'),grid=graph.querySelector('.dq-flow-grid');Object.defineProperty(graph,'clientWidth',{value:300});Object.defineProperty(grid,'offsetWidth',{value:1200});Object.defineProperty(grid,'offsetHeight',{value:200});graph.getBoundingClientRect=()=>({left:0});graph.querySelector('[aria-current=step]').getBoundingClientRect=()=>({left:600,width:100});await tick();
@@ -83,7 +153,7 @@ test('episode context removal explicitly previews the parent series, never an ep
         assert(!f.calls.some(c=>c.method==='DELETE'||c.path.endsWith('/proposals')));
     }finally{f.dom.window.close();}
 });
-test('thumbnails stay untouched and queued context menus show timeline and revisioned consent/Undo actions', async () => {
+test('thumbnails stay untouched and queued context menus show concise status and revisioned consent/Undo actions', async () => {
     const f = await fixture(false, { removal: { canPropose: true, proposals: [{ id: 'request', status: 'Waiting', statusLabel: 'Scheduled', revision: 9,
         ownSnapshot: 'current-snapshot', ownAnswer: 1, canUndo: true,
         timeline: [{ key: 'delay', label: 'Safety delay', state: 'current', at: '2026-11-05T15:00:00Z' }] }] } });
@@ -92,7 +162,8 @@ test('thumbnails stay untouched and queued context menus show timeline and revis
         assert.equal(card.querySelector('.dq-media-action'), null);
         card.dispatchEvent(new f.w.MouseEvent('contextmenu', { bubbles: true }));
         const menu = f.d.createElement('div'); menu.className = 'actionSheet'; menu.getClientRects = () => [{}]; menu.innerHTML = '<div class="actionSheetScroller"><button>Play</button></div>'; f.d.body.append(menu); await tick();
-        const section = menu.querySelector('.dq-context-section'); assert(section); assert.equal(section.querySelector('[aria-current=step]').dataset.checkpoint, 'delay');
+        const section = menu.querySelector('.dq-context-section'); assert(section); assert.equal(section.querySelector('.dq-timeline'), null);
+        assert.equal(section.querySelector('.actionSheetItemText').textContent, 'Removal · Scheduled');
         const actions = [...section.querySelectorAll('button')];
         assert(actions.every(b => b.querySelector('.listItemIcon.material-icons[aria-hidden=true]')));
         assert(!actions.some(b => b.textContent.includes('Request removal')));
@@ -211,10 +282,10 @@ test('Calendar merges dated removals into native events with a Deletion Date fil
             }
         };
         f.w.JellyfinEnhanced = { internals: { calendarPage: { state } }, calendarPage: { renderPage, toggleFilter: key => { state.activeFilters.has(key) ? state.activeFilters.delete(key) : state.activeFilters.add(key); renderPage(); } } };
-        renderPage(); await tick(); await tick();
+        renderPage(); await waitFor(()=>calendar.querySelectorAll('.dq-calendar-event').length===1);
         assert.equal(state.events.length, 2); assert(state.events.some(e => e.id === 'native'));
         assert.equal(calendar.querySelectorAll('.dq-calendar-event').length, 1); assert.equal(calendar.querySelector('.dq-calendar-removals'), null);
-        calendar.querySelector('.dq-calendar-filter').click(); await tick();
+        calendar.querySelector('.dq-calendar-filter').click(); await waitFor(()=>calendar.querySelector('.dq-calendar-event')&&!calendar.querySelector('[data-event-id=native]'));
         assert(state.activeFilters.has('DeletionDate')); assert.equal(calendar.querySelector('[data-event-id=native]'), null);
         calendar.querySelector('.dq-calendar-event').click(); await tick(); assert.equal(f.d.querySelector('dialog h2').textContent, 'Deletion queue');
     } finally { f.dom.window.close(); }
@@ -312,7 +383,7 @@ test('queued detail actions encode stage and open the existing request instead o
         f.w.history.replaceState(null, '', '#/details?id=11111111111111111111111111111111');
         const host = f.d.createElement('div'); host.innerHTML = '<div class="mainDetailButtons"></div>'; f.d.body.append(host); await waitFor(()=>host.querySelector('.dq-media-action')?.dataset.removalStatus==='Waiting');
         const action = host.querySelector('.dq-media-action'); assert.equal(action.dataset.removalStatus, 'Waiting'); assert.equal(action.querySelector('.material-icons').textContent, 'hourglass_top');
-        assert.equal(action.getAttribute('aria-label'), 'Removal · Scheduled'); assert(host.querySelector('.dq-item-progress .dq-timeline'));
+        assert.equal(action.getAttribute('aria-label'), 'Removal · Scheduled'); assert.equal(host.querySelector('.dq-item-progress'),null);
         action.click(); await tick(); await tick(); assert(f.d.querySelector('.dq-highlight'));
         assert(!f.calls.some(c => c.path.endsWith('/preview')));
     } finally { f.dom.window.close(); }

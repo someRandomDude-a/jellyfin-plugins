@@ -9,7 +9,7 @@
 | `dependency-maintenance.yml` | One hourly/manual workflow: Renovate opens protected stable dependency PRs; a separate disposable preview job exports and tests an update patch without committing or publishing. Bot discovery requires the configured bot. |
 | `dependency-validation.yml` | Eligible same-repository bot PRs: scope validation, shared acceptance gates, then protected merge/release promotion. |
 | `release-all.yml` | **Release plugins**: one manual selector for `all` or an independent plugin, plus plugin-prefixed tag triggers. Exact source, immutable tags and protected approval remain required. |
-| `update-manifest.yml` | Manual/reusable catalog update from validated, already-published assets; not a build or release shortcut. |
+| `update-manifest.yml` | Update platform catalogs and live README metadata from validated published assets; no rebuild. |
 
 ## Shared implementation
 
@@ -21,6 +21,8 @@
   cover every plugin, so there are no extra six Windows/Linux unit matrices.
 - The suite and independent releases share `release-all.yml`; six dispatch
   wrappers and the duplicate release engine are removed.
+- Successful publication sets GitHub's Latest marker. Catalog publication also
+  writes `releases.json` for the README's per-plugin version/ABI badges.
 - `actions/setup-latest-tools` installs official checksum-verified stable Node,
   PowerShell and SDK tools. `actions/use-latest-targets` installs those tools and
   binds each child job to the parent's immutable target evidence. Child jobs do

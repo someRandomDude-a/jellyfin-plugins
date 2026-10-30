@@ -3,7 +3,7 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('opencode/catalog-test-' + [guid]:
 New-Item -ItemType Directory -Force $root | Out-Null
 try {
     $old = Join-Path $root 'old.json'; $next = Join-Path $root 'next.json'; $output = Join-Path $root 'merged.json'
-    function Entry($id, $version) { @{ guid=$id; name=$id; versions=@(@{ version=$version; checksum='abc'; targetAbi='12.3.0.0'; sourceUrl="https://example.invalid/$version.zip" }) } }
+    function Entry($id, $version) { $tag='v'+(($version -split '\.')[0..2] -join '.'); @{ guid=$id; name=$id; versions=@(@{ version=$version; checksum='abc'; targetAbi='12.3.0.0'; sourceUrl="https://github.com/test/repository/releases/download/$tag/$id-$version.zip" }) } }
     $a = '09514a9e-f7a0-4c5a-91bc-3a46338298ca'; $b = '4b047046-a550-4415-b204-4206f1f18201'
     $unchanged = Entry $b '2.0.0.0'
     ConvertTo-Json -InputObject @((Entry $a '1.0.0.0'), $unchanged) -Depth 10 | Set-Content $old
@@ -33,9 +33,9 @@ try {
     & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root
     $tree = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/trees' })
     $refs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/refs' })
-    if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $refs[0].body.ref -ne 'refs/heads/catalog') { throw 'Platform feeds must publish atomically to the combined branch' }
+    if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 4 -or $refs.Count -ne 1 -or $refs[0].body.ref -ne 'refs/heads/catalog' -or !($tree[0].body.tree.path -contains 'releases.json')) { throw 'Platform feeds and release metadata must publish atomically to the combined branch' }
     $suite = @((Entry $a '1.2.0.0'), (Entry $b '2.1.0.0'))
-    foreach ($id in @('e0cb0eb1-93ef-4335-bae4-c729771cbbe7','85679095-3232-4b24-be55-08055a0562cd','c18d78ec-4b70-47cf-a0d2-936d987c37ba','a6429fb2-c67c-459d-b6a7-579c4a05dace')) { $suite += Entry $id '1.0.0.0' }
+    foreach ($id in @('bc9c3d3e-6da3-4ee5-91cd-c429d58ad901','3de88ba1-6d5c-49f5-854b-65a72f473f21','c18d78ec-4b70-47cf-a0d2-936d987c37ba','a6429fb2-c67c-459d-b6a7-579c4a05dace')) { $suite += Entry $id '1.0.0.0' }
     ConvertTo-Json -InputObject $suite -Depth 10 | Set-Content $next
     & "$PSScriptRoot/merge-plugin-catalog.ps1" -Incoming $next -Previous $old -Output $output
     $result = @(Get-Content $output -Raw | ConvertFrom-Json)
@@ -57,11 +57,13 @@ try {
     $tree = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/trees' })
     $refs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/refs' })
     $blobs = @($calls | Where-Object { $_.arguments -contains 'repos/test/repository/git/blobs' })
-    if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 3 -or $refs.Count -ne 1 -or $blobs.Count -ne 3) { throw 'Suite catalogs must publish atomically' }
-    foreach ($blob in $blobs) {
+    if ($tree.Count -ne 1 -or $tree[0].body.tree.Count -ne 4 -or $refs.Count -ne 1 -or $blobs.Count -ne 4) { throw 'Suite catalogs and release metadata must publish atomically' }
+    foreach ($blob in $blobs[0..2]) {
         $entries = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($blob.body.content)) | ConvertFrom-Json)
         if ($entries.Count -ne 6) { throw 'Published suite catalog lost entries' }
     }
+    $summary=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($blobs[3].body.content)) | ConvertFrom-Json
+    if (@($summary.PSObject.Properties).Count -ne 6 -or $summary.PrivateSyncPlay.version -ne '1.2.0.0' -or $summary.DiscordBridge.version -ne '2.1.0.0') { throw 'README metadata lost independently published plugin versions' }
     $calls.Clear(); $rejected = $false
     try { & "$PSScriptRoot/publish-combined-catalog.ps1" -Repository test/repository -Directory $root } catch { $rejected = $true }
     if (!$rejected -or $calls.Count) { throw 'Selected mode accepted a suite or wrote before validation' }

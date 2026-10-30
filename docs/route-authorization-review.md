@@ -6,10 +6,8 @@ Run `node scripts/audit-routes.mjs` from the repository root. The current invent
 records MVC actions, catch-all adapters and minimal-handler templates across all six plugins and
 the shared Security/Notifications modules. Eight legacy lifecycle controller files
 are excluded by the active lifecycle project and are explicitly listed as inactive;
-the example consumer is not shipped. Inventories under `artifacts/discord-embedded-*`
-and `artifacts/route-audit/` are historical and predate removal/ownership changes.
-The fresh source inventory is `artifacts/commands-studio-menu-final-routes.json`:
-216 declarations/templates and eight excluded inactive legacy files.
+the example consumer is not shipped. Use the output from the current run rather
+than a retained inventory from an earlier source revision.
 
 This is a source trace, **not a count of executed runtime authorization tests**. It records
 route declarations, class/action overrides, source lines and guard-call leads. Minimal
@@ -54,4 +52,4 @@ in current status, with final native Security checks deliberately later.
 
 - [Testing](testing.md) · [Discord integration](discord-suite-integration.md)
 - [Safety and permissions](safety-and-permissions.md)
-- [Current evidence](review-status.md) · [Remaining v1 gates](v1-release-gates.md)
+- [Current validation](review-status.md) · [Release checklist](github-release-checklist.md)

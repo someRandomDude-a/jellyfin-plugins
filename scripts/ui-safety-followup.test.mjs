@@ -51,7 +51,7 @@ test('a late account preview cannot authorize an edited permission draft', async
 test('account rollback uses the stored snapshot ID rather than its distinct event ID', async t => {
     const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [] } : path.startsWith('users?') ? { items: [{ id: 'a', username: 'Alice', policy: { MaxActiveSessions: 3 } }], total: 1 } : path === 'policy/snapshots' ? { items: [{ snapshotId: 'stored-snapshot', eventId: 'source-event', metadata: { before: { MaxActiveSessions: 1 }, after: { MaxActiveSessions: 3 } } }] } : { revision: 0 });
     await click(w, 'Edit access'); await click(w, 'Review rollback history'); await click(w, 'Rollback managed fields');
-    const confirm = [...w.document.querySelectorAll('dialog')].at(-1); confirm.querySelector('input').value = 'CONFIRM ACCOUNT HUB CHANGE'; confirm.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
+    const confirm = [...w.document.querySelectorAll('dialog')].at(-1);assert.equal(confirm.querySelector('input[type=text]'),null);confirm.querySelector('input[type=password]').value='fresh-proof'; confirm.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
     assert.equal(calls.find(call => call.path === 'commands/policy.rollback').body.payload.snapshotId, 'stored-snapshot');
 });
 test('individual permissions retain empty libraries and nullable ratings and show readable diffs', async t => {
@@ -71,10 +71,10 @@ test('simplified settings preserve native enum values and the existing authoriza
     const labels = [...advanced.querySelectorAll('label')], select = name => w.document.getElementById(labels.find(label => label.textContent === name).htmlFor);
     assert.equal(select('Extra verification level').value, 'AllConfigChanges'); assert.equal(select('Local password login').selectedOptions[0].textContent, 'Follow native sign-in policy');
     select('Security alerts').value = 'hub'; await click(w, 'Save Security integration settings'); assert(!calls.some(call => call.path === 'security/settings'));
-    const dialog = w.document.querySelector('dialog'); dialog.querySelector('input').value = 'CONFIRM ACCOUNT HUB CHANGE'; dialog.querySelector('input[type=password]').value = 'fresh-proof'; dialog.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
+    const dialog = w.document.querySelector('dialog');assert.equal(dialog.querySelector('input[type=text]'),null); dialog.querySelector('input[type=password]').value = 'fresh-proof'; dialog.querySelector('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await turn();
     const saved = calls.find(call => call.path === 'security/settings'); assert.equal(saved.body.confirmation, 'CHANGE SECURITY SETTINGS'); assert.equal(saved.body.stepUp.code, 'fresh-proof');
     assert.deepEqual(saved.body.settings, { stepUpLevelMirror: 'AllConfigChanges', alertMode: 'hub', passwordLoginPolicy: 'auto' });
-    assert(find(w, 'Removal permissions').disabled); assert(find(w, 'Automatic request rules').disabled);
+    assert.equal(find(w, 'Removal permissions'),undefined); assert.equal(find(w, 'Automatic request rules'),undefined);
 });
 test('removal and automation permissions link to their owning plugin without granting native access', async t => {
     const { w, calls } = await workspace(t, path => path === 'dependencies' ? { items: [{ id: 'deletion-queue', available: true }, { id: 'automatic', available: true }] } : path.startsWith('users?') ? { items: [], total: 0 } : path === 'user-creation' ? { owner: 'hub' } : { revision: 0 });
@@ -163,12 +163,14 @@ test('bulk account access previews only selected fields and invalidates the prev
     assert(w.document.querySelector('dialog input[type=password]'),'Unlink must use the existing native confirmation/proof transport');
     assert(!calls.some(call=>call.url.endsWith('/commands/user.discord.unlink')));
     await click(w,'Cancel');
-    const choices = w.document.querySelectorAll('.hubTable input[type=checkbox]');
+    const choices = w.document.querySelectorAll('.hubTable tbody input[type=checkbox]');
     assert.equal(choices.length, 3); assert(choices[2].disabled);
+    const all=w.document.querySelector('.hubTable thead input[type=checkbox]');assert(all);all.checked=true;all.dispatchEvent(new w.Event('change'));assert(choices[0].checked&&choices[1].checked);assert(!choices[2].checked);assert.equal(choices[0].getAttribute('aria-label'),'Alice');
     for (const choice of [...choices].slice(0, 2)) { choice.checked = true; choice.dispatchEvent(new w.Event('change')); }
     await click(w, 'Edit selected access');
     const dialog = w.document.querySelector('dialog');
     const include = [...dialog.querySelectorAll('label')].find(label => label.textContent === 'Change Max Active Sessions').querySelector('input');
+    const handle=dialog.querySelector('[data-drag-handle]');assert(handle);handle.dispatchEvent(new w.MouseEvent('pointerdown',{button:0,clientX:10,clientY:10}));handle.dispatchEvent(new w.MouseEvent('pointermove',{clientX:80,clientY:30}));handle.dispatchEvent(new w.MouseEvent('pointerup'));assert.equal(dialog.style.left,'70px');assert.equal(dialog.style.top,'20px');
     include.checked = true; include.dispatchEvent(new w.Event('change'));
     const sessions = dialog.querySelector('input[type=number]'); sessions.value = '5'; sessions.dispatchEvent(new w.Event('input', { bubbles: true }));
     await click(w, 'Preview');
@@ -256,7 +258,7 @@ test('Invite pagination follows the no-total API through the end, browses templa
     await click(w, 'Next templates'); assert(calls.includes('group-policy/groups?skip=100&limit=100'));
     await click(w, 'Provisioning history'); await click(w, 'Reconcile reservation (record verified completion; never create or enable)');
     assert(calls.some(c => c.path === 'invite-reservations/reservation/reconcile' && c.risk === 'Configuration'));
-    const discord = [...w.document.querySelectorAll('input')].find(n => n.maxLength === 20); assert(discord.disabled); assert.match(discord.title, /connect its bot/);
+    const discord = [...w.document.querySelectorAll('input')].find(n => n.maxLength === 20); assert(discord.disabled); assert(discord.parentElement.hidden);
     panel.dispose(); assert.equal(w.document.querySelector('main').children.length, 0);
 });
 test('Invite disposal erases retained one-time link and ignores late issuance', async t => {

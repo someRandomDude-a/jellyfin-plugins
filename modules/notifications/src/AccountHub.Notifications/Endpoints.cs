@@ -140,7 +140,7 @@ public static class Endpoints
         }
         user.MapPost("/read-all", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () =>
         { s.ReadAll(await User(c, h)); return Json(Contract.Success(new { status = "updated", batchLimit = 1000 })); }));
-        user.MapGet("/preferences", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () => Json(Contract.Success(new { preferences = s.Preferences(await User(c, h)) }))));
+        user.MapGet("/preferences", (HttpContext c, NotificationStore s, INotificationHost h) => Guard(async () => {var id=await User(c,h);return Json(Contract.Success(new { preferences = s.Preferences(id),discordAvailable=h.DiscordAvailable&&!string.IsNullOrWhiteSpace(await h.DiscordLinkAsync(id,c.RequestAborted)) }));}));
         user.MapPut("/grouping",(HttpContext c,NotificationStore s,INotificationHost h,NotificationService service)=>Guard(async()=>{
             var id=await User(c,h);var preference=JsonSerializer.Deserialize<NotificationGroupingPreference>(await Body(c,4096),Contract.Json)??throw new NotificationException("invalid_request","Missing grouping preference");
             var administrator=await h.IsAdministratorAsync(id,c.RequestAborted);
@@ -175,7 +175,7 @@ public static class Endpoints
             await h.AppendAuditAsync(new(1,Guid.NewGuid(),"notifications","notifications.push.changing","success",DateTimeOffset.UtcNow,await User(c,h)),c.RequestAborted);s.ConfigurePush(revision,enabled,subject,defaultOn);return Json(Contract.Success(new{status="updated"}));
         }));
         admin.MapGet("", (HttpContext c, INotificationHost h, NotificationStore s) => Guard(async () =>
-        { await Admin(c, h, false); return Json(Contract.Success(s.Settings())); }));
+        { await Admin(c, h, false);var settings=s.Settings();return Json(Contract.Success(new{settings.Revision,settings.Routes,settings.NotificationDays,settings.BlockedNotificationLimit,discordAvailable=h.DiscordAvailable})); }));
         admin.MapPut("", (HttpContext c, INotificationHost h, NotificationService s) => Guard(async () =>
         {
             await Admin(c, h, true);

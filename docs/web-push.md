@@ -55,10 +55,9 @@ localhost). Native reverse-proxy handling is reused; the plugin does not trust
 arbitrary forwarding headers. The service worker and notification links stay on
 the browser's own origin and preserve Jellyfin's BaseUrl.
 
-If notifications are blocked, allow them in the browser's site settings. On
-iPhone/iPad, add Jellyfin to the Home Screen and open that app first. Unsupported
-or insecure browsers now show these requirements rather than silently hiding
-notification setup. The device panel shows whether this device is enrolled.
+If notifications are blocked, allow them in browser site settings. On iPhone/iPad,
+add Jellyfin to the Home Screen and open that app first. Device controls are hidden
+when Push is disabled on the server or unsupported by the current browser/connection.
 
 The browser/OS may deliver while Jellyfin is closed, but timing and delivery are
 not guaranteed. iOS/iPadOS may require an installed home-screen web app. Current

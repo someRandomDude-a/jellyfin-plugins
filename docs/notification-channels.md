@@ -32,11 +32,12 @@ the gesture does not approve an administrator review or directly execute removal
 ## Personal categories and importance
 
 In the notification bell's **Settings**, every signed-in user gets Android-style
-personal category controls: an overall switch, per-plugin switches under **App
-notification categories**, and expandable category rows. Open a row to choose
+personal category controls: an overall switch and per-plugin switches under **App
+notification categories**. Category rows provide direct choices for
 **Alerting**, **Important**, **Silent**, **Low**, or **Use server default**. Changes
 save automatically; failed saves restore the confirmed setting. Radio choices
-support native keyboard navigation and the surrounding Jellyfin theme.
+support native keyboard navigation and the surrounding Jellyfin theme. Unavailable
+Discord and device-notification settings are hidden without deleting saved preferences.
 
 These settings belong only to the current account. They do not change anyone
 else's preferences, notification permissions, server routes, layouts or browser

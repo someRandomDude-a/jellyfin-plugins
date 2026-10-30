@@ -99,4 +99,4 @@ Bind recent redacted events/receiver health to the **existing Notifications hist
 - [Security setup, existing-session recovery and ingress acceptance](../../../docs/security-recovery-integration.md)
 - [Notification producer/host contract](../../../docs/notification-producer-api.md)
 - [Safety and permission boundaries](../../../docs/safety-and-permissions.md)
-- [Current status](../../../docs/review-status.md) · [Evidence register](../../../docs/verification.md)
+- [Current validation](../../../docs/review-status.md)

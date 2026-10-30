@@ -22,7 +22,7 @@ test('swipe surfaces use low-specificity theme defaults so late injection cannot
     assert.doesNotMatch(css.match(/:where\(\.accountHubInbox\) \.notificationSwipePreview \{[^}]*\}/)[0], /!important|#[0-9a-f]{3,8}\b/i);
 });
 
-function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, saveStatus = 200, saveGate, actionStatus = 200, dismissStatus = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink, inbox, read = false, push,categories,defaultOn=false,permission='default',permissionResult='granted',storage=new Map() } = {}) {
+function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', status = 200, saveStatus = 200, saveGate, actionStatus = 200, dismissStatus = 200, blocked = false, hidden = false, hasMore = false, preferences = [], noticeLink, inbox, read = false, push,categories,defaultOn=false,permission='default',permissionResult='granted',storage=new Map(),discordAvailable=true } = {}) {
     const listeners = {}, calls = [], timers = [];
     let focused;
     class Element {
@@ -42,7 +42,7 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
         getClientRects() { return [{}]; }
         getBoundingClientRect() { return { bottom: 50, right: 900 }; }
         closest(selector) { if(selector==='[data-notification-id]')return this.dataset.notificationId?this:this.parentElement?.closest(selector)||null;return null; }
-        querySelectorAll(selector) { return all(this).slice(1).filter(e => selector === 'button' ? e.tag === 'button' : selector==='.notificationOptions[open]'?e.className==='notificationOptions'&&e.open:selector.startsWith('.') && e.className?.split(' ').includes(selector.slice(1))); }
+        querySelectorAll(selector) { return all(this).slice(1).filter(e => selector==='[data-channel=discord]'?e.dataset.channel==='discord':selector === 'button' ? e.tag === 'button' : selector==='.notificationOptions[open]'?e.className==='notificationOptions'&&e.open:selector.startsWith('.') && e.className?.split(' ').includes(selector.slice(1))); }
         querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
         contains(target) { return this === target || this.children.some(c => c.contains(target)); }
     }
@@ -77,7 +77,7 @@ function harness({ href = 'https://example.test/jellyfin/web/index.html#/home', 
             const code = url.endsWith('/preferences/rule') ? saveStatus : url.endsWith('/actions') ? actionStatus : url.endsWith('/dismiss') ? dismissStatus : status;
             return { status: code, ok: code === 200, headers: { get: () => '"tag"' }, json: async () => code !== 200
                 ? (blocked ? { twoFactorRequired: true } : {})
-                : { ok: true, data: url.endsWith('/categories')?categories||{isAdministrator:false,catalogs:[]}:url.endsWith('/push')?{enabled:push==='enabled',defaultOn,publicKey:Buffer.alloc(65,1).toString('base64url'),devices:[]}:url.endsWith('/preferences') ? { preferences } : url.endsWith('unread-count') ? { count: 1 } : inbox ? inbox(Number(new URL(url).searchParams.get('skip') || 0)) : { hasMore, notifications: [
+                : { ok: true, data: url.endsWith('/categories')?categories||{isAdministrator:false,catalogs:[]}:url.endsWith('/push')?{enabled:push==='enabled',defaultOn,publicKey:Buffer.alloc(65,1).toString('base64url'),devices:[]}:url.endsWith('/preferences') ? { preferences,discordAvailable } : url.endsWith('unread-count') ? { count: 1 } : inbox ? inbox(Number(new URL(url).searchParams.get('skip') || 0)) : { hasMore, notifications: [
                     { id: 'one', event: { title: '<img src=x onerror=alert(1)>', body: 'plain text', link: noticeLink }, read }
                 ] } }
             };
@@ -312,14 +312,19 @@ test('Web Push prompts only on explicit opt-in, uses a narrow worker scope and c
 test('administrator-disabled Web Push does not prompt or subscribe',async()=>{
     const h=harness({push:'disabled'});await settle();h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
     assert.equal(h.all().find(e=>e.attrs['aria-label']==='Notifications on this device').disabled,true);assert.equal(h.pushEvents.length,0);
+    assert.equal(h.all().find(e=>e.textContent==='Browser notifications').parentElement.hidden,true);
+});
+test('unavailable Discord preferences are hidden without changing saved preferences',async()=>{
+    const h=harness({discordAvailable:false,preferences:[{source:'*',type:'*',channel:'discord',enabled:false}]});await settle();h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
+    const rows=h.all().filter(e=>e.dataset.channel==='discord');assert(rows.length>0);assert(rows.every(e=>e.hidden));assert(!h.calls.some(c=>c.options.method==='PUT'));
 });
 test('denied notification permission explains browser settings without another prompt',async()=>{
     const h=harness({push:'enabled'});h.window.Notification.permission='denied';await settle();h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
-    assert.equal(h.all().find(e=>e.attrs['aria-label']==='Notifications on this device').checked,false);assert(h.all().some(e=>e.textContent.includes('browser’s site settings')));assert.equal(h.pushEvents.length,0);
+    assert.equal(h.all().find(e=>e.attrs['aria-label']==='Notifications on this device').checked,false);assert(h.all().some(e=>e.textContent.includes('site settings')));assert.equal(h.pushEvents.length,0);
 });
-test('insecure connections explain HTTPS rather than silently hiding device setup',async()=>{
+test('insecure connections omit unavailable device settings without prompting',async()=>{
     const h=harness({push:'enabled'});h.window.isSecureContext=false;await settle();h.all().find(e=>e.dataset.accountHubBell).onclick();h.all().find(e=>e.attrs['aria-label']==='Notification settings').onclick();await settle();
-    assert(h.all().some(e=>e.textContent.includes('Open Jellyfin using HTTPS')));assert(!h.all().some(e=>e.textContent==='Enable on this device'));assert.equal(h.pushEvents.length,0);
+    assert(!h.all().some(e=>e.textContent==='Browser notifications'));assert(!h.all().some(e=>e.textContent==='Enable on this device'));assert.equal(h.pushEvents.length,0);
 });
 test('push worker displays only fixed text and opens the native BaseUrl without processing payload links',async()=>{
     const listeners={},notices=[],opened=[];const context=vm.createContext({URL,self:{location:{pathname:'/jellyfin/Notifications/api/v1/notifications/push/sw.js',origin:'https://example.test'},addEventListener:(name,fn)=>listeners[name]=fn,registration:{showNotification:async(...args)=>notices.push(args)},clients:{openWindow:async url=>opened.push(url)}}});

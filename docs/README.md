@@ -1,53 +1,33 @@
 # Documentation
 
-## Dependencies and installation
+Start with [installation and live release metadata](../README.md), then choose a guide.
 
-Start with the [plugin overview and architecture-specific installation instructions](../README.md).
-Then check the [feature dependency matrix](dependencies.md). Packages are previews;
-published catalog availability, compatible server ABI and current provider health
-are separate requirements. Back up plugin databases and their original keys before
-upgrading; never reset history or credentials to repair a failed migration.
+## Setup and use
 
-## Choose a guide
-
-| Goal | Guide |
+| Task | Guide |
 |---|---|
-| Manage accounts, templates, invitations and verified links | [Account management](account-management.md) |
-| Understand the existing-session recovery requirement | [Security and recovery](security-recovery-integration.md) |
-| Configure the bot, account commands and delivery | [Discord integration](discord-suite-integration.md) |
-| Enable future episode/movie announcements | [Library notifications](library-notifications.md) |
-| Choose personal categories, importance or consent swipes | [Notification controls](notification-channels.md) |
-| Enroll a browser/device for Push | [Web Push](web-push.md) |
-| Configure removal requests, safeguards and artwork | [Deletion Queue](../plugins/deletion-queue/README.md) |
-| Configure rules that submit removal requests | [Automatic Deletion Requests](../plugins/automatic-deletion-requests/README.md) |
-| Configure parties, invitations and guest viewing | [Private SyncPlay](../plugins/private-syncplay/README.md) |
-| Recover plugin storage without losing keys/history | [Storage recovery](plugin-storage-recovery.md) |
-| Build or run disposable acceptance | [Testing](testing.md) · [Theme acceptance](theme-acceptance.md) |
-| Trace HTTP, bot and provider authorization boundaries | [Route authorization review](route-authorization-review.md) |
-| Maintain dependencies or publish a release | [Dependency maintenance](dependency-maintenance.md) · [Release checklist](github-release-checklist.md) |
-| Choose a GitHub workflow or understand its gates | [Workflow map](../.github/README.md) |
+| Choose plugins and dependencies | [Dependency matrix](dependencies.md) |
+| Manage users, access templates and invitations | [Accounts](account-management.md) |
+| Understand native creation ownership | [User creation](user-creation-workflow.md) |
+| Link accounts and use session-bound recovery | [Security and recovery](security-recovery-integration.md) |
+| Configure Discord delivery and commands | [Discord Bridge](discord-suite-integration.md) |
+| Configure future library notices | [Library notifications](library-notifications.md) |
+| Set personal preferences and notification layouts | [Notification controls](notification-channels.md) |
+| Enable browser notifications | [Web Push](web-push.md) |
+| Review and schedule media removal | [Deletion Queue](../plugins/deletion-queue/README.md) |
+| Create rules or import Maintainerr JSON | [Automatic requests](../plugins/automatic-deletion-requests/README.md) |
+| Host private watch parties | [Private SyncPlay](../plugins/private-syncplay/README.md) |
+| Restore plugin state safely | [Storage recovery](plugin-storage-recovery.md) |
 
-## Status and document scope
+## Development and operations
 
-[Current review status](review-status.md) is the source for current evidence and
-blockers. Latest-only release gates reject stale dependency declarations; the current
-bump and acceptance results are tracked there, not inferred from earlier packages.
+- [Testing](testing.md) · [Browser/theme checks](theme-acceptance.md)
+- [Validation status and limits](review-status.md)
+- [Workflow map](../.github/README.md) · [Release checklist](github-release-checklist.md)
+- [Release procedures](independent-plugin-releases.md) · [Dependency maintenance](dependency-maintenance.md)
+- [Safety and permissions](safety-and-permissions.md) · [Route authorization](route-authorization-review.md)
+- [Notification producer API](notification-producer-api.md) · [Metadata contracts and imports](metadata-source-parity.md)
+- [Live-test credential handling](discord-test-credentials.md)
 
-Product requirements describe intended boundaries, not a promise that every planned
-feature is implemented. Superseded audits/handoffs have been consolidated into the
-current safety guides and evidence register; original runtime artifacts remain
-unchanged. Older evidence is not blanket compatibility certification. No document
-authorizes live Discord testing, production deletion, credential disclosure or
-publication by itself.
-
-## References
-
-- [Product requirements](product-requirements.md) · [Remaining v1 gates](v1-release-gates.md)
-- [Independent and suite releases](independent-plugin-releases.md)
-- [Metadata source contracts](metadata-source-parity.md)
-- [Test credential handling](discord-test-credentials.md)
-- [User creation workflow](user-creation-workflow.md)
-- [Evidence register and scoped historical milestones](verification.md)
-- [Preserved development review history](review-history.md)
-- [Safety, permissions and operational limits](safety-and-permissions.md)
-- [Notification producer/host API](notification-producer-api.md)
+Documentation describes current source. Verify the selected release's compatibility
+and back up databases with their original keys before upgrading.

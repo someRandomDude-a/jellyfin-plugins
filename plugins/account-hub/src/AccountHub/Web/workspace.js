@@ -52,16 +52,16 @@ function changeDescription(path, payload) {
 function confirmation(description, signal, securitySensitive = true) {
     return new Promise(resolve => {
         if (signal?.aborted) { resolve(null); return; }
-        const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; const form = make('form'), typed = field('Type CONFIRM ACCOUNT HUB CHANGE', ''), proof = field('Fresh authenticator or recovery code (when required)', '', { secret: true });
+        const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; const form = make('form'), proof = field('Verification code', '', { secret: true });
         dialog.setAttribute('aria-label', description); form.className = 'formDialogContent dialogContentInner';
         const submit = make('button', 'Confirm'), cancel = make('button', 'Cancel'); submit.type = 'submit';
         let closed = false;
         const abort = () => close(null);
-        const close = value => { if (closed) return; closed = true; signal?.removeEventListener('abort', abort); typed.input.value = proof.input.value = ''; dialog.close(); dialog.remove(); resolve(value); };
+        const close = value => { if (closed) return; closed = true; signal?.removeEventListener('abort', abort); proof.input.value = ''; dialog.close(); dialog.remove(); resolve(value); };
         signal?.addEventListener('abort', abort, { once: true });
         cancel.onclick = () => close(null); dialog.addEventListener('cancel', event => { event.preventDefault(); close(null); });
-        form.onsubmit = event => { event.preventDefault(); if (typed.value() !== 'CONFIRM ACCOUNT HUB CHANGE') { typed.input.focus(); return; } close({ confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: proof.value() } }); };
-        form.append(make('h2', description), typed.root, ...(securitySensitive ? [proof.root] : []), submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
+        form.onsubmit = event => { event.preventDefault(); close({ confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: proof.value() } }); };
+        form.append(make('h2', description), ...(securitySensitive ? [proof.root] : []), submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); (securitySensitive?proof.input:submit).focus();
     });
 }
 
@@ -79,6 +79,7 @@ export function mountWorkspace(root, client) {
         for (const tab of tabs.children) {
             const dependency = dependencies.find(item => item.id === dependencyIds[tab.textContent]);
             tab.disabled = dependency ? !dependency.available : false;
+            tab.hidden = dependency ? !dependency.available : false;
             if (dependency) { tab.title = dependency.reason + ' ' + dependency.fix; tab.setAttribute('aria-describedby', 'hub-dependency-' + dependency.id); }
         }
     }
@@ -97,7 +98,7 @@ export function mountWorkspace(root, client) {
         } finally { if (grant?.stepUp) grant.stepUp.code = null; if (payload?.stepUp) payload.stepUp.code = null; }
     }
     const action = fn => async () => { const current = generation; status.textContent = ''; try { await fn(); } catch (error) { if (current === generation && error.name !== 'AbortError') status.textContent = error.message; } };
-    const button = (text, fn) => { const value = make('button', text); value.onclick = action(fn); return value; };
+    const button = (text, fn) => { const value = make('button', text); value.onclick = action(fn);value.dataset.tone=/^(Disable|Revoke|Unlink|Delete|Remove)/.test(text)?'danger':/^(Save|Apply|Enable|Create)/.test(text)?'success':'neutral'; return value; };
     async function command(operation, payload) { const result = await request('commands/' + operation, 'POST', { revision: state.revision, commandId: uuid(), payload }, true); state = await request('workspace'); status.textContent = resultSummary(result); return result; }
     async function show(name = selectedTab) {
         cleanup?.(); cleanup = undefined; active.abort(); active = new AbortController(); generation++; selectedTab = name; content.replaceChildren(); status.textContent = 'Loading…';
@@ -117,8 +118,10 @@ export function mountWorkspace(root, client) {
         const selected=new Map(),search = field('Search users', ''), toolbar = make('div'); toolbar.className = 'hubToolbar';toolbar.append(search.root, button('Search', async () => { skip = 0;selected.clear();await load(); }),button('Edit selected access',async()=>{if(!selected.size)throw Error('Select users first.');await editPolicy([...selected.values()][0],[...selected.keys()]);}),button('Clear selection',async()=>{selected.clear();await load();})); content.append(toolbar); const list = make('div'); content.append(list);
         async function load() {
             const data = await request('users?skip=' + skip + '&limit=50&search=' + encodeURIComponent(search.value()));
-            list.replaceChildren(table(['Select','User', 'Administrator', 'Disabled', 'Discord', 'Actions'], data.items.map(user => {
-                const choice=field('Select '+user.username,selected.has(user.id));choice.input.disabled=user.administrator;choice.input.onchange=()=>{if(choice.input.checked){if(selected.size>=100){choice.input.checked=false;status.textContent='Select at most 100 users.';return;}selected.set(user.id,user);}else selected.delete(user.id);};
+            const all=make('input');all.type='checkbox';all.setAttribute('aria-label','Select all users on this page');const choices=[];
+            const update=()=>{const enabled=choices.filter(c=>!c.disabled);all.disabled=!enabled.length;all.checked=!!enabled.length&&enabled.every(c=>c.checked);all.indeterminate=enabled.some(c=>c.checked)&&!all.checked;};
+            list.replaceChildren(table(['','User', 'Administrator', 'Disabled', 'Discord', 'Actions'], data.items.map(user => {
+                const choice=field(user.username,selected.has(user.id));choice.input.setAttribute('aria-label',user.username);choice.root.querySelector('.checkboxLabel').textContent='';choices.push(choice.input);choice.input.disabled=user.administrator;choice.input.onchange=()=>{if(choice.input.checked){if(selected.size>=100){choice.input.checked=false;status.textContent='Select at most 100 users.';return;}selected.set(user.id,user);}else selected.delete(user.id);update();};
                 const actions = make('div'); actions.className = 'hubActions';
                 actions.append(button('Edit access', () => editPolicy(user)), button(user.disabled ? 'Enable' : 'Disable', async () => { await command(user.disabled ? 'user.enable' : 'user.disable', { userId: user.id }); await load(); }), button('Revoke sessions', async () => { await command('user.sessions.revoke', { userId: user.id }); }));
                 if (user.administrator) actions.children[0].disabled = true;
@@ -126,6 +129,7 @@ export function mountWorkspace(root, client) {
                 if(user.discordLinked)actions.append(button('Unlink Discord',async()=>{await command('user.discord.unlink',{userId:user.id});await load();}));
                 return [choice.root,user.username, user.administrator, user.disabled, user.discordLinked?'Linked':'Not linked', actions];
             })), button('Previous', async () => { skip = Math.max(0, skip - 50); await load(); }), button('Next', async () => { if (skip + 50 < data.total) { skip += 50; await load(); } }));
+            list.querySelector('th').append(all);all.onchange=()=>{const checked=all.checked;for(const choice of choices.filter(c=>!c.disabled)){choice.checked=checked;choice.onchange();}update();};update();
         }
         await load();
     }
@@ -136,6 +140,7 @@ export function mountWorkspace(root, client) {
     }
     async function editPolicy(user,userIds=[user.id]) {
         const dialog = make('dialog'); dialog.className = 'dialog formDialog accountHubDialog'; dialog.setAttribute('aria-label', 'Access for ' + user.username); const grid = make('div'); grid.className = 'hubGrid'; const controls = {};
+        dialog.addEventListener('cancel',event=>{event.preventDefault();dialog.close();dialog.remove();});
         active.signal.addEventListener('abort', () => { dialog.close(); dialog.remove(); }, { once: true });
         let draft = 0;
         const include={};for (const [key, value] of Object.entries(user.policy)) {
@@ -160,11 +165,15 @@ export function mountWorkspace(root, client) {
         const selectedUsername = id => id === user.id ? user.username : id;
         grid.addEventListener('input', invalidate); grid.addEventListener('change', invalidate);
         const history = make('div');
-        dialog.append(make('h2', userIds.length>1?'Access for '+userIds.length+' selected users':'Access for ' + user.username), make('p', 'Review permissions before applying. Administrators are excluded; changes can be rolled back.'), make('p', 'Enabled Folders: comma-separated library IDs. Leave parental rating blank for no limit. Session limit 0 means unlimited.'), grid, message, save, apply,
+        dialog.append(make('h2', userIds.length>1?'Access for '+userIds.length+' users':'Access for ' + user.username), make('p', 'Preview changes before applying. Administrator accounts are excluded.'), make('p', 'Folders: library IDs, separated by commas. Blank rating or 0 sessions means unlimited.'), grid, message, save, apply,
             button('Review rollback history', async () => {
                 const data = await request('policy/snapshots', 'POST', { userId: user.id }, state.stepUpLevelMirror === 'Everything');
                 history.replaceChildren(make('h3', 'Rollback history for ' + user.username), table(['Time', 'Saved changes', 'Action'], data.items.map(snapshot => [snapshot.occurredAt, accessDiff(snapshot.metadata.before, snapshot.metadata.after), button('Rollback managed fields', async () => { const result = await command('policy.rollback', { userIds: [user.id], snapshotId: snapshot.snapshotId }); dialog.close(); dialog.remove(); await show(); status.textContent = resultSummary(result); })])));
             }), history, button('Cancel', async () => { dialog.close(); dialog.remove(); })); document.body.append(dialog); dialog.showModal();
+        const handle=dialog.querySelector('h2');handle.dataset.dragHandle='true';let drag;
+        handle.addEventListener('pointerdown',event=>{if(event.button!==0)return;const box=dialog.getBoundingClientRect();drag={x:event.clientX,y:event.clientY,left:box.left,top:box.top};handle.setPointerCapture?.(event.pointerId);});
+        handle.addEventListener('pointermove',event=>{if(!drag)return;dialog.style.margin='0';dialog.style.right='auto';dialog.style.bottom='auto';dialog.style.left=Math.max(0,Math.min(innerWidth-dialog.offsetWidth,drag.left+event.clientX-drag.x))+'px';dialog.style.top=Math.max(0,Math.min(innerHeight-dialog.offsetHeight,drag.top+event.clientY-drag.y))+'px';});
+        for(const event of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(event,()=>{drag=null;});
     }
     async function groups() {
         const view = generation, module = await import(client.getUrl('AccountHub/assets/group-policy.mjs'));
@@ -225,7 +234,7 @@ export function mountWorkspace(root, client) {
         const integrations = make('section'); integrations.className = 'suiteCard'; integrations.append(make('h3', 'Plugin permissions'), make('p', 'Removal permissions are managed separately from account access templates.'));
         for (const [id, label, page] of [['deletion-queue', 'Removal permissions', 'DeletionQueueAdmin'], ['automatic', 'Automatic request rules', 'AutomaticDeletionRequests']]) {
             const dependency = dependencies.find(item => item.id === id), link = button(label, async () => { location.hash = '/configurationpage?name=' + page; });
-            link.disabled = !dependency?.available; link.title = dependency?.available ? '' : 'Install and enable this plugin, then refresh.'; integrations.append(link);
+            if(dependency?.available)integrations.append(link);
         }
         integrations.dataset.help = 'Deletion Queue controls who can propose removal (Denied, Own requests or Any accessible item), per-user overrides, consent, approval and execution. Automatic request rules are administrator-only and still obey Queue permissions and safety checks. Native account templates do not grant either plugin permission.';
         content.append(integrations);

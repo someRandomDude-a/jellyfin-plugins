@@ -11,7 +11,7 @@ optional; Seerr and explicit destructive opt-in are required for supported real
 media operations. Back up plugin state and original keys before upgrades.
 
 Use root test/package wrappers with the SDK in `global.json`, current stable
-Node.js and PowerShell 7+. Configure publication using **Release Deletion Queue**
+Node.js and PowerShell 7+. Configure publication using **Release plugins → deletion-queue**
 and the [current release policy](../../docs/independent-plugin-releases.md).
 
 ## Overview
@@ -42,7 +42,7 @@ A Jellyfin Server plugin with integrated media/request removal actions, inline N
 
 Dashboard settings include an opt-in pending-removal collection (existing or plugin-created) and **Collections & Overlay Studio** with separate portrait/landscape artboards. Select text/rectangle layers to drag, resize, rotate, align, reorder, duplicate or delete them; use snapping, keyboard nudging, undo/redo and zoom. Layer properties edit colors, opacity and text styling. Native server-rendered PNG previews confirm font fitting/output. Up to 12 bounded layers and four text lines per layer are supported; existing single-band settings remain compatible. This covers pending manual and automated requests. Unknown schedule placeholders say **pending**, never an invented date. Native image pointers serve generated artwork to Jellyfin clients, without modifying original files.
 
-Top badges show plugin versions and distinguish loaded/available providers from actual readiness or explicit connection-test results. **Test connection** verifies the saved Seerr key and Jellyfin server association using reads only; save draft changes first. **Copy Jellyfin Enhanced connection** explains unavailable/ambiguous configuration only when clicked. Native task badges link to the real task screens and reflect edited triggers. Diagnostic JSON/journals can be browsed as collapsible blocks or syntax-highlighted code.
+Status badges distinguish loaded providers from connection readiness. **Test connection** checks the saved Seerr key and Jellyfin association using reads only. Available Enhanced connections can be copied explicitly. Native task badges link to task settings. Coverage, backlog, journal and diagnostics use tables; technical request details remain available for inspection.
 
 Original bytes are separately preserved under plugin-owned storage. Disabling or closing requests restores verified original pointers and removes only plugin-added collection members; collections and pre-existing memberships are retained. Administrator artwork changes are reported as conflicts and are never overwritten. Missing originals can be served from preserved backups. Back up the plugin data directory along with its authenticated state.
 
@@ -65,16 +65,16 @@ npm ci --ignore-scripts --prefix plugins/private-syncplay
 pwsh -File scripts/test.ps1 -Plugin deletion-queue
 ```
 
-Use root packaging and the combined architecture catalogs. **Release Deletion Queue**
+Use root packaging and the combined architecture catalogs. **Release plugins → deletion-queue**
 accepts `vX.Y.Z`; the shared engine validates immutable packages and current targets
 before protected publication. See [release procedures](../../docs/independent-plugin-releases.md).
 Do not use the retired standalone four-component tag or channel feeds.
 
 ## Use
 
-1. Open **Dashboard → Plugins → Deletion queue**. Save the Seerr URL/key, or select **Use Jellyfin-Enhanced connection**. Only one enabled Enhanced Seerr URL is imported; ambiguous/multiple endpoints require manual configuration. Later Enhanced changes require a fresh import. The configured Jellyfin server ID must match this server.
+1. Open **Dashboard → Plugins → Deletion Queue**. Save the Seerr URL/key or select **Copy Jellyfin Enhanced connection** when available. Only one enabled connection is imported; ambiguous endpoints require manual configuration. Later Enhanced changes require a fresh import. The configured Jellyfin server ID must match this server.
 2. Set global/per-user proposal permission using the user dropdown. **Reset selected user** restores inherited permission and default personal preferences, preserving proposals, consent, history and existing deadline floors. Optionally enable **Require administrator approval for each proposal** and approve/revoke in the backlog. Approvals are bound to the target, activity and policy; the approver's current admin role and visibility are rechecked before dispatch.
-3. Use **Request removal** on a movie/whole-series detail page, media card, right-click menu or supported Enhanced request. Review the title/quality, then confirm. Duplicate submissions register consent on the existing active request, retaining its original owner and expiry; repeated current Yes consent is idempotent.
+3. Use **Request removal** on a movie/whole-series detail page, right-click menu or supported Enhanced request. Review the title/quality, then confirm. Duplicate submissions register consent on the existing active request, retaining its original owner and expiry; repeated current Yes consent is idempotent.
 4. Open the **notification bell in Jellyfin's top bar** to review proposals, explicitly allow/keep media, Undo your own unclaimed proposal, mark notices read or change preferences. Mobile swipes and desktop drags support eligible consent requests: a deliberate right gesture submits your live Allow response and dismisses only after success; left reveals Hide without consenting. Current revision/access checks, approvals and delays still apply. Viewing/Help/notification polling never records activity or consent.
 5. If desired, explicitly enable **automatic Seerr-managed deletion** and confirm the real-deletion warning. Old preview-only opt-ins cannot activate this transport. A complete bounded native Jellyfin last-played scan (including unfinished playback and related series items across all accounts) can verify the activity window immediately after collector startup; a new multi-day observation wait is not required when that scan succeeds. Current consent and the minimum two-day eligible delay still apply. Missing/incomplete inventory, an unhealthy collector or clock, and active playback fail closed. Fresh verification runs in the daily maintenance task, on explicit status inspection, and again before execution. Failed checks remain blocked until another successful verification; use Scheduled Tasks → Run now to retry earlier.
 
@@ -86,7 +86,21 @@ Administrator settings share the request graph: Request → (all users inactive 
 
 Native history verification reads only Jellyfin's latest-played value for each relevant account/item; it does not enumerate historical playback events. Values older than the saved lookback are discarded during the scan. All relevant accounts and aliases still require inspection so a recent viewer cannot be skipped. A policy revision change during the scan invalidates the evidence and requires a fresh check.
 
-Library thumbnails are not overlaid with removal buttons. Right-click an item (or open its native More menu) for a separate **Deletion Queue** section with native menu icons. Unqueued items offer **Request removal** without a timeline. Active requests show their shared checkpoint timeline, a color-coded **Removal · [stage]** action, **Allow removal**, **Keep item (reject removal)** and owner-only **Undo removal request** when permitted. Detail-page actions use the same stage icon/color and open the existing request rather than creating a duplicate. Keep withholds your consent; it is not an administrator denial. Execution-stage requests do not offer consent changes. Menu commands use the displayed request revision and current access checks; unavailable status fails closed.
+Library thumbnails are unchanged. Context menus show a short current status, not a
+timeline, with permitted Allow/Keep/Undo actions. Detail-page actions open the
+existing request. Loading appears immediately and media lookups are shared. Keep
+withholds personal consent; it is not an administrator denial. Execution-stage
+requests do not offer consent changes. Every command rechecks access and revision.
+
+Administrators open **Needs approval** only when a decision is pending; otherwise
+the default is **Active**. Explicit tab choices remain selected. Requests refresh
+on changes, reopening or **Refresh requests**, not periodic polling or incidental clicks.
+
+Media identity uses concrete Jellyfin, Seerr and Sonarr/Radarr identifiers, edition,
+request and ownership metadata. A harmless connection edit does not invalidate
+matching consent snapshots. Changes during verification/dispatch still block that
+attempt. Administrator diagnostics identify actual mismatches without exposing
+private target evidence to ordinary users.
 
 Notification routing is fixed to Auto; there is no mode selector. Legacy saved modes are normalized once without clearing stored queue data. **Reset all user permissions to global** clears every per-user removal-permission override using the saved global policy and requires confirmation. It preserves personal preferences/subscriptions, consent, history and existing delay floors; unsaved policy edits are not applied.
 
@@ -94,7 +108,7 @@ Queue rows include a **?** status explanation (hover, focus or tap) and distingu
 
 Request views show connected forked paths, shared with settings and the administrator backlog. All users inactive **OR** consent from every relevant recent viewer can cross eligibility; neither path bypasses history verification, active-playback blocking or other safety gates. Uninvolved users do not vote. Administrator approval is another fork: approved requests continue to the delay; denial or expiry connects directly to the separate Cancelled endpoint, not through removal. The default decision limit is 30 days, with the actual configured/personal extension and recorded deadline displayed. The approval clock starts on entering review, never on opening a timeline. Terminal backend statuses (including Expired/Denied) remain unchanged; Cancelled is the graph's non-removal endpoint.
 
-The graph keeps Completed and Cancelled separate, highlights travelled branches and places its dot at the current/terminal node. Lookback, optional waiting limit, approval limit and delay show day/hour values **on the connecting lines**; exact recorded dates appear on hover/focus. Missing dates are not invented. Native `paperList` surfaces, inherited text and theme/semantic variables support skins; narrow layouts scroll within the graph. Older projections without branch metadata retain their linear fallback. History preserves known stopping stages and public closure explanations without disclosing other users' identities, individual votes/activity timestamps, paths or upstream evidence.
+The compact, flat graph keeps Completed and Cancelled separate and highlights the current branch. Durations appear on connecting lines; recorded dates are available on hover/focus. Missing dates are not invented. Theme variables and inherited text support skins; narrow layouts scroll within the graph. History does not disclose other users' identities, votes, activity timestamps, paths or upstream evidence.
 
 The queue is a right-aligned header popout on desktop (half-height maximum), and a centered modal on mobile. When Enhanced Requests is enabled, its small top-right popout icon closes it and opens the full Requests deletion view, retaining the selected request; otherwise a small close icon is used. Both notification and deletion popouts have thin, theme-aware scrollbars.
 
@@ -126,7 +140,13 @@ and current item access, not an independent filesystem check.
 
 Request IDs/media identities come from supported Enhanced card metadata and Seerr HTTP reads, never titles or usernames. Seerr's native Jellyfin user mapping and server association must verify ownership. When no native media item exists, visibility is limited to the verified request owner. Unmanaged pending requests use Seerr's **decline** endpoint after normal queue safeguards, preserving request history; the plugin never deletes `/request/{id}`. Managed incomplete media uses Seerr's existing media-file removal endpoint only after verifying the managed edition and ownership of every live request in its scope. Unverified ownership, a changed target or unsupported state fails closed.
 
-Enhanced 12.13 Calendar integration adds dated removal events to its own renderer and a **Deletion Date** filter, preserving native OR/AND/NOT filtering and month/week/day/agenda and list/card/backdrop modes. There is no separate queue/sidebar list. Unscheduled requests have no calendar date; dated removals are explicitly earliest possible times. Click an event to focus its request in Enhanced Requests, or open the queue when Requests is unavailable. The adapter checks the reviewed Enhanced calendar-state/rendering contract and does not guess dates from DOM day numbers. Browser acceptance additionally exercises immutable upstream Enhanced 12.13 rendering/filter modules; the owner's complete custom-skin/navigation installation and real upstream download/removal behavior still require acceptance.
+Enhanced Calendar shows dated removal events with a **Deletion Date** filter,
+preserving native filtering and view modes. There is no separate sidebar queue.
+Unscheduled requests have no calendar date; scheduled dates are earliest possible
+times. Events focus their request in Enhanced Requests, or open the queue when
+Requests is unavailable. Compatibility checks use the current reviewed Enhanced
+contract, not guessed DOM dates. Custom skins and real removal remain separate
+acceptance boundaries.
 
 Latest-stable Server/Web compatibility, hostile-input and browser/fault-isolation checks are release gates in the local workflow configuration. An in-process plugin cannot promise immunity from all host crashes; see [safety and operational limits](../../docs/safety-and-permissions.md).
 

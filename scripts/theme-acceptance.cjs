@@ -50,7 +50,7 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                     await panel.locator(':scope > *').first().waitFor();
                     await page.waitForLoadState('networkidle');
                     if (name === 'Invites') {
-                        await panel.locator('summary').filter({ hasText: 'Invitation defaults and Discord permissions' }).click();
+                        await panel.locator('summary').filter({ hasText: 'Invitation defaults' }).click();
                         await panel.getByLabel('Default template', { exact: true }).waitFor({ state: 'visible' });
                         const help = panel.getByRole('button', { name: 'About Default template', exact: true }).locator('..');
                         await help.waitFor({ state: 'visible' });

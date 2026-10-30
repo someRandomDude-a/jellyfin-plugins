@@ -10,6 +10,7 @@
     .suiteAdmin h2 { margin-block: 1.7rem 1rem; font-size: 1.3em; }
     .suiteAdmin h3 { font-size: 1.08em; }
     .suiteAdmin fieldset { min-width: 0; }
+    .suiteAdmin [hidden] { display:none!important; }
     .suiteAdmin legend { max-width: 100%; overflow-wrap: anywhere; }
     .suiteAdmin form, .suiteAdmin [data-notification-settings] > div > fieldset, .suiteAdmin .suiteCard { border: 1px solid var(--suite-line); border-radius: 1rem; padding: clamp(1rem, 3vw, 1.75rem); margin-block: 1rem; background: var(--suite-surface); min-width: 0; }
     .suiteAdmin form form { border: 0; padding: 0; background: none; }
@@ -31,6 +32,22 @@
     .suiteAdmin th { text-align: start; font-size: .9em; }
     .suiteAdmin td, .suiteAdmin th { padding: .8rem; border-bottom: 1px solid var(--suite-line); vertical-align: top; }
     .suiteAdmin tbody tr:hover { background: var(--suite-surface); }
+    .suiteAdmin tbody tr:has(input[type=checkbox]:checked) { background:color-mix(in srgb,var(--theme-primary-color,currentColor) 10%,transparent); }
+    .suiteTableWrap { overflow:auto; max-width:100%; }
+    .suiteAdmin .suiteStatusBadge { display:inline-flex;align-items:center;gap:.35rem;border-radius:2rem;padding:.2rem .6rem;font-size:.85em;background:color-mix(in srgb,var(--suite-state,currentColor) 12%,transparent);color:inherit;white-space:nowrap; }
+    .suiteAdmin [data-tone=success],.accountHubDialog [data-tone=success] { --suite-state:var(--suite-success-color,#26865b); }
+    .suiteAdmin [data-tone=warning],.accountHubDialog [data-tone=warning] { --suite-state:var(--suite-warning-color,#b77b17); }
+    .suiteAdmin [data-tone=danger],.accountHubDialog [data-tone=danger] { --suite-state:var(--suite-danger-color,#d64c62); }
+    .suiteAdmin button[data-tone],.accountHubDialog button[data-tone] { border-inline-start:3px solid var(--suite-state); }
+    .suiteAdmin .suiteStatusBadge .material-icons { font-size:1.1em;color:var(--suite-state,currentColor); }
+    .suiteAdmin input[type=checkbox],.suiteAdmin input[type=radio] { accent-color:var(--theme-primary-color,var(--jf-palette-primary-main,auto)); }
+    .suiteChoiceGroup { display:flex;gap:.4rem;flex-wrap:wrap;border:0;padding:.5rem 0; }
+    .suiteChoiceGroup label { display:inline-flex;align-items:center;gap:.35rem;padding:.5rem .75rem;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:2rem;cursor:pointer; }
+    .suiteChoiceGroup label:has(input:checked) { border-color:var(--theme-primary-color,currentColor);background:color-mix(in srgb,var(--theme-primary-color,currentColor) 12%,transparent); }
+    .suiteChoiceGroup input { accent-color:var(--theme-primary-color,auto); }
+    .accountHubDialog { box-sizing:border-box;position:fixed;inset:0;margin:auto;width:min(64rem,calc(100vw - 2rem));max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);overflow:auto;padding:1.5rem;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:1rem;background:var(--jf-palette-background-paper,var(--theme-background-color,Canvas));color:var(--jf-palette-text-primary,var(--theme-text-color,CanvasText)); }
+    .accountHubDialog h2[data-drag-handle] { cursor:move;touch-action:none; }
+    .accountHubDialog::backdrop { background:#0008; }
     .suiteAdmin details.suiteCard > summary { cursor: pointer; font-weight: 600; padding-block: .3rem; }
     .suiteAdmin .suiteDiagnostics > form { border: 0; padding: 0; background: none; }
     .suiteAdmin .suiteDiagnostics summary, .suiteAdmin .suiteDiagnostics dd { overflow-wrap: anywhere; }
@@ -199,7 +216,7 @@
         const button=(text,action)=>{const node=create('button',text);node.type='button';node.className='emby-button raised';node.setAttribute('is','emby-button');node.onclick=action;return node;};
         const status=create('p'),list=create('div'),requests=new Set();status.setAttribute('role','status');let revision,skip=0,generation=0,active=true,busy=false,pendingLoad=false,identityToken=window.ApiClient?.accessToken?.();
         const minimum=create('select');minimum.className='emby-select';minimum.setAttribute('is','emby-select');minimum.setAttribute('aria-label','Minimum recorded diagnostic level');for(const value of ['debug','info','warning','error','critical']){const option=create('option',value);option.value=value;minimum.append(option);}
-        const settings=create('details');settings.append(create('summary','Recording settings'),create('p','One shared database for installed plugins. Credentials, request bodies, private links and exception messages are not recorded. The minimum level controls background logs; user-facing failures remain searchable. At most 10,000 records are retained. Clearing diagnostics does not retry actions or alter plugin state.'),field('Minimum recorded diagnostic level',minimum));
+        const settings=create('details');settings.append(create('summary','Recording settings'),create('p','Retains up to 10,000 records. Secrets and request bodies are excluded. Clearing records does not retry actions.'),field('Minimum recorded diagnostic level',minimum));
         const confirmation=create('input');confirmation.className='emby-input';confirmation.setAttribute('is','emby-input');confirmation.setAttribute('aria-label','Type CLEAR DIAGNOSTICS to clear selected errors');confirmation.placeholder='Type CLEAR DIAGNOSTICS';confirmation.autocomplete='off';
         const current=()=>active&&root.isConnected;
         async function request(path,body){
@@ -211,20 +228,24 @@
         }
         async function load(){
             identityChanged();if(!current())return;if(busy){pendingLoad=true;return;}if(input.value&&!/^[a-f0-9-]{36}$/i.test(input.value)){status.textContent='Enter a valid error ID.';return;}
-            busy=true;const epoch=generation,query={id:input.value,source:source.value,level:level.value,skip:String(skip)};status.textContent='Loading diagnostics…';
+            busy=true;const epoch=generation,query={id:input.value,source:input.value?'':source.value,level:level.value,skip:String(skip)};status.textContent='Loading diagnostics…';
             try{
                 const data=await request('errors?'+new URLSearchParams(query));
                 if(!current()||epoch!==generation||pendingLoad)return;
                 const installed=new Map((data.plugins||[]).map(plugin=>[plugin.source,plugin.page]));const chosen=source.value;source.replaceChildren();const all=create('option','All plugins');all.value='';source.append(all);for(const plugin of data.plugins||[]){const option=create('option',plugin.source);option.value=plugin.source;source.append(option);}source.value=chosen;
                 if(query.id&&data.items.length===1){const row=data.items[0];if(row.source!==owner&&installed.has(row.source)&&pages[row.source]===installed.get(row.source)){location.hash='#/configurationpage?name='+encodeURIComponent(pages[row.source])+'&suiteError='+encodeURIComponent(row.id);return;}}
                 revision=data.settings.revision;minimum.value=data.settings.minimumLevel;list.replaceChildren();
+                const body=create('tbody'),table=create('table'),head=create('thead'),header=create('tr'),selectAll=create('input');selectAll.type='checkbox';selectAll.setAttribute('aria-label','Select all shown errors');
+                for(const label of ['','Time','Plugin','Level','Error','Details']){const cell=create('th',label);cell.scope='col';header.append(cell);}header.firstChild.append(selectAll);head.append(header);table.append(head,body);list.className='suiteTableWrap';list.append(table);
+                selectAll.onchange=()=>{for(const input of body.querySelectorAll('[data-diagnostic-id]'))input.checked=selectAll.checked;};
                 for(const row of data.items){
                     const entry=create('details'),summary=create('summary'),check=create('input');check.type='checkbox';check.dataset.diagnosticId=row.id;check.setAttribute('aria-label','Select error '+row.id);
-                    summary.textContent=new Date(row.createdAt).toLocaleString()+' · '+row.source+' · '+row.level+' · '+row.code;entry.append(summary);
+                    summary.textContent='Inspect';entry.append(summary);
                     if(!installed.has(row.source))entry.append(create('p','The owning plugin is not currently installed. Its retained diagnostics remain available here.'));
-                    const selected=create('label'),caption=create('span','Select this record'),outline=create('span'),checked=create('span'),unchecked=create('span');selected.className='emby-checkbox-label';caption.className='checkboxLabel';outline.className='checkboxOutline';outline.setAttribute('aria-hidden','true');checked.className='material-icons checkboxIcon checkboxIcon-checked check';unchecked.className='material-icons checkboxIcon checkboxIcon-unchecked';outline.append(checked,unchecked);check.className='emby-checkbox';check.setAttribute('data-embycheckbox','true');check.setAttribute('is','emby-checkbox');selected.append(check,caption,outline);entry.append(selected);
+                    check.onchange=()=>{const inputs=[...body.querySelectorAll('[data-diagnostic-id]')];selectAll.checked=inputs.every(i=>i.checked);selectAll.indeterminate=inputs.some(i=>i.checked)&&!selectAll.checked;};
                     const details=create('dl');for(const [label,value]of [['Error ID',row.id],['Plugin',row.source],['Plugin version',row.pluginVersion],['Level',row.level],['Code',row.code],['Status',row.statusCode],['Operation',row.operation],['Exception type',row.exceptionType]])if(value){details.append(create('dt',label),create('dd',String(value)));}entry.append(details);
-                    if(row.frames){const frames=create('pre',row.frames);frames.dataset.suiteJsonSkip='true';entry.append(frames);}list.append(entry);
+                    if(row.frames){const frames=create('pre',row.frames);frames.dataset.suiteJsonSkip='true';entry.append(frames);}
+                    const tr=create('tr');for(const value of [check,new Date(row.createdAt).toLocaleString(),row.source,badge(row.level,['error','critical'].includes(row.level)?'danger':row.level==='warning'?'warning':'neutral'),row.code,entry]){const cell=create('td');cell.append(value instanceof Node?value:document.createTextNode(String(value??'—')));tr.append(cell);}body.append(tr);
                 }
                 status.textContent=data.items.length?data.items.length+' records shown.':'No matching retained records. Check the ID, filters and recording level.';older.disabled=data.items.length<100;
             }catch{if(current()&&epoch===generation&&!pendingLoad)status.textContent='Diagnostics are unavailable or administrator authorization is required. No plugin actions were retried.';}
@@ -244,7 +265,8 @@
         root.addEventListener('viewhide',hide);root.addEventListener('viewdestroy',()=>{hide();window.removeEventListener('storage',identityChanged);window.removeEventListener('focus',identityChanged);});root.addEventListener('viewshow',()=>{active=true;generation++;busy=false;pendingLoad=false;identityToken=window.ApiClient?.accessToken?.();restoreSearch();if(panel.open)void load();});
         function identityChanged(){const token=window.ApiClient?.accessToken?.();if(token===identityToken)return;identityToken=token;generation++;busy=false;pendingLoad=false;for(const request of requests)request.abort();requests.clear();list.replaceChildren();confirmation.value='';revision=undefined;status.textContent='Your session changed. Reopen diagnostics with an administrator account.';}window.addEventListener('storage',identityChanged);window.addEventListener('focus',identityChanged);
         function restoreSearch(){const query=new URLSearchParams(location.hash.split('?')[1]||''),id=query.get('suiteError');if(query.get('name')!==pages[owner]||!id||!/^[a-f0-9-]{36}$/i.test(id))return false;input.value=id;skip=0;panel.open=true;panel.scrollIntoView?.({block:'start'});return true;}
-        if(restoreSearch())void load();
+        const initial=create('option',owner);initial.value=owner;source.append(initial);source.value=owner;
+        if(restoreSearch()){source.value='';void load();}
     }
     const mounted = new WeakSet();
     function mount() {
@@ -270,6 +292,7 @@
                 jsonTree(state.tree,data);change(state.mode);
             }
             function enhance() {
+                for(const button of root.querySelectorAll('button:not([data-tone])')){const text=button.textContent.trim();if(/^(Delete|Remove|Clear selected|Disable|Revoke|Unlink|Deny)/.test(text))button.dataset.tone='danger';else if(/^(Save|Apply|Enable|Approve|Create)/.test(text))button.dataset.tone='success';}
                 for(const state of parts)if(!root.contains(state.pre)){state.tools.remove();state.tree.remove();parts.delete(state);}
                 for (const node of root.querySelectorAll('[data-help]')) {
                     const text = node.getAttribute('data-help'); node.removeAttribute('data-help');
@@ -305,7 +328,13 @@
             root.addEventListener('viewshow', start); root.addEventListener('viewhide', stop); root.addEventListener('viewdestroy', stop); start();
         }
     }
-    const failure=(body,response,message='Unable to complete this request. Contact an administrator.')=>{const nature=body?.error?.nature||body?.nature;const safe={validation:'Some details are invalid. Check your entries and try again.',username:'Invalid or unavailable username. Choose another username.',authentication:'Your session needs attention. Complete Jellyfin sign-in and verification to continue.',authorization:'You do not have permission to perform this action.',expired:'This item or link is unavailable or has expired.',changed:'This item changed. Refresh and review it before trying again.',rate_limited:'Too many attempts. Please wait before trying again.',unavailable:'This service is currently unavailable. Contact an administrator if the problem continues.',action_unavailable:'This action is unavailable for this item.',uncertain:'We could not confirm the result. Check the current state or contact an administrator before trying again.'};const id=body?.error?.errorId||body?.errorId||body?.data?.errorId||response?.headers?.get?.('X-Suite-Error-Id')||response?.getResponseHeader?.('X-Suite-Error-Id');return (Object.hasOwn(safe,nature)?safe[nature]:message)+(typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)?' Error ID: '+id:'');};
+    const failure=(body,response,message='Request failed. Check the current state before retrying.')=>{
+        const nature=body?.error?.nature||body?.nature;
+        const safe={validation:'Check your entries.',username:'Choose an available username.',authentication:'Sign in and complete verification.',authorization:'You do not have permission for this action.',expired:'This item or link has expired or is unavailable.',changed:'This item changed. Refresh and review it.',rate_limited:'Too many attempts. Try again later.',unavailable:'Service unavailable.',action_unavailable:'This action is unavailable.',uncertain:'Result unconfirmed. Check the current state before retrying.'};
+        const id=body?.error?.errorId||body?.errorId||body?.data?.errorId||response?.headers?.get?.('X-Suite-Error-Id')||response?.getResponseHeader?.('X-Suite-Error-Id');
+        return (Object.hasOwn(safe,nature)?safe[nature]:message)+(typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)?' Error ID: '+id:'');
+    };
     const reportError=(root,error)=>{const message=failure(error?.responseJSON||error,error);if(!message.includes('Error ID:')||!root?.isConnected)return;const status=root.querySelector('.suiteRequestError')||document.createElement('p');status.className='suiteRequestError';status.setAttribute('role','alert');status.textContent=message;(root.querySelector('.content-primary')||root).append(status);};
-    window.SuiteAdminUI = { mount, help, integration, failure, reportError }; mount();
+    function badge(text,tone='neutral') { const span=document.createElement('span'),icon=document.createElement('span');span.className='suiteStatusBadge';span.dataset.tone=tone;icon.className='material-icons';icon.setAttribute('aria-hidden','true');icon.textContent={success:'check_circle',warning:'pending',danger:'error',neutral:'info'}[tone]||'info';span.append(icon,document.createTextNode(String(text??'—')));return span; }
+    window.SuiteAdminUI = { mount, help, integration, failure, reportError, badge }; mount();
 })();

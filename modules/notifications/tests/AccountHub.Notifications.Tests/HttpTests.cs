@@ -33,6 +33,15 @@ public sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptio
 }
 public sealed class HttpTests
 {
+    [Theory][InlineData(false,false)][InlineData(false,true)][InlineData(true,false)][InlineData(true,true)]
+    public async Task DiscordControlsRequireAnAvailableProviderAndPersonalLink(bool available,bool linked)
+    {
+        var f=new Fixture();f.Host.DiscordAvailable=available;if(linked)f.Host.Links[f.Host.Alice]="private-discord-id";
+        await using var app=await App(f);using var client=Client(app,f.Host.Alice);
+        var json=await client.GetStringAsync(Base+"/notifications/preferences");using var data=JsonDocument.Parse(json);
+        Assert.Equal(available&&linked,data.RootElement.GetProperty("data").GetProperty("discordAvailable").GetBoolean());Assert.DoesNotContain("private-discord-id",json);
+        Assert.Empty(f.Host.Audit);
+    }
     [Fact] public async Task InlineCommandsAreRecipientScopedAndRejectStaleSnapshotsAndUndeclaredActions()
     {
         var f = new Fixture(); var calls = 0;

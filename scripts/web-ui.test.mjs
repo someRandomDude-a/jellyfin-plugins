@@ -102,7 +102,7 @@ automaticTest('metadata conditions support confirmed-absence operators and a sec
         select=d.querySelector('[aria-label="Condition comparison"]');select.value='before';select.dispatchEvent(new w.Event('change'));
         select=d.querySelector('[aria-label="Comparison operand"]');select.value='metadata';select.dispatchEvent(new w.Event('change'));
         assert.equal(d.querySelectorAll('[data-kind=condition] .ar-input').length,2);assert.throws(()=>w.RemovalCircuit.check(rule.circuit));
-        [...d.querySelectorAll('.ar-palette button')].find(b=>b.textContent==='Radarr metadata').click();d.querySelector('[data-source-type=radarr] button').click();
+        d.querySelector('.ar-palette [aria-label="Radarr metadata"]').click();d.querySelector('[data-source-type=radarr] button').click();
         d.querySelector('[data-field="radarr.added"]').click();d.querySelector('[data-kind=condition] [data-port="1"]').click();
         assert.equal(rule.conditions[0].referenceField,'radarr.added');w.RemovalCircuit.check(rule.circuit);
     }finally{w.close();}
@@ -152,7 +152,7 @@ automaticTest('automatic rule editor uses typed Jellyfin/Seerr controls and does
         assert.equal(d.querySelector('#arActor'), null); assert.equal(d.querySelector('#arLibrary'), null);
         assert(!d.body.textContent.includes('Execution settings'));
         d.querySelector('#arAddRule').click();d.querySelector('#arNewTitle').value='Old media';d.querySelector('#arNewCreate').click(); assert.equal(writes.length, 0);
-        [...d.querySelectorAll('.ar-palette button')].find(b=>b.textContent==='Seerr metadata').click();
+        d.querySelector('.ar-palette [aria-label="Seerr metadata"]').click();
         const seerr=d.querySelector('.ar-block[data-source-type=seerr]');[...seerr.querySelectorAll('button')].find(b=>b.textContent==='Show outputs').click();
         d.querySelector('[data-field="seerr.ownRequest"]').click();d.querySelector('.ar-block[data-kind=condition] .ar-input').click();
         const draft = JSON.parse(d.querySelector('#arRules').value); assert.equal(draft.rules[0].conditions[0].field, 'seerr.ownRequest'); assert.equal(draft.rules[0].conditions[0].value, true);
@@ -167,6 +167,23 @@ automaticTest('automatic rule editor uses typed Jellyfin/Seerr controls and does
         d.querySelector('#arPreview').click(); await turn(); assert.equal(d.querySelectorAll('.ar-match-card').length, 1); assert.equal(d.querySelectorAll('#arResult img').length, 0); assert.match(d.querySelector('#arResult').textContent, /Preview only/); assert.equal(writes.length, 1);
         d.querySelector('#automaticDeletionAdmin').dispatchEvent(new w.Event('viewhide')); assert.equal(d.querySelector('#arRules').value, ''); assert.equal(d.querySelector('#arRuleCards').children.length, 0);
     } finally { dom.window.close(); }
+});
+automaticTest('Maintainerr JSON imports disabled drafts, preserves Boolean sections and rejects unsupported semantics atomically',async()=>{
+    const html=await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.html');const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://example.test/web/'}),w=dom.window,d=w.document,calls=[];
+    const library='22222222-2222-2222-2222-222222222222';
+    w.ApiClient={getUrl:p=>p,ajax:async options=>{calls.push(options);return{configuration:{revision:0,enabled:false,intervalHours:24,rules:[],filters:[]},libraries:[{id:library,name:'Movies'}],queueAvailable:true,metadata:[{id:'added',source:'jellyfin',type:'date',operators:['older-days']},{id:'kind',source:'jellyfin',type:'text',operators:['equals']},{id:'radarr.monitored',source:'radarr',type:'boolean',operators:['equals']} ]};}};
+    try{
+        w.CSS||={};w.CSS.escape||=x=>x;w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/routing.js'));w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/circuit.js'));w.eval(await source('plugins/automatic-deletion-requests/src/Jellyfin.Plugin.AutomaticDeletionRequests/Web/admin.js'));await turn();await turn();
+        const input={name:'Old films',libraryId:library,dataType:'movie',arrAction:0,rules:[{section:1,operator:null,firstVal:[6,0],action:5,customVal:{ruleTypeId:0,value:String(30*86400)}},{section:1,operator:0,firstVal:[1,5],action:2,customVal:{ruleTypeId:3,value:'1'}},{section:2,operator:1,firstVal:[1,5],action:2,customVal:{ruleTypeId:3,value:'0'}}]};
+        const importJson=value=>{d.querySelector('#arRules').value=JSON.stringify(value);d.querySelector('#arImport').click();};importJson(input);
+        assert.match(d.querySelector('#arStatus').textContent,/Maintainerr imported as disabled drafts/);const draft=JSON.parse(d.querySelector('#arRules').value),rule=draft.rules[0];assert.equal(rule.enabled,false);assert.equal(rule.conditions[0].operator,'older-days');assert.equal(rule.conditions[0].value,30);assert.equal(rule.conditions.at(-1).value,'movie');assert.equal(draft.filters.find(f=>f.outputs.includes(rule.id)).libraryId,library);assert(rule.circuit.nodes.some(n=>n.kind==='or'));assert(rule.circuit.nodes.filter(n=>n.kind==='and').length>=2);assert(!calls.some(c=>c.type!=='GET'));
+        importJson({...input,rules:[{...input.rules[0],firstVal:[4,999]}]});assert.match(d.querySelector('#arStatus').textContent,/unsupported metadata 4:999/);
+        const choose=d.querySelector('#arRuleCards select');assert([...choose.options].some(o=>o.value==='rule:'+rule.id));
+        importJson({...input,dataType:'episode'});assert.match(d.querySelector('#arStatus').textContent,/episode\/season scopes/);assert([...choose.options].some(o=>o.value==='rule:'+rule.id));
+        importJson({...input,arrAction:1});assert.match(d.querySelector('#arStatus').textContent,/non-deletion actions/);
+        importJson({...input,rules:undefined,JsonRules:JSON.stringify(input.rules)});assert.match(d.querySelector('#arStatus').textContent,/Maintainerr imported/);const community=JSON.parse(d.querySelector('#arRules').value);assert.equal(community.rules[0].conditions.at(-1).value,'movie');assert.equal(community.filters.find(f=>f.outputs.includes(community.rules[0].id)).libraryId,library);
+        importJson([input]);assert.match(d.querySelector('#arStatus').textContent,/Maintainerr imported/);assert.equal(JSON.parse(d.querySelector('#arRules').value).rules.length,1);assert(!calls.some(c=>c.type!=='GET'));
+    }finally{w.close();}
 });
 queueTest('overlay properties hide irrelevant fields and use compact accessible alignment controls',async()=>{
     const dom=new JSDOM('<div id="deletionQueueAdmin"><main></main></div>',{runScripts:'outside-only'}),w=dom.window,d=w.document;
@@ -351,20 +368,20 @@ hubTest('Public recovery erases bearer fragment and sends no Jellyfin credential
     assert.equal(calls[0].options.credentials, 'omit'); assert.equal(calls[0].options.headers.Authorization, undefined);
     assert(!calls[0].url.includes(token)); assert.equal(JSON.parse(calls[0].options.body).token, token); dom.window.close();
 });
-hubTest('Missing optional Hub integrations are greyed out with remediation, not hidden or fetched', async () => {
+hubTest('Missing optional Hub settings stay hidden without fetching unavailable providers', async () => {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; const calls = [];
     const dependencies = ['security', 'discord', 'deletion-queue', 'private-syncplay'].map(id => ({ id, name: id, available: false, state: 'missing', reason: 'Optional provider is missing.', fix: 'Install and enable the compatible plugin, then restart Jellyfin.' }));
     window.fetch = async (url, options) => { calls.push(url); return response(url.endsWith('/dependencies') ? { items: dependencies } : url.includes('/users?') ? { items: [], total: 0 } : { revision: 0 }); };
     let code = await source('plugins/account-hub/src/AccountHub/Web/workspace.js'); code = workspaceScript(code); window.eval(code);
     const root = window.document.querySelector('.accountHubPage'); window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' }); await turn(); await turn();
-    const security = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Security'); assert(security.disabled); assert(!security.hidden); assert.match(security.title, /restart Jellyfin/);
+    const security = [...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'Security'); assert(security.disabled); assert(security.hidden);
     for (const name of ['Discord', 'DeletionQueue', 'Private SyncPlay', 'Seerr']) assert(![...root.querySelectorAll('[role=tab]')].some(n => n.textContent === name));
     assert(!root.querySelector('#hub-dependency-deletion-queue')); assert(!root.querySelector('#hub-dependency-private-syncplay'));
     assert.equal([...root.querySelectorAll('[role=tab]')].find(n => n.textContent === 'People').disabled, false);
     assert.match(root.querySelector('.hubDependencyHealth').textContent, /Install and enable/); assert(!calls.some(path => path.includes('/domains/'))); dom.window.close();
 });
-discordTest('Discord transport settings stay enabled without Hub, while dependent command switches explain missing plugins', async () => {
+discordTest('Discord transport settings stay enabled without Hub while unavailable command settings stay hidden', async () => {
     const html = await source('plugins/discord-bridge/src/Jellyfin.Plugin.DiscordBridge/Web/settings.html');
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/web/' }); const { window } = dom;
     window.ApiClient = { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' };
@@ -376,7 +393,8 @@ discordTest('Discord transport settings stay enabled without Hub, while dependen
     window.eval(window.document.querySelector('script').textContent); await turn(); await turn();
     assert.equal(window.document.querySelector('.bridgeEnabled').disabled, false); assert.equal(window.document.querySelector('.bridgeToken').disabled, false);
     assert.equal(window.document.querySelector('.bridgeSelfService').disabled, true); assert.equal(window.document.querySelector('.bridgeWatchParty').disabled, true);
-    assert.match(window.document.querySelector('.bridgeIdentityReason').textContent, /Install Account Hub/); assert.match(window.document.querySelector('.bridgePartyReason').textContent, /Private SyncPlay/); dom.window.close();
+    assert(window.document.querySelector('.bridgeSelfService').closest('.checkboxContainer').hidden);assert(window.document.querySelector('.bridgeWatchParty').closest('.checkboxContainer').hidden);
+    assert(window.document.querySelector('[data-bridge-feature=identity]').hidden);assert(window.document.querySelector('[data-bridge-feature=watchparty]').hidden);assert(window.document.querySelector('.bridgeDependencyHealth table'));dom.window.close();
 });
 notificationTest('Library inbox controls remain native and independent when Discord is missing', async () => {
     const dom = new JSDOM('<main></main>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
@@ -500,7 +518,7 @@ hubTest('Native creation override uses explicit fresh confirmation and exposes f
     [...f.content.querySelectorAll('button')].find(b => b.textContent === 'Enable native creation for five minutes').click(); await turn();
     assert.equal(sent, undefined);
     const dialog = f.window.document.querySelector('dialog'); assert(dialog);
-    dialog.querySelector('input[type=text]').value = 'CONFIRM ACCOUNT HUB CHANGE';
+    assert.equal(dialog.querySelector('input[type=text]'),null);assert(!dialog.textContent.includes('CONFIRM ACCOUNT HUB CHANGE'));
     dialog.querySelector('form').dispatchEvent(new f.window.Event('submit', { bubbles: true, cancelable: true })); await turn(); await turn();
     assert.equal(sent.enabled, true); assert.equal(sent.confirmation, 'CONFIRM ACCOUNT HUB CHANGE'); assert(sent.commandId);
     assert.match(f.content.textContent, /Hub onboarding is paused/);
@@ -523,4 +541,17 @@ queueTest('Deletion Queue retains native surfaces and scoped semantic selection 
     assert.equal(panel.backgroundColor, 'rgb(10, 20, 30)'); assert.equal(panel.color, 'rgb(230, 220, 210)'); assert.equal(panel.borderRadius, '1rem');
     assert.equal(card.backgroundColor, 'rgb(40, 50, 60)'); assert.equal(card.color, 'rgb(210, 200, 190)'); assert.equal(card.borderRadius, '7px');
     assert.equal(panel.position, 'fixed'); assert.equal(card.position, 'static');
+});
+queueTest('administrator backlog explains exact identity mismatches without rendering identifier text as HTML',async()=>{
+    const html=await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.html');
+    const dom=new JSDOM(html,{runScripts:'outside-only',url:'https://example.test/web/'}),w=dom.window;
+    const status={mode:'test',storageAvailable:true,policy:{revision:1,defaultAuthority:1,activityDays:30,delayHours:48,accounts:{},requireAdministratorApproval:false},seerr:{baseUrl:'',keyConfigured:false},accounts:[],enhanced:{connectionAvailable:false},journal:[],administratorApprovalSnapshots:{},proposals:[{id:'fixture',target:{title:'Example'},status:'Blocked',reason:'TargetVerificationRequired',terminal:false,requiresAutomaticRuleValidation:false,lastCheckedAt:new Date().toISOString(),lastCheckEvidence:{targetVerified:false,targetDifferences:[{field:'Jellyfin item ID',expected:'<img src=x>',current:'current-id'}]}}]};
+    w.ApiClient={getUrl:path=>path,ajax:async options=>options.url.endsWith('/admin/status')?status:options.url.endsWith('/settings')?{ok:true,data:{revision:0,hubFallbackAfterMinutes:10}}:options.url.endsWith('/dependencies')?{data:{items:[]}}:{}};
+    try{
+        w.eval(await source('plugins/deletion-queue/src/Jellyfin.Plugin.DeletionQueue/Web/admin.js'));for(let i=0;i<8;i++)await turn();
+        assert.match(w.document.querySelector('.dq-blocker').textContent,/Media identity changed/);
+        const list=w.document.querySelector('[aria-label="Media identity mismatches"]');assert(list);assert.match(list.textContent,/Jellyfin item ID: saved <img src=x> → current current-id/);assert.equal(list.querySelector('img'),null);
+        assert.match(w.document.querySelector('#dqBacklog').textContent,/Administrator approval \(if required\): not required/);
+        assert.match(w.document.querySelector('#dqBacklog').textContent,/Automatic rule \(if required\): not required/);
+    }finally{dom.window.close();}
 });

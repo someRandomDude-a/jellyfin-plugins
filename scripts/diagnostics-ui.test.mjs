@@ -16,6 +16,8 @@ test('diagnostics are lazy, native styled and render searchable details as plain
     const f=await fixture();try{
         assert.equal(f.calls.length,0);const panel=f.root.querySelector('.suiteDiagnostics');assert(panel);panel.open=true;await settle();
         assert.equal(f.calls.length,1);assert.equal(f.calls[0].options.credentials,'omit');assert(f.calls[0].options.headers.Authorization.includes('native-session'));
+        assert.equal(new URL(f.calls[0].url).searchParams.get('source'),'notifications');assert(panel.querySelector('table thead'));assert(panel.querySelector('[data-tone=danger]'));
+        const all=panel.querySelector('[aria-label="Select all shown errors"]');all.checked=true;all.dispatchEvent(new f.w.Event('change'));assert(panel.querySelector('[data-diagnostic-id]').checked);
         assert(panel.textContent.includes('<img src=x onerror=alert(1)>'));assert.equal(panel.querySelectorAll('img,script').length,0);
         assert.equal(panel.querySelector('[aria-label="Error ID"]').maxLength,36);assert.match(panel.textContent,/10,000/);
         assert.equal(f.calls.filter(call=>call.options.method==='POST').length,0);

@@ -46,11 +46,11 @@ public sealed class RemovalMaintenanceService(QueueRuntime runtime, SeerrExecuti
                         await coordinator.ExecuteAsync(current.Id, ct);
                 } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
                 catch (QueueException e) when (e.Code == "RevisionChanged") { /* A newer consent/activity write won. Next task retries fresh. */ }
-                catch (Exception) {
+                catch (Exception error) {
                     if (!runtime.Available) throw;
                     runtime.Write(Guid.NewGuid(), "scheduled-task", "VerificationUnavailable", state => {
                         var current = QueueRules.Find(state, proposal.Id);
-                        if (!current.Terminal && current.Claim is null) { QueueRules.VerificationUnavailable(state, current, clock.GetUtcNow()); current.Revision++; }
+                        if (!current.Terminal && current.Claim is null) { QueueRules.VerificationUnavailable(state, current, clock.GetUtcNow(), (error as QueueException)?.Code); current.Revision++; }
                         return true;
                     });
                 }

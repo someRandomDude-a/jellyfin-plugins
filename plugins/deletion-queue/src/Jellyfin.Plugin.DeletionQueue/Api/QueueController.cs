@@ -91,12 +91,12 @@ public sealed class QueueController(QueueRuntime runtime, LiveIdentity identity,
                 });
             } catch (QueueException e) when (e.Code == "RevisionChanged") { /* A concurrent domain change wins. */ }
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { throw; }
-            catch (Exception) {
+            catch (Exception error) {
                 if (!runtime.Available) throw;
                 runtime.Write(Guid.NewGuid(), "status-check", "VerificationUnavailable", state => {
                     var current = Visible(state, id, identity.Caller(User).Id);
                     if (current.Revision == p.Revision && !current.Terminal && current.Claim is null) {
-                        QueueRules.VerificationUnavailable(state, current, clock.GetUtcNow()); current.Revision++;
+                        QueueRules.VerificationUnavailable(state, current, clock.GetUtcNow(), (error as QueueException)?.Code); current.Revision++;
                     }
                     return true;
                 });

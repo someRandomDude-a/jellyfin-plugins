@@ -39,10 +39,7 @@ private locks or automatic duplicate-ID reassignment may be introduced as a work
 Duplicate-ID detection requires reviewed offline remediation; cache/legacy ownership
 cannot be reconstructed merely by changing a number. One host must own its data.
 
-The historical 12.2→12.3 source comparison checked identical path sets/hashes for
-270 native database blobs plus user-manager/policy/event contracts. That review
-explained a then-stale version guard; it does not authorize future versions.
-Current builds require reviewed source-contract fingerprints and matching SDK/ABI.
+Builds require reviewed native source-contract fingerprints and a matching SDK/ABI.
 
 ## Removal and restore limits
 
@@ -63,8 +60,9 @@ external deletion or pending-request decline closes unclaimed work as cancelled,
 with an explicit external-change explanation, not queue-performed completion.
 A confirmed missing upstream record is interpreted only after checking the saved
 Jellyfin–Seerr server association; it is never proof that files were deleted.
-Authentication/network failures, changed connections and mismatched identity or
-quality evidence fail closed. Stale notification actions cannot reopen closed work.
+Authentication/network failures and mismatched media identity or quality fail closed.
+Connection settings are fenced during a verification/dispatch attempt, not used as
+persistent media identity. Stale notification actions cannot reopen closed work.
 Claimed or uncertain work is not automatically cancelled, reopened or dispatched
 again; explicit read-only reconciliation remains separate.
 
@@ -104,4 +102,4 @@ must never be weakened to turn a failing test green.
 - [Accounts and permissions](account-management.md) · [Creation ownership](user-creation-workflow.md)
 - [Security/recovery and webhook validation](security-recovery-integration.md)
 - [Storage recovery](plugin-storage-recovery.md) · [Discord delivery](discord-suite-integration.md)
-- [Testing](testing.md) · [Current blockers](review-status.md) · [Evidence register](verification.md)
+- [Testing](testing.md) · [Current validation](review-status.md)

@@ -25,6 +25,7 @@ public sealed class FakeHost : INotificationHost
     public HashSet<Guid> Deleted { get; } = [];
     public HashSet<Guid> LibraryDenied { get; } = [];
     public Dictionary<Guid, string> Links { get; } = [];
+    public bool DiscordAvailable { get; set; }
     public bool SecurityCompatible { get; set; } = true;
     public string SecurityAlertMode { get; set; } = "native";
     public string? SecurityWebhookSecret { get; set; } = new('s', 32);

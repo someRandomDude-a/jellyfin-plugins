@@ -15,13 +15,13 @@ public sealed class ExternalChangeTests
         var row=QueueRules.Project(state,p,p.OwnerId,QueueRulesTests.Now.AddMinutes(1));Assert.False(row.CanUndo);Assert.Null(row.ScheduledFor);Assert.Equal(reason,row.Reason);
         Assert.Throws<QueueException>(()=>QueueRules.ProposeAutomatically(state,QueueRulesTests.Owner,target,QueueRulesTests.Now.AddMinutes(2)));
     }
-    [Fact] public void StaleFingerprintRevisionOrConnectionCannotCloseAnotherTarget()
+    [Fact] public void StaleFingerprintRevisionOrInFlightConnectionCannotCloseAnotherTarget()
     {
         var state=QueueRulesTests.State();var p=QueueRulesTests.Propose(state);var change=new ExternalTargetChange("RemovedOutsideQueue");
         Assert.Throws<QueueException>(()=>QueueRules.CloseExternalChange(state,p.Id,p.Revision-1,p.Target.Fingerprint,change,QueueRulesTests.Now));
         Assert.Throws<QueueException>(()=>QueueRules.CloseExternalChange(state,p.Id,p.Revision,"another-target",change,QueueRulesTests.Now));
-        state.Seerr.Revision++;
-        Assert.Throws<QueueException>(()=>QueueRules.CloseExternalChange(state,p.Id,p.Revision,p.Target.Fingerprint,change,QueueRulesTests.Now));Assert.False(p.Terminal);
+        var observed=change with{ConnectionRevision=state.Seerr.Revision};state.Seerr.Revision++;
+        Assert.Throws<QueueException>(()=>QueueRules.CloseExternalChange(state,p.Id,p.Revision,p.Target.Fingerprint,observed,QueueRulesTests.Now));Assert.False(p.Terminal);
     }
     [Fact] public void AnUncertainClaimCannotBeSilentlyCancelledByAnExternalObservation()
     {

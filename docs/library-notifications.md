@@ -21,7 +21,12 @@ Open **Dashboard → Plugins → Notifications → Library events**. Enable futu
 
 Only enabled Jellyfin users with native access to the item are included. Access is checked again when publishing, reading the inbox/count, and delivering personal Discord DMs. Removing library access or deleting media hides its existing notification from subsequent inbox reads. Data already viewed or sent cannot be recalled.
 
-In the notification bell's **Settings → New episodes and movies**, enable/mute each kind separately for in-app or personal Discord delivery. **Library categories** adds independent **Watchlisted media**, **Favorited media**, Requested and All additions filters. Expand a personal in-app category to mark it Important, choose Alerting/Silent/Low or inherit its plugin default. All signed-in users can configure their own importance; server-wide administration stays protected. Personal DMs additionally require a verified Discord link and an administrator-configured direct-message route. Personal settings never control shared channel announcements. See [category behavior and defaults](notification-channels.md).
+In **bell Settings → New episodes and movies**, set each kind's in-app or personal
+Discord preference. **Library categories** separates Watchlisted, Favorited,
+Requested and All additions. Priority choices are directly selectable. Personal
+DM controls require an available provider and verified link; delivery also needs
+an administrator-configured DM route. Personal preferences never control shared
+channel announcements. See [category behavior](notification-channels.md).
 
 Watchlisted reads native `Likes` (the flag Enhanced uses for its watchlist); Favorited reads native `IsFavorite`. For new episodes, an accessible parent series can supply either flag. The flags remain separate, are not modified by notifications and never grant library access. Classification is frozen for each newly captured notice; old publications and external deliveries are not replayed or reclassified.
 

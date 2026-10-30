@@ -67,9 +67,9 @@
       <div class="inputContainer"><label for="dqHubFallback">Hub fallback delay (minutes)</label><input is="emby-input" id="dqHubFallback" type="number" min="1" max="1440" required /></div>
       <button is="emby-button" type="submit" class="raised button-submit">Save integration settings</button>
     </form>
-    <details class="suiteCard"><summary>Coverage and integrity</summary><pre id="dqCoverage" class="dq-evidence"></pre></details>
+    <details class="suiteCard"><summary>Coverage and integrity</summary><div id="dqCoverage" class="suiteTableWrap"></div></details>
     <h2>Backlog and retained history</h2><div id="dqBacklog"></div>
-    <details class="suiteCard"><summary>Transition journal</summary><pre id="dqJournal" class="dq-evidence"></pre></details>
+    <details class="suiteCard"><summary>Transition journal</summary><div id="dqJournal" class="suiteTableWrap"></div></details>
     <dialog id="dqOptInDialog" class="dialog" aria-labelledby="dqOptInTitle"><div class="formDialogHeader"><h2 id="dqOptInTitle" class="formDialogHeaderTitle">Enable real automatic deletion?</h2></div><div class="formDialogContent dq-dialog-content"><p>This enables destructive requests to stock Seerr after verified inactivity or all required viewer consent, complete activity checks, any required administrator approval and the removal delay. Seerr controls Arr targeting and record/file removal; requests are retained. Only local authenticated journal/seals are used, not an independent backup-rollback witness. Older preview-only opt-ins do not enable this transport.</p></div><div class="formDialogFooter formDialogFooter-flex"><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInCancel">Cancel</button><button is="emby-button" class="raised formDialogFooterItem" type="button" id="dqOptInYes">Explicitly enable deletion</button></div></dialog>
   </div></div>
   <script src="configurationpage?name=DeletionQueueAdminUI.js"></script>

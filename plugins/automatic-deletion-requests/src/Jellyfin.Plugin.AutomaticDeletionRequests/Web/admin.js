@@ -25,6 +25,50 @@
         // emby-input/select/checkbox before its constructor has run.
         host.append(row); return input;
     }
+    // Maintainerr RuleDto/RuleDbDto exports. Never import execution or connection settings.
+    function maintainerrDraft(input){
+        const unpack=value=>typeof value==='string'?JSON.parse(value):value;
+        const raw=unpack(input.JsonRules??input.jsonRules??input);
+        const groups=Array.isArray(raw)?raw.every(r=>Array.isArray(r.rules))?raw:[{name:input.name||'Imported rule',description:input.description,libraryId:input.libraryId,dataType:input.dataType,arrAction:input.arrAction,rules:raw}]:Array.isArray(raw.ruleGroups)?raw.ruleGroups:[raw];
+        if(!groups.length||groups.length>50)throw Error('Maintainerr: expected 1–50 rule groups.');
+        const maps={1:{0:'radarr.added',5:'radarr.monitored',6:'radarr.inCinemas',8:'radarr.fileAudioChannels',9:'radarr.fileQuality',10:'radarr.fileAdded',11:'radarr.runtime',12:'radarr.filePath',13:'radarr.originalLanguage',16:'radarr.imdbRating',19:'radarr.imdbVotes',20:'radarr.fileQualityCutoffMet',21:'radarr.fileQualityName',22:'radarr.fileAudioLanguages',25:'radarr.title',26:'radarr.id'},2:{0:'sonarr.added',3:'sonarr.qualityProfileId',4:'sonarr.firstAired',5:'sonarr.seasonCount',6:'sonarr.status',7:'sonarr.ended',8:'sonarr.monitored',10:'sonarr.unairedEpisodes',11:'sonarr.monitoredSeasons',19:'sonarr.rating',20:'sonarr.ratingVotes',25:'sonarr.qualityProfile',27:'sonarr.seriesType',31:'sonarr.missingEpisodes',33:'sonarr.title',34:'sonarr.id'},3:{1:'seerr.requestDate',4:'seerr.mediaAddedAt',5:'seerr.requestCount',6:'seerr.isRequested'},6:{0:'added',2:'jellyfin.premiereDate',11:'jellyfin.genres',14:'jellyfin.episodeCount',16:'jellyfin.lastEpisodeAdded',19:'jellyfin.collections',21:'jellyfin.playlists',22:'jellyfin.criticRating',23:'rating',24:'jellyfin.tags',27:'jellyfin.lastEpisodeAired',30:'jellyfin.playCount',46:'jellyfin.studios',47:'jellyfin.lastPlayedAt'}};
+        const actions=['greater','less','equals','not-equals','contains','before','after','in-last-days','in-next-days','not-contains','contains-partial','not-contains-partial','contains-all','not-contains-all','count-equals','count-not-equals','count-greater','count-less','exists','not-exists'];
+        const imported=[],importedFilters=[];
+        for(const [groupIndex,group]of groups.entries()){
+            if(group.arrAction!=null&&Number(group.arrAction)!==0)throw Error('Maintainerr: non-deletion actions need manual conversion. Nothing imported.');
+            if(group.dataType!=null&&!['movie','show'].includes(group.dataType))throw Error('Maintainerr: episode/season scopes need manual conversion. Nothing imported.');
+            const rows=unpack(group.rules??group.JsonRules??group.jsonRules);if(!Array.isArray(rows)||!rows.length||rows.length>50)throw Error('Maintainerr: each group needs 1–50 conditions.');
+            const nodes=[{id:'start',kind:'start',x:0,y:0,inputs:[]}],conditions=[],sections=[];let currentSection;
+            const join=(left,right,operator)=>{if(!left)return right;if(operator!==0&&operator!==1&&operator!=='0'&&operator!=='1')throw Error('Maintainerr: unsupported Boolean operator.');const id='g'+nodes.length;nodes.push({id,kind:Number(operator)===0?'and':'or',x:500+nodes.length*12,y:100+nodes.length*35,inputs:[left,right]});return id;};
+            for(const [index,saved]of rows.entries()){
+                const row=saved.ruleJson?{...unpack(saved.ruleJson),section:saved.section}:saved;
+                const fail=detail=>{throw Error('Maintainerr condition '+(index+1)+': '+detail+'. Nothing imported.');};
+                const resolve=pair=>{if(!Array.isArray(pair)||pair.length!==2)return fail('invalid metadata reference');const field=maps[pair[0]]?.[pair[1]];if(!field||!window.RemovalMetadataCatalog?.some(f=>f.id===field))return fail('unsupported metadata '+pair.join(':'));return field;};
+                if(row.username||row.arrDiskPath)fail('scoped user or disk rules need manual conversion');
+                const field=resolve(row.firstVal),definition=window.RemovalMetadataCatalog.find(f=>f.id===field),action=Number(row.action);let operator=actions[action],value=null,referenceField;
+                if(!Number.isInteger(action)||!operator)fail('unsupported comparison');
+                if(action<18){if(row.lastVal){referenceField=resolve(row.lastVal);const other=window.RemovalMetadataCatalog.find(f=>f.id===referenceField);if(definition.type!==other.type||definition.unit!==other.unit)fail('incompatible metadata types');}
+                    else{const custom=row.customVal;if(!custom||custom.value===undefined)fail('missing comparison value');value=custom.value;
+                        if(definition.type==='date'&&Number(custom.ruleTypeId)===0){value=Number(value)/86400;if(!Number.isFinite(value)||value<0)fail('invalid duration');if(action===5)operator='older-days';else if(![7,8].includes(action))fail('unsupported relative-date comparison');}
+                        else if(definition.type==='date'){if(Number(custom.ruleTypeId)!==1)fail('invalid date type');const date=new Date(String(value).includes('-')?value:Number(value)*1000);if(!Number.isFinite(date.getTime()))fail('invalid date');value=date.toISOString();}
+                        else if(definition.type==='boolean'){if(!['0','1','true','false'].includes(String(value)))fail('invalid Boolean');value=['1','true'].includes(String(value));}
+                        else if(definition.type==='number'||operator.startsWith('count-')){if(String(value).trim()===''||!Number.isFinite(Number(value)))fail('invalid number');value=Number(value);}
+                        else if(definition.type==='list'&&typeof value==='string'&&value.trim().startsWith('[')){value=JSON.parse(value);if(!Array.isArray(value)||value.some(v=>typeof v!=='string'))fail('invalid text list');}
+                    }
+                }
+                if(!definition.operators.includes(operator))fail('comparison unavailable for this metadata');
+                const condition={field,operator,value,...(referenceField?{referenceField}:{} )},id='c'+index;conditions.push(condition);nodes.push({id,kind:'condition',x:200,y:150+index*180,inputs:[],condition});
+                const section=row.section??0;if(currentSection!==section){if(sections.some(s=>s.id===section))fail('non-contiguous sections');sections.push({id:section,operator:row.operator,root:id});currentSection=section;}else{const previous=sections.at(-1);previous.root=join(previous.root,id,row.operator);}
+            }
+            let root;for(const section of sections)root=join(root,section.root,section.operator);
+            if(group.dataType){if(conditions.length>=50)throw Error('Maintainerr: too many conditions including media type.');const condition={field:'kind',operator:'equals',value:group.dataType==='show'?'series':'movie'};conditions.push(condition);nodes.push({id:'scope',kind:'condition',x:200,y:100,inputs:[],condition});root=join(root,'scope',0);}
+            nodes.push({id:'delete',kind:'delete',x:1000,y:100,inputs:[root,'start']});
+            const id=crypto.randomUUID(),name=String(group.name||input.name||'Imported rule').slice(0,100);imported.push({id,name,description:String(group.description||input.description||'').slice(0,1000),enabled:false,match:'all',conditions,circuit:{version:1,nodes,zoom:1,panX:0,panY:0},canvasX:540,canvasY:40+groupIndex*160});
+            const library=nativeLibraries.find(l=>l.id.replaceAll('-','').toLowerCase()===String(group.libraryId||'').replaceAll('-','').toLowerCase());
+            importedFilters.push({id:crypto.randomUUID(),name:name+' library',libraryId:library?.id||'',predicate:defaultPredicate(),outputs:[id],x:40,y:40+groupIndex*160});
+        }
+        return {rules:imported,filters:importedFilters,view:{zoom:1,panX:0,panY:0}};
+    }
     function render() {
         editors.forEach(e=>e.dispose());editors=[];
         const cards = el('arRuleCards'); cards.replaceChildren();
@@ -88,7 +132,9 @@
         selected={kind:type,id:card.id};dialog.close();title.value='';el('arNewDescription').value='';render();
     };
     el('arImport').addEventListener('click', () => { try {
-        const draft=JSON.parse(el('arRules').value), imported=Array.isArray(draft)?draft:draft.rules;
+        if(el('arRules').value.length>2000000)throw Error('JSON exceeds 2 MB.');
+        let draft=JSON.parse(el('arRules').value);const isMaintainerr=!!(draft?.JsonRules||draft?.jsonRules||draft?.ruleGroups||Array.isArray(draft?.rules)&&draft.rules.some(r=>r.firstVal||r.ruleJson)||Array.isArray(draft)&&draft.some(r=>r.firstVal||r.ruleJson||r.rules?.some(c=>c.firstVal||c.ruleJson)));if(isMaintainerr)draft=maintainerrDraft(draft);
+        const imported=Array.isArray(draft)?draft:draft.rules;
         const validRule=r=>r&&typeof r.id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(r.id)&&typeof r.name==='string'&&r.name.length>0&&r.name.length<=100&&Array.isArray(r.conditions)&&r.conditions.length>=1&&r.conditions.length<=50&&r.conditions.every(c=>c&&(fields[c.field]||window.RemovalMetadataCatalog?.some(f=>f.id===c.field))&&operators(c.field).includes(c.operator));
         if(!Array.isArray(imported)||imported.length>50||!imported.every(validRule)||new Set(imported.map(r=>r.id)).size!==imported.length)throw Error();
         const importedFilters=Array.isArray(draft)?null:draft.filters??null;
@@ -96,8 +142,8 @@
         for(const r of [...imported,...(importedFilters||[]).map(f=>f.predicate)])if(r.circuit)window.RemovalCircuit.check(r.circuit);
         const importedView=draft.view||{zoom:1,panX:0,panY:0};
         if(![importedView.zoom,importedView.panX,importedView.panY].every(Number.isFinite)||importedView.zoom<.25||importedView.zoom>2||Math.abs(importedView.panX)>10000||Math.abs(importedView.panY)>10000)throw Error();
-        rules=imported;filters=importedFilters;view=importedView;selected=null;render();
-    }catch{fail();} });
+        rules=imported;filters=importedFilters;view=importedView;selected=null;render();el('arStatus').textContent=isMaintainerr?'Maintainerr imported as disabled drafts. Select each library and review before enabling.':'Draft imported. Review before saving.';
+    }catch(error){el('arStatus').textContent=error.message?.startsWith('Maintainerr')?error.message:'Invalid canvas JSON. Nothing imported.';} });
     el('arExport').onclick=()=>{sync();const url=URL.createObjectURL(new Blob([el('arRules').value],{type:'application/json'}));const a=node('a');a.href=url;a.download='removal-automation-canvas.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
     el('arForm').addEventListener('submit', async event => { event.preventDefault(); if (revision === null) return; try { const enabled = el('arEnabled').checked; if (enabled && filters.some(f=>!f.libraryId)) { el('arStatus').textContent = 'Choose a library for each filter.'; return; } if (enabled && !confirm('Enable creation of removal requests for matching items? Every request still requires Deletion Queue safety gates.')) return; await call('PUT', '', { confirmAutomation: enabled, configuration: { revision, enabled, intervalHours: Number(el('arHours').value), rules,filters } }); await load(); } catch (error) { fail(error); } });
     el('arPreview').addEventListener('click', async () => { try {

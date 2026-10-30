@@ -111,30 +111,10 @@ contract, including owner-controlled secret delivery; this is not a claim of
 provider-level exactly-once delivery for all Discord operations. Standalone
 Notifications now preserves Bridge's permanent-versus-retryable error policy.
 
-## Verification
+## Live acceptance
 
-`artifacts/discord-suite-verified-{tests,package,installed,standalone,live}.log`:
-993 .NET tests, root JavaScript/release checks, all six Linux amd64 packages,
-installed native-theme/authorization/restart/database/recovery checks, and
-Discord Bridge + Notifications without Hub passed. Authorized live testing used
-only the configured `.env` test guild/channel: gateway connection, slash-command
-registration, exactly one episode/movie card each, rescan deduplication and real
-Notifications → Bridge channel delivery passed with no mentions/private audiences.
-Owned messages and credential-bearing fixture state were cleaned up.
-
-Earlier account-focused human acceptance (before the verified-session guard) passed in
-`artifacts/discord-visible-status-live.log`: consenting-user `/link` confirmation,
-`/status`, private `/reset` delivery, completed native password reset, old-password
-denial and prior-session revocation; a subsequent native sign-in also succeeded.
-It did not include native factors and does not certify the current reset guard.
-The fixture, tunnel and owned messages were cleaned up. Human delegated `/invite`,
-watch-party redemption remain
-separate acceptance work. No native authentication bypass or destructive Discord
-commands were added, and no release was committed or published.
-
-Current human invitation acceptance is deliberately deferred until the owner says
-they are ready, after non-human gates close. The implemented but unstarted
-`--human-invitations` mode requires explicit interactive/live authorization and a
+Human invitation testing requires separate owner approval after non-human gates.
+The `--human-invitations` mode requires explicit interactive/live authorization and a
 unique private readiness file. It checks actual handler outcomes (including an
 over-limit rejection), the exact linked native identity and two completed signups
 from a two-use/60-minute invite. Native channel/DM party redemption, third-use

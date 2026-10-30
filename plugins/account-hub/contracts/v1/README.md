@@ -69,4 +69,4 @@ freeze or full release certification.
 - [Notification producer/host guide](../../../../docs/notification-producer-api.md)
 - [Queue adapter](../../../deletion-queue/docs/account-hub-v1.md)
 - [SyncPlay adapter](../../../private-syncplay/docs/account-hub-integration.md)
-- [Current status](../../../../docs/review-status.md) · [Evidence register](../../../../docs/verification.md)
+- [Current validation](../../../../docs/review-status.md)

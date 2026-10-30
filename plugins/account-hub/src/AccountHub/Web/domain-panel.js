@@ -81,12 +81,12 @@ export function mountDomainPanel(root, client, { key, signal, dependency, onMuta
         return new Promise(resolve => {
             if (disposed) { resolve(null); return; }
             const dialog = node('dialog'); dialog.className = 'dialog accountHubDialog'; dialog.setAttribute('aria-label', 'Authorize reviewed domain change');
-            const form = node('form'), typed = field('Type CONFIRM ACCOUNT HUB CHANGE', ''), proof = field('Fresh authenticator or recovery code (when required)', '', { secret: true });
+            const form = node('form'), proof = field('Verification code', '', { secret: true });
             const submit = node('button', 'Confirm reviewed change'), cancel = node('button', 'Cancel'); submit.type = 'submit'; let closed = false;
-            const close = value => { if (closed) return; closed = true; typed.input.value = proof.input.value = ''; dialog.close(); dialog.remove(); closeDialog = undefined; resolve(value); };
+            const close = value => { if (closed) return; closed = true; proof.input.value = ''; dialog.close(); dialog.remove(); closeDialog = undefined; resolve(value); };
             closeDialog = close; cancel.onclick = () => close(null); dialog.addEventListener('cancel', event => { event.preventDefault(); close(null); });
-            form.onsubmit = event => { event.preventDefault(); if (typed.value() !== 'CONFIRM ACCOUNT HUB CHANGE') { typed.input.focus(); return; } close({ confirmation: typed.value(), stepUp: { code: proof.value() } }); };
-            form.append(node('h2', 'Authorize reviewed domain change'), node('p', 'Fresh proof is transient. Invalid proof or an unavailable verifier never downgrades authorization. Known missing/incompatible Security uses explicit audited confirmation.'), typed.root, proof.root, submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); typed.input.focus();
+            form.onsubmit = event => { event.preventDefault(); close({ confirmation: 'CONFIRM ACCOUNT HUB CHANGE', stepUp: { code: proof.value() } }); };
+            form.append(node('h2', 'Confirm changes'), proof.root, submit, cancel); dialog.append(form); document.body.append(dialog); dialog.showModal(); proof.input.focus();
         });
     }
     function userFields(value = {}) {

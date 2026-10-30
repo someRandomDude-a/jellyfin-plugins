@@ -27,7 +27,7 @@ authorize bulk account changes or certify every optional integration.
   provisioning; invitation credentials are not disclosed again from history.
 - Verified identity links, session-bound recovery and Seerr account lifecycle integration.
 - Durable central audit with deduplication, retention checkpoints and protected integration secrets.
-- Opt-in future library-addition capture delivered through Notifications or Bridge.
+- Optional library notices supplied by Notifications; Hub does not observe additions.
 
 Hub is an account workspace, **not a universal settings screen** for the suite.
 Configure Discord transport, removal policy and parties in their owning plugins.
@@ -83,4 +83,3 @@ versions and ABI come from the selected immutable release, not this README.
 - [Storage recovery](../../docs/plugin-storage-recovery.md) · [Producer contracts](contracts/v1/README.md)
 - [Testing](../../docs/testing.md) · [Release policy](../../docs/independent-plugin-releases.md)
 - [Current evidence and blockers](../../docs/review-status.md)
-- [Evidence register](../../docs/verification.md) — not blanket current certification

@@ -365,7 +365,7 @@
         const back = element('button');back.className='paper-icon-button-light notificationBack';back.setAttribute('aria-label','Back to notifications');back.title='Back to notifications';const arrow=element('span','arrow_back');arrow.className='material-icons';arrow.setAttribute('aria-hidden','true');back.append(arrow); back.onclick = () => { settingsView = false; render(); }; panel.append(back);
         const view = element('div'), status = element('p'); status.className = 'notificationSettingsStatus'; status.setAttribute('role', 'status'); status.textContent = 'Loading preferences…';
         settingsElement = view;
-        panel.append(status, view); const started = generation, controls = [], busy = new Set(); let rules = [], catalogs = [], loading = true, focusRequest = 0;
+        panel.append(status, view); const started = generation, controls = [], busy = new Set(); let rules = [], catalogs = [], loading = true, focusRequest = 0,discordAvailable=false;
         const active = () => settingsView && generation === started && view.isConnected;
         const same = (a, b) => a.source === b.source && a.type === b.type && a.channel === b.channel;
         const key = rule => JSON.stringify([rule.source, rule.type, rule.channel]);
@@ -398,9 +398,10 @@
         }
         function preferenceRow(label, source, type, channel, actionName, parent, { importance = false, description = '' } = {}) {
             const row = element('div'); row.className = 'notificationPreference' + (importance ? ' notificationCategory' : '');
+            row.dataset.channel=channel;if(channel==='discord')row.hidden=true;
             const rule={source,type,channel,enabled:true}, entry={row,rule,choices:[]};
             if (importance) {
-                const details = element('details'), summary = element('summary'), caption = element('small');
+                const details = element('section'), summary = element('div'), caption = element('small');
                 details.className = 'notificationCategoryDetails'; summary.append(element('span', label), caption); entry.caption = caption; details.append(summary);
                 if (description) details.append(element('p', description));
                 const choices = element('fieldset'); choices.className = 'notificationImportance'; choices.setAttribute('role', 'radiogroup'); choices.setAttribute('aria-label', actionName + ' importance');
@@ -419,13 +420,12 @@
             parent.append(row);
         }
         view.className = 'notificationCategorySettings';
-        view.append(element('p', 'Choose which notifications you receive and which are Important. Silent and Low keep notices in your inbox without popups or Web Push. Critical alerts stay enabled and Important. Device sound and vibration remain in your browser or Android settings.'));
         for (const channel of ['in-app', 'discord']) preferenceRow(channel === 'in-app' ? 'Allow notifications' : 'Discord notifications', '*', '*', channel, 'non-critical ' + channel + ' notifications', view, { importance: channel === 'in-app' });
-        const library = element('details'); library.append(element('summary', 'New episodes and movies'));
+        const library = element('section');library.className='notificationSettingsCard'; library.append(element('h3', 'New episodes and movies'));
         for (const [kind, label] of [['episode', 'new episodes'], ['movie', 'new movies']]) for (const channel of ['in-app', 'discord'])
             preferenceRow(label[0].toUpperCase() + label.slice(1) + ' · ' + (channel === 'in-app' ? 'In-app' : 'Discord'), 'notifications', 'library.' + kind + '.added', channel, label + ' on ' + channel, library, { importance: channel === 'in-app' });
-        const categories=element('details');categories.append(element('summary','Library categories'));
-        categories.append(element('p', 'For future library additions you can access. All additions includes Watchlisted and Favorited media; turn All additions off to receive only your selected categories. Watchlisted uses the native watchlist flag also used by Enhanced, not your viewing history.'));
+        const categories=element('section');categories.append(element('h4','Library categories'));
+        categories.append(element('p', 'Future additions you can access. Turn off All additions to use selected categories only.'));
         for(const [category,label]of [['*','Library updates'],['all','All additions'],['requested','Requested media'],['watchlisted','Watchlisted media'],['favourite','Favorited media']])for(const channel of ['in-app','discord'])preferenceRow(label+' · '+(channel==='in-app'?'In-app':'Discord'),'notifications','category.library.'+category,channel,label+' on '+channel,categories,{importance:channel==='in-app'});
         library.append(categories);
         view.append(library);
@@ -433,15 +433,15 @@
             const pushArea=element('section'),pushStatus=element('p','Loading browser notification settings…'),enablePush=element('button','Enable on this device'),disablePush=element('button','Disable on this device');
             const deviceSwitch=element('input');deviceSwitch.type='checkbox';deviceSwitch.className='emby-checkbox';deviceSwitch.setAttribute('is','emby-checkbox');deviceSwitch.setAttribute('role','switch');deviceSwitch.setAttribute('aria-label','Notifications on this device');
             const switchLabel=element('label');switchLabel.className='emby-checkbox-label';const switchText=element('span','Notifications on this device');switchText.className='checkboxLabel';const outline=element('span');outline.className='checkboxOutline';outline.setAttribute('aria-hidden','true');const icon=element('span');icon.className='material-icons checkboxIcon checkboxIcon-checked check';outline.append(icon);switchLabel.append(deviceSwitch,switchText,outline);
-            deviceSwitch.disabled=true;enablePush.disabled=true;disablePush.disabled=true;pushArea.append(element('h3','Browser notifications'),switchLabel,pushStatus);view.append(pushArea);
+            pushArea.hidden=true;deviceSwitch.disabled=true;enablePush.disabled=true;disablePush.disabled=true;pushArea.append(element('h3','Browser notifications'),switchLabel,pushStatus);view.append(pushArea);
             const worker=url('notifications/push/sw.js'),scope=new URL('./',worker).href;pushScope=scope;
             let pushConfig;
             const refreshPush=async()=>{pushConfig=await request('notifications/push');if(!active())return;deviceConfig=pushConfig;const registration=await window.navigator.serviceWorker.getRegistration(scope),subscription=registration?.scope===scope?await registration.pushManager.getSubscription():null;
                 const hash=subscription?[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(subscription.endpoint)))].map(v=>v.toString(16).padStart(2,'0')).join(''):null;
-                if(!active())return;const enrolled=!!hash&&pushConfig.devices?.includes(hash);
+                if(!active())return;pushArea.hidden=!pushConfig.enabled;const enrolled=!!hash&&pushConfig.devices?.includes(hash);
                 enablePush.disabled=!pushConfig.enabled||enrolled||window.Notification.permission==='denied';disablePush.disabled=!subscription;
                 deviceSwitch.disabled=!pushConfig.enabled;deviceSwitch.checked=window.Notification.permission!=='denied'&&deviceChoice()!=='off'&&(enrolled||deviceChoice()==='on'||pushConfig.defaultOn);
-                pushStatus.textContent=!pushConfig.enabled?'An administrator needs to turn on Browser notifications in Notifications settings.':window.Notification.permission==='denied'?'Notifications are blocked in this browser. Allow notifications in the browser’s site settings, then turn this switch on again.':enrolled?'Enabled on this device. Notifications contain no private details.':deviceSwitch.checked?'Enabled by default. Open the notification bell and allow the browser permission request to finish setup.':'Off on this device. Turn on to allow browser notifications.';};
+                pushStatus.textContent=!pushConfig.enabled?'':window.Notification.permission==='denied'?'Blocked by your browser. Allow notifications in site settings.':enrolled?'Enabled on this device.':deviceSwitch.checked?'Allow the browser permission request to finish setup.':'Off on this device.';};
             enablePush.onclick=async()=>{enablePush.disabled=true;const token=client().accessToken();try{
                 deviceChoice('on');const valid=()=>active()&&token===client().accessToken();
                 if(!await enrollDevice(pushConfig,valid,true))return;
@@ -451,13 +451,11 @@
             deviceSwitch.onchange=async()=>{deviceSwitch.disabled=true;try{if(deviceSwitch.checked)await enablePush.onclick();else await disablePush.onclick();}finally{if(active()){deviceSwitch.checked=deviceChoice()!=='off'&&window.Notification.permission!=='denied';deviceSwitch.disabled=!pushConfig?.enabled;}}};
             void refreshPush().catch(()=>{if(active())pushStatus.textContent='Browser notifications are unavailable.';});
             refreshDevicePanel=()=>{if(active())void refreshPush().catch(()=>{});};
-        }else{
-            const message=element('section');message.append(element('h3','Browser notifications'),element('p',!window.isSecureContext?'Open Jellyfin using HTTPS to enable notifications on this device. Your current connection is not secure.':'This browser does not support notifications here. On iPhone or iPad, add Jellyfin to the Home Screen and open it there.'));view.append(message);
         }
         const muted = element('details'), mutedList = element('div'); muted.append(element('summary', 'Muted sources and types'), mutedList); view.append(muted);
         function renderMuted() {
             mutedList.replaceChildren();
-            for (const rule of rules.filter(rule => !rule.enabled)) {
+            for (const rule of rules.filter(rule => !rule.enabled&&(rule.channel!=='discord'||discordAvailable))) {
                 const sourceName = { '*': 'All sources', 'account-hub': 'Accounts', 'deletion-queue': 'Removal requests', 'private-syncplay': 'Watch parties', 'discord-bridge': 'Discord Bridge', 'jellyfin-security': 'Security' }[rule.source] || rule.source;
                 const typeName = { '*': 'All types', 'library.episode.added': 'New episodes', 'library.movie.added': 'New movies', 'category.library.watchlisted': 'Watchlisted media', 'category.library.favourite': 'Favorited media', 'category.library.requested': 'Requested media', 'category.library.all': 'All additions' }[rule.type] || rule.type;
                 const row = element('div'); row.className = 'notificationPreference'; row.append(element('span', sourceName + ' · ' + typeName + ' · ' + (rule.channel === 'in-app' ? 'In-app' : 'Discord')));
@@ -467,13 +465,13 @@
             if (!mutedList.children.length) mutedList.append(element('p', 'No muted sources or types.'));
         }
         const preferencesLoaded=request('notifications/preferences').then(current => {
-            if (!active()) return; rules = current.preferences; loading = false; status.textContent = ''; paint(); renderMuted();
+            if (!active()) return; rules = current.preferences;discordAvailable=current.discordAvailable!==false; loading = false; status.textContent = '';for(const row of view.querySelectorAll('[data-channel=discord]'))row.hidden=!discordAvailable; paint(); renderMuted();
         }).catch(() => { if (active()) status.textContent = 'Could not load preferences. Reopen settings to try again.'; });
         const categoryPanel=element('details');categoryPanel.append(element('summary','App notification categories'));view.append(categoryPanel);
         void request('notifications/categories').then(async data=>{
             await preferencesLoaded;
             if(!active())return; catalogs=data.catalogs||[];
-            categoryPanel.append(element('p','These settings apply only to your account. Expand a category to choose Alerting, Important, Silent or Low, or inherit its plugin default. They do not change server routing or anyone else’s settings.'));
+            categoryPanel.append(element('p','Your preferences only. Critical alerts stay enabled.'));
             const sourceNames={'account-hub':'Accounts','notifications':'Notifications','deletion-queue':'Removal requests','private-syncplay':'Watch parties','discord-bridge':'Discord Bridge','jellyfin-security':'Security'};
             for(const catalog of data.catalogs||[]){const plugin=element('details');plugin.className='notificationAppCategories';plugin.append(element('summary',sourceNames[catalog.source]||catalog.source));
                 if(catalog.grouping){

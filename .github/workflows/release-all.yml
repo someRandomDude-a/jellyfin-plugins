@@ -224,7 +224,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'Release exists or creation failed; assets will not be overwritten' }
           gh release upload $env:RELEASE_TAG (Get-ChildItem release -File | ForEach-Object FullName)
           if ($LASTEXITCODE) { throw 'Upload failed; release remains draft' }
-          gh release edit $env:RELEASE_TAG --draft=false --latest=false
+          gh release edit $env:RELEASE_TAG --draft=false --latest=true
           if ($LASTEXITCODE) { throw 'Could not publish uploaded release' }
   update-manifest:
     needs: [verify-ref, publish]

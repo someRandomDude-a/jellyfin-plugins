@@ -21,8 +21,15 @@ consent through templates or own other plugins' administration screens.
 - **Copy access to template** creates a group template from the supported access fields of an existing native user. It never copies administrator status, passwords, authentication providers, Discord links or 2FA. Supported fields: playback, remote access, downloading, audio/video transcoding, remuxing, session limit, library access and parental rating.
 - **Groups** owns templates, primary assignments, overrides, explicit apply/reset, drift inspection and rollback. Observing drift does not automatically overwrite native changes.
 - **Settings** keeps public links and invitation permissions prominent. Temporary native creation, audit retention and Security integration are under **Advanced settings**; an active native-creation override expands that section automatically. Friendly Security choices retain the existing stored policy values and fresh authorization requirements.
-- **Invites → Invitation defaults and Discord permissions** selects the default template. Ordinary invitation requests still require separate approval before their credential is issued. Link rotation invalidates the previous link; credentials are disclosed once, not available in history or completed retries.
+- **Invites → Invitation defaults** selects the default template and available Discord permissions. Ordinary invitation requests require separate approval before their credential is issued. Link rotation invalidates the previous link; credentials are disclosed once, not available in history or completed retries.
 - Provisioning creates the reserved native identity disabled, establishes the invitee's chosen password, applies managed access, then enables the account. Uncertain operations require inspection/resume rather than blind creation retries. New accounts are non-administrators and hidden from public login tiles.
+
+## Selection and confirmation
+
+Account selection includes a page-level select-all checkbox that excludes
+administrators. Access editing opens a centred modal; drag its heading to move it.
+Confirmation uses review buttons, not a typed phrase. Required verification codes
+and native authorization remain enforced.
 
 ## Discord
 
@@ -36,7 +43,7 @@ Discord Bridge owns the only bot. Enable account self-service there, configure a
 
 ## Removal and automation permissions
 
-Account access templates manage the native access fields listed above. They do **not** copy or grant Deletion Queue permissions, native administrator status, native direct-deletion permissions, consent or approval. Settings → **Plugin permissions** links to each plugin's own controls; absent plugins leave those links disabled.
+Account access templates manage the native access fields listed above. They do **not** copy or grant Deletion Queue permissions, administrator status, native deletion rights, consent or approval. Settings → **Plugin permissions** shows links only for available plugins.
 
 | Control | Owner and scope |
 | --- | --- |
@@ -52,7 +59,7 @@ These are separate permission boundaries, not another administrator role supplie
 
 These workflows are inspired by jfa-go, not full jfa-go parity. They do not implement its entire notification/provider ecosystem, arbitrary account-setting copying or every bulk account action. Production-handler tests exercise actual link confirmation, private recovery issuance/failed-delivery cleanup, native account/policy gates, unlinking and delegated invitations over real plugin SQLite state with a synthetic transport and native-user adapter.
 
-Earlier human `/link`, `/status`, private `/reset` delivery and browser reset passed (`artifacts/discord-visible-status-live.log`), including native password/session checks. **That fixture predates the verified-session guard and does not certify the current reset policy.** Its server, tunnel and owned messages were removed. Current session-verdict evidence and remaining human `/invite` and watch-party limitations are recorded in [review status](review-status.md).
+See [validation status](review-status.md) for current checks and remaining live-service acceptance.
 
 ## References
 

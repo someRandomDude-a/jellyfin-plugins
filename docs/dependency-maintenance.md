@@ -2,18 +2,16 @@
 
 ## Prerequisites and setup
 
-These files are local configuration until installed on the default branch through
-normal review. Configure the dedicated bot token/login, strict required checks,
-squash merging and existing release-environment policy using the setup section
-below. Do not bypass approvals or publish local work to enable automation.
+Configure the dedicated bot token/login, required checks, squash merging and
+release-environment policy using the setup section below. Changes take effect
+only after the normal reviewed deployment; never bypass approvals.
 The [current review status](review-status.md) records direct-dependency freshness
 and acceptance results separately. Bot discovery is not proof that an upgrade passed acceptance.
 
 `dependency-maintenance.yml` checks for stable updates **hourly**, on manual
 dispatch, or on a `repository_dispatch` event of type `dependency-update`.
 An upstream webhook can send that event for earlier discovery; GitHub does not
-provide a universal “any dependency released” event. No workflow was triggered
-while implementing this configuration.
+provide a universal “any dependency released” event.
 
 ## Update → test → merge → release
 
@@ -172,11 +170,8 @@ publication and requires a new complete run. Existing release approvals remain.
 Catalog-only repair intentionally preserves published history; it does not rebuild
 or masquerade as a new latest-target release.
 
-The initial audit in `artifacts/latest-only-final-freshness-audit.log` **failed** on
-then-stale Actions, browser/testing libraries and tool images. Current local bump,
-read-only freshness, Linux acceptance and upstream vulnerability findings are
-recorded separately in [review status](review-status.md). A version bump/freshness
-pass does not prove safe dependencies, full acceptance or deployed remote workflows.
+A version bump or freshness pass does not prove full acceptance. See
+[validation status](review-status.md) and retain evidence for the exact run.
 
 ## One-time repository setup
 

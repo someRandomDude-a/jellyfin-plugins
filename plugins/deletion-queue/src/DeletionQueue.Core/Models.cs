@@ -72,7 +72,11 @@ public sealed record ExecutionClaim(Guid Id, DateTimeOffset At, string TargetFin
     public long? ActivityGeneration { get; init; }
 }
 // Trusted, read-only upstream observation; never a request-body deletion grant.
-public sealed record ExternalTargetChange(string Reason);
+public sealed record ExternalTargetChange(string Reason)
+{
+    // A single observation's concurrency fence, not persistent media identity.
+    public long? ConnectionRevision { get; init; }
+}
 
 public sealed class Proposal
 {
@@ -87,6 +91,7 @@ public sealed class Proposal
     public DateTimeOffset? ActivityVerifiedAt { get; set; }
     public DateTimeOffset? LastCheckedAt { get; set; }
     public EvaluationEvidence? LastCheckEvidence { get; set; }
+    public string? LastVerificationFailureCode { get; set; }
     public DateTimeOffset? ApprovalWaitingSince { get; set; }
     public DateTimeOffset? ApprovalDeadline { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -150,6 +155,7 @@ public sealed record EvaluationEvidence(
     bool OwnerAuthorized, bool TargetVerified, bool CompleteActivityScan,
     bool LocalCheckpointVerified, bool SeerrDelegationVerified, bool AdministratorAuthorized = false)
 {
+    public IReadOnlyList<MediaIdentityDifference> TargetDifferences { get; init; } = [];
     public bool AutomaticRuleVerified { get; init; }
     public bool NativeHistoryVerified { get; init; }
     public bool AdministratorCreatorAuthorized { get; init; }

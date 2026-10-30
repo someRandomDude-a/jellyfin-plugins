@@ -38,7 +38,7 @@
             const retention = control('Keep notifications (days)', 90, null, 'Keep inbox history for 7–365 days.'); retention.input.min = 7; retention.input.max = 365;
             const blockedLimit=control('Blocked notifications retained per user',500,null,'0–1000 muted notifications, retained within the history period. Enabling a category can reveal retained notices without replaying external deliveries.');blockedLimit.input.min=0;blockedLimit.input.max=1000;
             const button = (text, work) => { const node = make('button', text); node.onclick = async () => { if (disposed) return; node.disabled = true; try { await work(); if (!disposed) status.textContent = 'Saved / refreshed.'; } catch (error) { if (!disposed) status.textContent = error.message || 'Request failed. Reload revision and check authorization or delivery health.'; } finally { node.disabled = false; } }; return node; };
-            function addRoute(route = { id: crypto.randomUUID(), source: '*', type: '*', channel: 'discord', destination: '', adminOnly: true, directMessage: false, allowHttp: false, allowPrivate: false }) {
+            function addRoute(route = { id: crypto.randomUUID(), source: '*', type: '*', channel: discordAvailable?'discord':'webhook', destination: '', adminOnly: true, directMessage: false, allowHttp: false, allowPrivate: false }) {
                 if (routes.length >= 50) throw Error('At most 50 routes are supported.');
                 const section = make('fieldset'), legend = make('legend', 'Delivery route'), grid = make('div'); grid.className = 'hubGrid';
                 const fields = {
@@ -53,8 +53,11 @@
                 function refreshAvailability() {
                     const unavailable = fields.channel.value() === 'discord' && !discordAvailable;
                     fields.channel.input.querySelector('option[value="discord"]').disabled = !discordAvailable;
+                    fields.channel.input.querySelector('option[value="discord"]').hidden = !discordAvailable;
                     for (const name of ['destination', 'directMessage']) fields[name].input.disabled = unavailable;
-                    dependency.textContent = unavailable ? 'Discord delivery is unavailable: install and enable Discord Bridge, restart Jellyfin, and configure its bot. In-app and webhook delivery remain independent. Existing Discord route settings are preserved.' : '';
+                    section.hidden=unavailable;fields.directMessage.root.hidden=!discordAvailable||fields.channel.value()!=='discord';
+                    for(const name of ['allowHttp','allowPrivate','secret'])fields[name].root.hidden=fields.channel.value()!=='webhook';
+                    dependency.textContent='';
                 }
                 fields.channel.input.addEventListener('change', refreshAvailability); refreshAvailability();
                 const entry = { route, fields, section }; routes.push(entry);
@@ -65,6 +68,7 @@
             async function loadSettings() {
                 if (disposed) return;
                 const data = await request('settings/notifications', 'GET'); if (disposed) return;
+                if(typeof data.discordAvailable==='boolean')discordAvailable=data.discordAvailable;
                 eraseSecrets(); routes.length = 0; list.replaceChildren(); revision = data.revision; retention.input.value = data.notificationDays;
                 blockedLimit.input.value=data.blockedNotificationLimit??500;
                 for (const route of data.routes) addRoute(route);
@@ -108,7 +112,7 @@
                 const selected = new Set(data.settings.libraryIds || []); libraryFolders.input.replaceChildren(); for (const folder of data.libraries || []) { const option = make('option', folder.name); option.value = folder.id; option.selected = selected.delete(folder.id); libraryFolders.input.append(option); } for (const id of selected) { const option = make('option', 'Unavailable saved library · ' + id); option.value = id; option.selected = true; libraryFolders.input.append(option); }
                 libraryHealth.textContent = 'Retained: ' + data.health.retained + ' · Pending: ' + data.health.pending + ' · Uncertain Discord deliveries: ' + data.health.uncertainDiscord;
             }
-            libraryPanel.append(libraryEnabled.root, libraryEpisodes.root, libraryMovies.root, libraryFolders.root, button('Save library events', async () => { await request('settings/notifications/library', 'PUT', { revision: libraryRevision, enabled: libraryEnabled.value(), episodes: libraryEpisodes.value(), movies: libraryMovies.value(), libraryIds: [...libraryFolders.input.selectedOptions].map(option => option.value) }); await loadLibrary(); }), libraryHealth, make('p', 'Configure examples, priority, defaults and Notification Studio below. Shared Discord channel title disclosure remains an explicit Discord Bridge setting; no personal audiences are shared.'));
+            libraryPanel.append(libraryEnabled.root, libraryEpisodes.root, libraryMovies.root, libraryFolders.root, button('Save library events', async () => { await request('settings/notifications/library', 'PUT', { revision: libraryRevision, enabled: libraryEnabled.value(), episodes: libraryEpisodes.value(), movies: libraryMovies.value(), libraryIds: [...libraryFolders.input.selectedOptions].map(option => option.value) }); await loadLibrary(); }), libraryHealth);
             let typesLoading, typesLoaded = false;
             function loadTypes(reload = false) {
                 if (disposed || typesLoaded && !reload) return Promise.resolve();
@@ -133,8 +137,12 @@
                     typeSummary.append(make('span', type.name), make('code', type.type)); entry.append(typeSummary); plugin.append(entry);
                     const section = make('fieldset'); section.className='notificationTypeSection';section.append(make('legend', type.name)); section.dataset.help = type.trigger + '. Recipients: ' + type.recipients + '. Source: ' + catalog.source + '. Registered actions: ' + (type.actions.map(action => action.label).join(', ') || 'none') + '.';
                     const defaultValues = type.defaults || { inApp: true, discord: false, importance: type.recipients === 'administrators' ? 'high' : 'normal' };
-                    const inAppDefault = control('In-app enabled by default', defaultValues.inApp), discordDefault = control('Discord DM enabled by default', defaultValues.discord), importanceDefault = control('Default priority', defaultValues.importance, ['silent', 'low', 'normal', 'high'], 'Personal choices take precedence. Critical security notices remain mandatory and important.');
-                    const defaultsPanel=make('div');defaultsPanel.className='notificationTypeDefaults';
+                    const inAppDefault = control('In-app enabled by default', defaultValues.inApp), discordDefault = control('Discord DM enabled by default', defaultValues.discord);
+                    const priority=make('fieldset');priority.className='suiteChoiceGroup';priority.append(make('legend','Default priority'));const priorityName='notification-priority-'+(++sequence);
+                    for(const [value,label]of [['silent','Silent'],['low','Low'],['normal','Alerting'],['high','Important']]){const option=make('label'),input=make('input');input.type='radio';input.name=priorityName;input.value=value;input.checked=value===defaultValues.importance;option.append(input,make('span',label));priority.append(option);}
+                    const importanceDefault={root:priority,value:()=>priority.querySelector('input:checked')?.value||defaultValues.importance};
+                     const defaultsPanel=make('div');defaultsPanel.className='notificationTypeDefaults';
+                     discordDefault.root.hidden=!discordAvailable;
                     defaultsPanel.append(inAppDefault.root, discordDefault.root, importanceDefault.root, button('Save defaults', async () => { await request('settings/notifications/types/defaults', 'PUT', { source: catalog.source, type: type.type, revision: catalog.revision, defaults: { inApp: inAppDefault.value(), discord: discordDefault.value(), importance: importanceDefault.value() } }); catalog.revision++; }));section.append(defaultsPanel);
                     const simulated = { source: catalog.source, type: type.type, title: type.example?.title || type.name, body: type.example?.body || type.trigger, severity: type.example?.severity || 'info', exampleImage: !!type.example?.image };
                     const preview = make('div'); preview.setAttribute('aria-label', 'Simulated ' + type.name); preview.className = 'notificationTypePreview';
