@@ -77,7 +77,12 @@ still return immediately and fail the unchanged layout assertion. **235 script
 tests** pass on Windows and Linux in `artifacts/live-poster-script-tests-r1.log`
 and `artifacts/live-poster-linux-scripts-r1.log`; real Chromium refresh, overlap
 and wrong-CSS coverage passes in `artifacts/live-poster-chromium-r3.log`.
-These harness checks do not certify newer backend or factor-return changes.
+Fresh standalone Notifications **0.0.38.0** on Jellyfin **12.4** passes all six
+installed studio theme/width cases, live-poster geometry and page-error checks
+in `artifacts/live-poster-installed-r2.log` and its `studio-results.json`.
+The first installed attempt omitted `--library`, so no live card was seeded;
+its failed log remains preserved. This focused Notifications gate does not
+certify the full suite or newer factor-return changes; hosted CI needs rerunning.
 
 Documentation and workflow configuration do not authorize publication, production
 deletion, live Discord activity, credential disclosure or changes to original keys
