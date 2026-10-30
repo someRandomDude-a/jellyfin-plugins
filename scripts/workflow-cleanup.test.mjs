@@ -22,6 +22,12 @@ test('preview updates serialize without publication and Hub-only fixtures do not
     assert(!preview.includes('git push'));
     const integration=await read('.github/workflows/integration.yml');
     assert(!/--plugins=hub\s+--library/.test(integration));
+    assert(integration.includes('--plugins=discord --security=latest --proof\n'));
+    assert(integration.includes('--plugins=discord,notifications --security=latest --library'));
+    for(const line of integration.split('\n').filter(line=>line.includes('node scripts/integration.mjs')&&line.includes('--library'))){
+        const plugins=/--plugins=([^\s]+)/.exec(line)?.[1];
+        if(plugins)assert(plugins.split(',').includes('notifications'),'Every selected library fixture must install Notifications: '+line.trim());
+    }
     assert(integration.includes('--security=latest --wiring-check'));
 });
 test('current status stays concise and preserves detailed evidence separately',async()=>{

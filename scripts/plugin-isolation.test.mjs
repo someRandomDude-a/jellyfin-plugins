@@ -24,7 +24,8 @@ test('suite dispatch gates all platforms and publishes before one combined manif
     assert(workflow.includes('needs: [verify-ref, publish]'));
     assert.equal(workflow.match(/uses: \.\/\.github\/workflows\/update-manifest.yml/g)?.length,1);
     assert(workflow.includes("needs.verify-ref.outputs.published == 'true'"));
-    assert(workflow.includes('git merge-base --is-ancestor $commit HEAD'));
+    assert(workflow.includes('node scripts/assert-release-source.mjs "$selectedCommit" "$commit"'));
+    assert(workflow.includes("throw 'Release source differs from the existing immutable tag; use a new version for the fixes'"));
     assert(!workflow.includes('--clobber'));assert(!workflow.includes('--force'));
     const manifest=await read('.github/workflows/update-manifest.yml');
     assert(manifest.includes("if ($env:PLUGIN -eq 'all')"));

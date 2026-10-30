@@ -78,7 +78,8 @@ jobs:
       - name: Verify suite wiring, native verified-session recovery, and independent library capture
         run: |
           node scripts/integration.mjs --packages=artifacts/suite-packages --security=latest --proof --reset-session --extended-security --permissions-check --wiring-check --library --v1-flows --database-safety --storage-recovery
-          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord --security=latest --proof --library
+          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord --security=latest --proof
+          node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=discord,notifications --security=latest --library
           node scripts/integration.mjs --packages=artifacts/suite-packages --plugins=hub
       - uses: actions/upload-artifact@v7.0.2
         if: always()
