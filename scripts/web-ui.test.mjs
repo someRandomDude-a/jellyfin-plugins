@@ -363,6 +363,12 @@ hubTest('Workspace navigation clears an open fresh-proof dialog without issuing 
     root.dispatchEvent(new window.Event('viewhide')); await turn();
     assert.equal(proof.value, ''); assert.equal(window.document.querySelectorAll('dialog').length, 0); assert.equal(calls.filter(c => c.method === 'POST').length, 0); dom.window.close();
 });
+notificationTest('Installed studio saves priority through its visible native radio group', async () => {
+    const acceptance = await source('scripts/notification-studio-acceptance.cjs');
+    assert(!acceptance.includes("getByLabel('Default priority'"));
+    assert(acceptance.includes("getByRole('group',{name:'Default priority',exact:true}).getByRole('radio',{name:'Low',exact:true}).check()"));
+    assert(acceptance.includes("assert.equal(saved.defaults.importance,'low')"));
+});
 notificationTest('Installed category acceptance targets visible headings and retains saved priority and keyboard checks', async () => {
     const acceptance = await source('scripts/notification-category-acceptance.cjs');
     assert(!acceptance.includes("closest('details').open"));

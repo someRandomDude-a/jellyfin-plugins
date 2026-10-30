@@ -1,5 +1,19 @@
 # Testing
 
+## Failure reporting
+
+The root runner attempts every independent test-plan entry point and prints a
+combined list of failed commands before exiting non-zero. Node/.NET runners retain
+their individual test reports. Installed integration similarly attempts every
+selected independent browser group and lists all failed groups at the end; the
+notification-studio wrapper runs both its browser unit tests and installed checks.
+
+Tool/bootstrap, authorization and fixture-safety prerequisites remain fail-fast.
+Dependent steps within a browser scenario stop when their prerequisite fails;
+later steps are not represented as tested. A combined report does not permit a
+failed gate to merge or release. Complete installed-browser results still require
+running the disposable fixture, not just source/unit checks.
+
 ## Dependencies and setup
 
 Use the .NET SDK in `global.json`, current stable Node.js and PowerShell 7+; install

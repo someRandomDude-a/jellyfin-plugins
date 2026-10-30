@@ -11,6 +11,7 @@ import { startDiscordTunnel, probeDiscordTunnel, probeTrustedProxyAuth } from '.
 import { requireFixturePowerShell } from './fixture-tools.mjs';
 import { moveFixtureState } from './fixture-state-files.mjs';
 import { verifyDiscordTransportSettings } from './discord-settings-acceptance.mjs';
+import { testResults } from './test-results.mjs';
 
 const option = name => process.argv.find(value => value.startsWith('--' + name + '='))?.split('=').slice(1).join('=');
 const liveDiscord = process.argv.includes('--live-discord');
@@ -1202,7 +1203,8 @@ try {
         await until(async()=>{try{return(await request('System/Info/Public',{auth:null,expected:null})).status===200;}catch{return false;}},'native startup before browser acceptance');
         if(has('hub'))await until(async()=>{try{return(await request('AccountHub/api/v1/workspace',{expected:null})).status===200;}catch{return false;}},'account startup before browser acceptance');
     }
-    if(publicLinkUi){
+    const browserResults = testResults();
+    if(publicLinkUi){ await browserResults.run('public-link', async () => {
         // Only this newly created fixture's challenge table is seeded. This is
         // synthetic issuance, NOT a Discord command or human acceptance pass.
         const challenges=Array.from({length:3},(_,index)=>({token:randomBytes(32).toString('base64url'),discordId:String(123456789012345670n+BigInt(index)),expires:Date.now()+(index===2?-1000:300000)}));
@@ -1213,12 +1215,12 @@ try {
             await mkdir(join(root,'link-screenshots'),{recursive:true});
             console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${input},target=/synthetic-link-fixture.json,readonly`,'--mount',`type=bind,source=${join(root,'link-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-public-link-acceptance.sh'));
         }finally{await rm(input,{force:true});if(linkFactor)linkFactor.secret=null;}
-    }
-    if(publicOnboardingUi){
+    }); }
+    if(publicOnboardingUi){ await browserResults.run('public-onboarding', async () => {
         await mkdir(join(root,'signup-screenshots'),{recursive:true});
         console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'signup-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-public-onboarding-acceptance.sh'));
-    }
-    if(diagnosticsUi){
+    }); }
+    if(diagnosticsUi){ await browserResults.run('diagnostics', async () => {
         const member=(await nativeFixtureUser({Name:'diagnostics-ui-member'})).data;
         await request(`Users/${member.id}/Password`,{method:'POST',body:{CurrentPw:'',NewPw:'Disposable-Diagnostics-Only-6328!',ResetPassword:false},expected:204});
         await request(`Users/${member.id}/Policy`,{method:'POST',body:{...member.policy,isHidden:true},expected:204});
@@ -1226,16 +1228,16 @@ try {
         const startPage=has('notifications')?'Notifications':{hub:'AccountHub',discord:'DiscordBridge',deletion:'DeletionQueueAdmin',syncplay:'privateSyncPlay',automatic:'AutomaticDeletionRequests'}[selected[0]];
         const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'diagnostics-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','--env','DIAGNOSTICS_START_PAGE='+startPage,'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-diagnostics-acceptance.sh');
         console.log(output);
-    }
-    if(accountResponsive){
+    }); }
+    if(accountResponsive){ await browserResults.run('account-responsive', async () => {
         await mkdir(join(root,'account-screenshots'),{recursive:true});
         const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'account-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-account-responsive.sh');
         const result=JSON.parse(output.split(/\r?\n/).find(line=>line.startsWith('{"checks":'))||'{}');
         assert.equal(result.checks?.length,18);assert(result.checks.every(check=>check.passed));
         await writeFile(join(root,'account-responsive-results.json'),JSON.stringify(result,null,2));
         console.log('PASS 18 native dark/light Discord, linking and reset responsive checks at 320/390/1280px, native controls and custom theme overrides.');
-    }
-    if (themeCheck) {
+    }); }
+    if (themeCheck) { await browserResults.run('native-theme-workspace', async () => {
         await mkdir(join(root, 'admin-screenshots'), { recursive: true });
         // No published port or host alias is needed: the browser shares only
         // this newly owned disposable server's network namespace.
@@ -1258,15 +1260,16 @@ try {
         if (has('notifications')) assert(result.notificationSwipes?.length === 4 && result.notificationSwipes.every(item => item.rightRead && item.leftHide && item.confirmRequired && item.consentThenDismiss && item.skinOverride), 'Notification swipe coverage incomplete');
         await writeFile(join(root, 'theme-results.json'), JSON.stringify(result, null, 2));
         console.log('PASS 30 account-focused native-theme/workspace checks and keyboard/custom-theme override at three widths.');
-    }
-    if(notificationStudio){
+    }); }
+    if(notificationStudio){ await browserResults.run('notification-studio', async () => {
         await mkdir(join(root,'studio-screenshots'),{recursive:true});
         const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'studio-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-notification-studio.sh');
         const result=JSON.parse(output.split(/\r?\n/).find(line=>line.startsWith('{"checks":'))||'{}');
         assert.equal(result.checks?.length,6);assert(result.persisted&&result.liveBell&&result.noSends);
         await writeFile(join(root,'studio-results.json'),JSON.stringify(result,null,2));
         console.log('PASS standalone-capable notification studio: six native theme/width cases, drag/keyboard/fonts, saved defaults/layout, live bell and no preview publication.');
-    }
+    }); }
+    browserResults.finish();
     const nativeLog=docker('logs',name);
     assert(!(nativeLog.includes('StatusCode cannot be set because the response has already started.')&&nativeLog.includes('SuiteDiagnostics.DiagnosticsResultFilter')),'Diagnostics must not rewrite an already-started native response');
     console.log('PASS combination:', selected.join('+') || 'none', option('security') ? '+ native Security' : '(no native Security)', '— independent startup/configuration, optional-dependency health and installed-feature checks.');
