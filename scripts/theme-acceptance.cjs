@@ -592,11 +592,12 @@ const { openBrowserRelay } = require('./browser-relay.cjs');
                 const editor = page.locator('#dqPresentation');
                 try { await editor.getByRole('button', { name: 'Preview portrait', exact: true }).waitFor(); }
                 catch (error) { throw new Error(error.message + ' · Presentation status: ' + await editor.locator('[data-presentation-status]').textContent()); }
-                const copy = page.getByRole('button', { name: 'Copy Jellyfin Enhanced connection', exact: true });
-                try { await page.locator('#deletionQueueAdmin[aria-busy="false"] #dqEnhanced:enabled').waitFor(); }
+                const copy = page.locator('#dqEnhanced');
+                try { await page.locator('#deletionQueueAdmin[aria-busy="false"]').waitFor(); }
                 catch (error) { throw new Error('Monitoring settings were not ready: ' + await page.locator('#dqError').textContent() + ' · ' + error.message); }
-                assert.equal(await page.locator('#dqEnhancedStatus').textContent(), ''); assert(await copy.isEnabled(), 'Enhanced copy control must remain enabled when its optional provider is absent'); await copy.click();
-                assert.match(await page.locator('#dqEnhancedStatus').textContent(), /exactly one/);
+                assert.equal(await page.locator('#dqEnhancedStatus').textContent(), '');
+                assert(await copy.isHidden(), 'Unavailable optional Enhanced import must be hidden');
+                await page.getByRole('button', { name: 'Test connection', exact: true }).waitFor({ state: 'visible' });
                 const connectionTest = page.waitForResponse(r => r.url().endsWith('/admin/seerr/test') && r.request().method() === 'POST');
                 await page.locator('#dqKey').fill('disposable-draft-not-sent'); await page.getByRole('button', { name: 'Test connection', exact: true }).click();
                 const tested = await connectionTest; assert.equal(tested.status(), 200); assert.deepEqual(tested.request().postDataJSON(), {});

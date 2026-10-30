@@ -222,8 +222,13 @@ queueTest('Deletion Queue hides routing mode and confirms permissions-only reset
         await turn(); await turn();
         assert.equal(d.querySelector('#deletionQueueAdmin').getAttribute('aria-busy'), 'false');
         assert.equal(d.querySelector('#dqNotificationMode'), null); assert(!d.body.textContent.includes('Notification mode'));
-        assert.equal(d.querySelector('#dqEnhancedStatus').textContent, ''); assert.equal(d.querySelector('#dqEnhanced').disabled, false);
+        assert.equal(d.querySelector('#dqEnhancedStatus').textContent, ''); assert.equal(d.querySelector('#dqEnhanced').hidden, true);
+        // A synthetic invocation still fails closed even though users cannot click it.
         d.querySelector('#dqEnhanced').click(); await turn(); assert.match(d.querySelector('#dqEnhancedStatus').textContent, /exactly one/); assert.equal(calls.filter(c => c.type !== 'GET').length, 0);
+        status.enhanced.connectionAvailable = true; d.querySelector('#dqRefresh').click(); await turn(); await turn();
+        assert.equal(d.querySelector('#dqEnhanced').hidden, false); assert.equal(d.querySelector('#dqEnhanced').disabled, false);
+        status.enhanced.connectionAvailable = false; d.querySelector('#dqRefresh').click(); await turn(); await turn();
+        assert.equal(d.querySelector('#dqEnhanced').hidden, true);
         const button = d.querySelector('#dqResetAllPermissions'); button.click(); await turn();
         assert.equal(calls.filter(c => c.type !== 'GET').length, 0);
         d.querySelector('#dqAuthority').value = '2'; confirmed = true; button.click(); await turn(); await turn();
