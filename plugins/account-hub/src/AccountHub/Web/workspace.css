@@ -11,7 +11,10 @@
 .accountHubPage .hubToolbar > .hubField { flex: 1 1 15rem; }
 .accountHubPage .hubToolbar > *, .accountHubPage .hubActions > * { min-width: 0; max-width: 100%; }
 .accountHubPage .hubActions button, .accountHubPage .hubToolbar button, .accountHubDialog button, .accountHubPublic button { white-space: normal; overflow-wrap: anywhere; }
-.accountHubDialog { color: inherit; font: inherit; box-sizing: border-box; width: min(56em, 92vw); }
+/* Native theme sheets can load after this asset. Outrank their generic dialog
+   rule while inheriting the active theme/skin, rather than pinning a palette. */
+dialog.dialog.accountHubDialog { color: inherit; font: inherit; }
+.accountHubDialog { box-sizing: border-box; width: min(56em, 92vw); }
 .accountHubDialog .hubGrid { margin-block: 1rem; }
 .accountHubDialog .hubTableWrap { max-width: 100%; overflow-x: auto; }
 .accountHubDialog .hubTable { width: 100%; border-collapse: collapse; }

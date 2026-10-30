@@ -358,6 +358,11 @@ hubTest('Workspace navigation clears an open fresh-proof dialog without issuing 
     root.dispatchEvent(new window.Event('viewhide')); await turn();
     assert.equal(proof.value, ''); assert.equal(window.document.querySelectorAll('dialog').length, 0); assert.equal(calls.filter(c => c.method === 'POST').length, 0); dom.window.close();
 });
+hubTest('Permission dialog foreground inheritance outranks late native dialog rules without fixed colors', async () => {
+    const css = await source('plugins/account-hub/src/AccountHub/Web/workspace.css');
+    assert.match(css, /dialog\.dialog\.accountHubDialog\s*\{\s*color:\s*inherit;\s*font:\s*inherit;/);
+    assert(!/\.accountHubDialog[^{}]*\{[^}]*color:\s*(?:#|rgb|white|black)/i.test(css));
+});
 hubTest('People select-all uses native checkbox markup and excludes administrators', async () => {
     const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
     const { window } = dom; const writes = [];
