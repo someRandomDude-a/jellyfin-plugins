@@ -118,7 +118,7 @@ export function mountWorkspace(root, client) {
         const selected=new Map(),search = field('Search users', ''), toolbar = make('div'); toolbar.className = 'hubToolbar';toolbar.append(search.root, button('Search', async () => { skip = 0;selected.clear();await load(); }),button('Edit selected access',async()=>{if(!selected.size)throw Error('Select users first.');await editPolicy([...selected.values()][0],[...selected.keys()]);}),button('Clear selection',async()=>{selected.clear();await load();})); content.append(toolbar); const list = make('div'); content.append(list);
         async function load() {
             const data = await request('users?skip=' + skip + '&limit=50&search=' + encodeURIComponent(search.value()));
-            const all=make('input');all.type='checkbox';all.setAttribute('aria-label','Select all users on this page');const choices=[];
+            const selectAll=field('Select all users on this page',false),all=selectAll.input;all.setAttribute('aria-label','Select all users on this page');selectAll.root.querySelector('.checkboxLabel').textContent='';const choices=[];
             const update=()=>{const enabled=choices.filter(c=>!c.disabled);all.disabled=!enabled.length;all.checked=!!enabled.length&&enabled.every(c=>c.checked);all.indeterminate=enabled.some(c=>c.checked)&&!all.checked;};
             list.replaceChildren(table(['','User', 'Administrator', 'Disabled', 'Discord', 'Actions'], data.items.map(user => {
                 const choice=field(user.username,selected.has(user.id));choice.input.setAttribute('aria-label',user.username);choice.root.querySelector('.checkboxLabel').textContent='';choices.push(choice.input);choice.input.disabled=user.administrator;choice.input.onchange=()=>{if(choice.input.checked){if(selected.size>=100){choice.input.checked=false;status.textContent='Select at most 100 users.';return;}selected.set(user.id,user);}else selected.delete(user.id);update();};
@@ -129,7 +129,7 @@ export function mountWorkspace(root, client) {
                 if(user.discordLinked)actions.append(button('Unlink Discord',async()=>{await command('user.discord.unlink',{userId:user.id});await load();}));
                 return [choice.root,user.username, user.administrator, user.disabled, user.discordLinked?'Linked':'Not linked', actions];
             })), button('Previous', async () => { skip = Math.max(0, skip - 50); await load(); }), button('Next', async () => { if (skip + 50 < data.total) { skip += 50; await load(); } }));
-            list.querySelector('th').append(all);all.onchange=()=>{const checked=all.checked;for(const choice of choices.filter(c=>!c.disabled)){choice.checked=checked;choice.onchange();}update();};update();
+            list.querySelector('th').append(selectAll.root);all.onchange=()=>{const checked=all.checked;for(const choice of choices.filter(c=>!c.disabled)){choice.checked=checked;choice.onchange();}update();};update();
         }
         await load();
     }

@@ -358,6 +358,36 @@ hubTest('Workspace navigation clears an open fresh-proof dialog without issuing 
     root.dispatchEvent(new window.Event('viewhide')); await turn();
     assert.equal(proof.value, ''); assert.equal(window.document.querySelectorAll('dialog').length, 0); assert.equal(calls.filter(c => c.method === 'POST').length, 0); dom.window.close();
 });
+hubTest('People select-all uses native checkbox markup and excludes administrators', async () => {
+    const dom = new JSDOM('<div class="accountHubPage"><p class="hubMessage"></p><nav class="hubTabs"></nav><section class="hubContent"></section></div>', { runScripts: 'outside-only', url: 'https://example.test/web/' });
+    const { window } = dom; const writes = [];
+    try {
+        window.fetch = async (url, options) => {
+            if (options.method === 'POST') writes.push(url);
+            return response(url.includes('/users?') ? { items: [
+                { id: 'admin', username: 'Administrator', administrator: true },
+                { id: 'one', username: 'One', administrator: false },
+                { id: 'two', username: 'Two', administrator: false }
+            ], total: 3 } : url.endsWith('/dependencies') ? { items: [] } : { revision: 0 });
+        };
+        window.eval(workspaceScript(await source('plugins/account-hub/src/AccountHub/Web/workspace.js')));
+        const root = window.document.querySelector('.accountHubPage');
+        window.mountWorkspace(root, { getUrl: path => 'https://example.test/' + path, accessToken: () => 'test' });
+        await turn(); await turn();
+        const all = root.querySelector('[aria-label="Select all users on this page"]'); assert(all);
+        for (const input of root.querySelectorAll('input[type=checkbox]')) {
+            assert(input.classList.contains('emby-checkbox'));
+            assert(input.closest('label')?.querySelector('.checkboxOutline'));
+        }
+        const admin = root.querySelector('[aria-label="Administrator"]'), one = root.querySelector('[aria-label="One"]'), two = root.querySelector('[aria-label="Two"]');
+        assert(admin.disabled); all.click();
+        assert(one.checked && two.checked && all.checked); assert(!admin.checked);
+        one.click(); assert(all.indeterminate); assert(!all.checked);
+        all.click(); assert(one.checked && two.checked && !all.indeterminate);
+        all.click(); assert(!one.checked && !two.checked && !admin.checked);
+        assert.equal(writes.length, 0);
+    } finally { window.close(); }
+});
 hubTest('Public recovery erases bearer fragment and sends no Jellyfin credentials', async () => {
     const token = 'a'.repeat(43), calls = [];
     const dom = new JSDOM('<base href="https://example.test/suite/AccountHub/"><main class="accountHubPublic" data-page="reset"><p class="hubPublicStatus"></p><div class="hubPublicContent"></div></main>', { runScripts: 'outside-only', url: 'https://example.test/suite/AccountHub/reset#token=' + token });
