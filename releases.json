@@ -1,0 +1,32 @@
+{
+  "AccountHub": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  },
+  "Notifications": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  },
+  "DiscordBridge": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  },
+  "DeletionQueue": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  },
+  "AutomaticDeletionRequests": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  },
+  "PrivateSyncPlay": {
+    "version": "0.3.16.0",
+    "targetAbi": "12.4.0.0",
+    "releaseUrl": "https://github.com/someRandomDude-a/jellyfin-plugins/releases/tag/v0.3.16"
+  }
+}
