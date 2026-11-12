@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 // Test tooling only. No plugin dependency, account, tunnel token or host mounts.
-export const tunnelImage = 'cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba';
+export const tunnelImage = 'cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344';
 export function probeTrustedProxyAuth(fixtureName,origin,token) {
     assert(/^jellyfin-suite-test-[a-f0-9]{8}$/.test(fixtureName));
     assert(quickTunnelOrigin(origin)===origin&&new URL(origin).origin===origin);
