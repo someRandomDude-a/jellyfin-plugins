@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 // Test tooling only. No plugin dependency, account, tunnel token or host mounts.
-export const tunnelImage = 'cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba';
+export const tunnelImage = 'cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344';
 export function probeTrustedProxyAuth(fixtureName,origin,token) {
     assert(/^jellyfin-suite-test-[a-f0-9]{8}$/.test(fixtureName));
     assert(quickTunnelOrigin(origin)===origin&&new URL(origin).origin===origin);
@@ -12,7 +12,7 @@ export function probeTrustedProxyAuth(fixtureName,origin,token) {
     // arrive from an untrusted Docker bridge address and are not equivalent.
     // Native credentials cross stdin, never command arguments, logs or files.
     const script=`const http=require('node:http');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end',async()=>{try{const data=JSON.parse(input);const call=(origin,self=false)=>new Promise((resolve,reject)=>{const headers={Host:new URL(data.origin).host,'X-Forwarded-Proto':'https','Content-Type':'application/json',Authorization:'MediaBrowser Client="SuiteTest", Device="Disposable", DeviceId="suite-test", Version="1", Token="'+data.token+'"'};if(origin)headers.Origin=origin;const q=http.request('http://127.0.0.1:8096/suite/AccountHub/api/v1/'+(self?'self':'discord/link/lookup'),{method:self?'GET':'POST',headers},r=>{r.resume();r.on('end',()=>resolve(r.statusCode));});q.setTimeout(15000,()=>q.destroy(Error('deadline')));q.on('error',reject);q.end(self?undefined:JSON.stringify({token:'a'.repeat(43)}));});console.log(JSON.stringify({nativeSession:await call(null,true),sameOrigin:await call(data.origin),hostileOrigin:await call('https://attacker.invalid')}));}catch{process.exitCode=1;}});`;
-    const result=spawnSync('docker',['run','--pull=always','--rm','-i','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--network','container:'+fixtureName,'--entrypoint','node','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','-e',script],{encoding:'utf8',input:JSON.stringify({origin,token}),timeout:60000,maxBuffer:65536});
+    const result=spawnSync('docker',['run','--pull=always','--rm','-i','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--network','container:'+fixtureName,'--entrypoint','node','mcr.microsoft.com/playwright:v1.65.0-noble','-e',script],{encoding:'utf8',input:JSON.stringify({origin,token}),timeout:60000,maxBuffer:65536});
     assert.equal(result.status,0,'Trusted-proxy native authorization probe failed (sensitive details withheld)');
     return JSON.parse(result.stdout.trim());
 }
@@ -28,7 +28,7 @@ export function probeDiscordTunnel(origin, docker, path = '/suite/System/Info/Pu
     assert(['/suite/System/Info/Public', '/suite/probe'].includes(path), 'Only public fixture probe routes are allowed');
     const script = `const dns=require('dns'),https=require('https');const fail=e=>{const code=e.code||e.name;console.log(JSON.stringify({status:0,text:'',errorCode:/^[A-Za-z0-9_]{1,60}$/.test(code)?code:'transport_error'}))};const q=https.get(${JSON.stringify(new URL(path, url).href)},{family:4,lookup:(host,options,cb)=>dns.resolve4(host,(e,a)=>e?cb(e):cb(null,a[0],4))},r=>{let text='';r.setEncoding('utf8');r.on('data',c=>{text+=c;if(text.length>65536)q.destroy(Error('size'))});r.on('end',()=>console.log(JSON.stringify({status:r.statusCode,text})));r.on('error',fail)});q.setTimeout(10000,()=>q.destroy(Error('deadline')));q.on('error',fail)`;
     return JSON.parse(docker('run', '--rm', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--entrypoint', 'node',
-        'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea', '-e', script));
+        'mcr.microsoft.com/playwright:v1.65.0-noble', '-e', script));
 }
 export async function startDiscordTunnel(fixtureName, docker, { wait = ms => new Promise(resolve => setTimeout(resolve, ms)), attempts = 60 } = {}) {
     assert(/^jellyfin-suite-test-[a-f0-9]{8}$/.test(fixtureName), 'Tunnel target must be an owned disposable suite container');

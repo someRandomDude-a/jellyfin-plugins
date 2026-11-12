@@ -15,7 +15,7 @@ function docker(...args) {
 let tunnel, started = false;
 try {
     docker('run', '-d', '--name', name, '--label', 'jellyfin.suite.tunnel-test=true', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--entrypoint', 'node',
-        'mcr.microsoft.com/playwright:v1.64.1-noble', '-e',
+        'mcr.microsoft.com/playwright:v1.65.0-noble', '-e',
         `require('http').createServer((req,res)=>{res.setHeader('Cache-Control','no-store');res.end(${JSON.stringify(sentinel)})}).listen(8096,'0.0.0.0')`);
     started = true;
     tunnel = await startDiscordTunnel(name, docker);

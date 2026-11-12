@@ -1213,12 +1213,12 @@ try {
         try{
             docker('run','--rm','--network=none','--read-only','--mount',`type=bind,source=${root},target=/input,readonly`,'--mount',`type=bind,source=${join(root,'config','plugins','configurations','AccountHub')},target=/data`,'python:alpine','python','-c',seed);
             await mkdir(join(root,'link-screenshots'),{recursive:true});
-            console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${input},target=/synthetic-link-fixture.json,readonly`,'--mount',`type=bind,source=${join(root,'link-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-public-link-acceptance.sh'));
+            console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${input},target=/synthetic-link-fixture.json,readonly`,'--mount',`type=bind,source=${join(root,'link-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.65.0-noble','/bin/sh','/checks/run-public-link-acceptance.sh'));
         }finally{await rm(input,{force:true});if(linkFactor)linkFactor.secret=null;}
     }); }
     if(publicOnboardingUi){ await browserResults.run('public-onboarding', async () => {
         await mkdir(join(root,'signup-screenshots'),{recursive:true});
-        console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'signup-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-public-onboarding-acceptance.sh'));
+        console.log(docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'signup-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.65.0-noble','/bin/sh','/checks/run-public-onboarding-acceptance.sh'));
     }); }
     if(diagnosticsUi){ await browserResults.run('diagnostics', async () => {
         const member=(await nativeFixtureUser({Name:'diagnostics-ui-member'})).data;
@@ -1226,12 +1226,12 @@ try {
         await request(`Users/${member.id}/Policy`,{method:'POST',body:{...member.policy,isHidden:true},expected:204});
         await mkdir(join(root,'diagnostics-screenshots'),{recursive:true});
         const startPage=has('notifications')?'Notifications':{hub:'AccountHub',discord:'DiscordBridge',deletion:'DeletionQueueAdmin',syncplay:'privateSyncPlay',automatic:'AutomaticDeletionRequests'}[selected[0]];
-        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'diagnostics-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','--env','DIAGNOSTICS_START_PAGE='+startPage,'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-diagnostics-acceptance.sh');
+        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'diagnostics-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','--env','DIAGNOSTICS_START_PAGE='+startPage,'mcr.microsoft.com/playwright:v1.65.0-noble','/bin/sh','/checks/run-diagnostics-acceptance.sh');
         console.log(output);
     }); }
     if(accountResponsive){ await browserResults.run('account-responsive', async () => {
         await mkdir(join(root,'account-screenshots'),{recursive:true});
-        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'account-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-account-responsive.sh');
+        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'account-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.65.0-noble','/bin/sh','/checks/run-account-responsive.sh');
         const result=JSON.parse(output.split(/\r?\n/).find(line=>line.startsWith('{"checks":'))||'{}');
         assert.equal(result.checks?.length,18);assert(result.checks.every(check=>check.passed));
         await writeFile(join(root,'account-responsive-results.json'),JSON.stringify(result,null,2));
@@ -1249,7 +1249,7 @@ try {
             '--env', 'SUITE_TEST_RUN_ID=' + process.env.SUITE_TEST_RUN_ID,
             '--env', 'THEME_TEST_AUTOMATIC=' + has('automatic'),
             '--env', 'DISPOSABLE_THEME_TEST=true', '--env', 'THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite',
-            'mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea',
+            'mcr.microsoft.com/playwright:v1.65.0-noble',
             '/bin/sh', '/checks/run-theme-acceptance.sh');
         const line = output.split(/\r?\n/).find(line => line.startsWith('{"checks":'));
         assert(line, 'Browser check result missing');
@@ -1263,7 +1263,7 @@ try {
     }); }
     if(notificationStudio){ await browserResults.run('notification-studio', async () => {
         await mkdir(join(root,'studio-screenshots'),{recursive:true});
-        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'studio-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea','/bin/sh','/checks/run-notification-studio.sh');
+        const output=docker('run','--rm','--network','container:'+name,'--mount',`type=bind,source=${resolve('scripts')},target=/checks,readonly`,'--mount',`type=bind,source=${join(root,'studio-screenshots')},target=/evidence`,'--env','ADMIN_SCREENSHOTS=/evidence','--env','DISPOSABLE_THEME_TEST=true','--env','THEME_TEST_BASE_URL=http://127.0.0.1:8096/suite','mcr.microsoft.com/playwright:v1.65.0-noble','/bin/sh','/checks/run-notification-studio.sh');
         const result=JSON.parse(output.split(/\r?\n/).find(line=>line.startsWith('{"checks":'))||'{}');
         assert.equal(result.checks?.length,6);assert(result.persisted&&result.liveBell&&result.noSends);
         await writeFile(join(root,'studio-results.json'),JSON.stringify(result,null,2));
